@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10283b">
+  <title>DÉTOUR : Gestion de projet & Agentique IA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css?v=40">
+  <link rel="stylesheet" href="./styles.theme.css?v=40">
+</head>
+<body>
+  <header class="toolbar">
+    <a class="brand" href="./index.html" aria-label="Retour au début"><span class="brand-mark">↗</span><span>DÉTOUR<span class="brand-sub"> / WEB3</span></span></a>
+    <nav class="days" aria-label="Modules">
+      <button class="day is-active" data-day="1">Projet <span>Conception</span></button>
+      <button class="day" data-day="2">Modèle <span>Fondations IA</span></button>
+      <button class="day" data-day="3">Action <span>Agentique IA</span></button>
+      <button class="day" data-day="4">Évaluer <span>Agentique IA</span></button>
+      <button class="day" data-day="5">Revue <span>FOAD</span></button>
+      <button class="day" data-day="6">Changer <span>Conception</span></button>
+      <button class="day" data-day="7">Livrer <span>Conception</span></button>
+      <select id="moduleSelect" class="module-select" aria-label="Choisir un module">
+        <option value="1">Conception</option><option value="2">Fondations IA</option><option value="3">Architecture IA</option><option value="4">Évaluation IA</option><option value="5">Revue FOAD</option><option value="6">Changement</option><option value="7">Livraison</option>
+      </select>
+    </nav>
+    <div class="controls">
+      <button id="menuButton" title="Sommaire" aria-label="Sommaire">☷</button>
+      <button id="exerciseButton" title="Exercice (T)" aria-label="Exercice" disabled>TP</button>
+      <button id="presenterButton" hidden title="Ouvrir la vue présentateur (P)" aria-label="Ouvrir la vue présentateur"><span class="presenter-long">Présentateur ↗</span><span class="presenter-short">P</span></button>
+      <button id="fullscreenButton" title="Plein écran (F)" aria-label="Plein écran">⛶</button>
+      <button id="previousButton" title="Précédent" aria-label="Précédent">←</button>
+      <span id="counter" class="counter">1 / 1</span>
+      <button id="nextButton" title="Suivant" aria-label="Suivant">→</button>
+    </div>
+  </header>
+  <div class="progress"><div id="progressBar"></div></div>
+  <main id="stage" class="stage" aria-live="polite"></main>
+  <aside id="menuPanel" class="menu-panel" aria-label="Sommaire" hidden></aside>
+  <aside id="exercisePanel" class="side-panel" aria-label="Travaux pratiques" hidden>
+    <div class="panel-head"><strong>Atelier</strong><div><a id="exerciseLink" href="#" target="_blank" rel="noopener">Ouvrir ↗</a><button id="closeExercise" aria-label="Fermer">×</button></div></div>
+    <article id="exerciseBody" class="markdown"></article>
+  </aside>
+  <footer class="hint"><span>← → naviguer</span><span>1 à 7 module</span><span>T atelier</span><span>F plein écran</span></footer>
+  <script src="./deck.js?v=40"></script>
+  <script src="./deck-j3.js?v=40"></script>
+  <script src="./deck-j4.js?v=40"></script>
+  <script src="./deck-j5.js?v=40"></script>
+  <script src="./deck-j6.js?v=40"></script>
+  <script src="./deck-j7.js?v=40"></script>
+  <script src="./sync.js?v=40"></script>
+  <script src="./app.js?v=40"></script>
+</body>
+</html>
