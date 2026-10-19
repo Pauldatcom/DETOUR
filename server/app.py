@@ -15,7 +15,11 @@ from http.cookies import CookieError, SimpleCookie
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from catalogue import BY_ID, PRESTATIONS
+from catalogue import BY_ID, MIS_A_JOUR_LE_BASE, PRESTATIONS
+
+# Nom propre au dashboard : les cookies sont partagés entre ports sur 127.0.0.1,
+# un nom commun avec le portail (8766) ferait écraser une session par l'autre.
+DASHBOARD_COOKIE = "detour_dashboard"
 
 
 def utc_now():
@@ -44,12 +48,13 @@ class StateStore:
         self.instructor_key = instructor_key
         self.path = Path(path) if path else None
         self.lock = threading.RLock()
-        self.sessions = {}
         self.state = {"teams": {}}
         if self.path and self.path.exists():
             self.state = json.loads(self.path.read_text(encoding="utf-8"))
+        self.state.setdefault("sessions", {})
         for name in teams:
             self.state["teams"].setdefault(name, {"options": {}, "reservations": {}, "incidents": {}})
+        self._prune_sessions()
 
     def save(self):
         if not self.path:
@@ -67,30 +72,42 @@ class StateStore:
                 return name
         raise ApiError(403, "team_key_invalid", "Clé d'équipe invalide.")
 
+    def _prune_sessions(self):
+        """Élimine les sessions expirées. À appeler sous verrou."""
+        now = utc_now()
+        self.state["sessions"] = {
+            token: entree for token, entree in self.state["sessions"].items()
+            if datetime.fromisoformat(entree["expire_le"]) > now
+        }
+
     def new_dashboard_session(self, supplied):
         if not isinstance(supplied, str) or not supplied:
             raise ApiError(400, "team_key_missing", "Saisissez une clé d'équipe.")
         team = self.team_for_key(supplied)
         token = secrets.token_urlsafe(32)
         with self.lock:
-            self.sessions = {key: value for key, value in self.sessions.items()
-                             if value[1] > utc_now()}
-            self.sessions[token] = (team, utc_now() + timedelta(minutes=30))
+            self._prune_sessions()
+            self.state["sessions"][token] = {"equipe": team,
+                                            "expire_le": (utc_now() + timedelta(minutes=30)).isoformat()}
+            self.save()
         return token, team
 
     def dashboard_team(self, supplied):
         if not supplied:
             raise ApiError(401, "dashboard_login_required", "Connectez-vous avec la clé de votre équipe.")
         with self.lock:
-            session = self.sessions.get(supplied)
-            if not session or session[1] <= utc_now():
-                self.sessions.pop(supplied, None)
+            entree = self.state["sessions"].get(supplied)
+            if not entree or datetime.fromisoformat(entree["expire_le"]) <= utc_now():
+                if entree is not None:
+                    self.state["sessions"].pop(supplied, None)
+                    self.save()
                 raise ApiError(401, "dashboard_session_expired", "Session expirée. Reconnectez-vous.")
-            return session[0]
+            return entree["equipe"]
 
     def close_dashboard_session(self, supplied):
         with self.lock:
-            self.sessions.pop(supplied, None)
+            if supplied and self.state["sessions"].pop(supplied, None) is not None:
+                self.save()
 
     def require_approval(self, team, supplied):
         expected = self.teams[team]["approval_key"]
@@ -127,6 +144,54 @@ class StateStore:
                 "disponible": remaining >= participants, "places_restantes": remaining,
                 "prix_unitaire_eur": price, "prix_total_eur": price * participants,
                 "devise": "EUR", "simulation": True}
+
+    def updated_at(self, team, prestation_id, on_date):
+        incident = self.state["teams"][team]["incidents"].get(f"{prestation_id}|{on_date}", {})
+        return incident.get("mis_a_jour_le", MIS_A_JOUR_LE_BASE)
+
+    def search(self, team, params):
+        """Recherche de prestations. Filtre dur sur la destination ; le reste est signalé, pas masqué."""
+        destination = params.get("destination")
+        if not isinstance(destination, str) or not destination.strip():
+            raise ApiError(400, "invalid_destination", "destination est obligatoire.")
+        date_depart, date_retour = params.get("date_depart"), params.get("date_retour")
+        if not valid_date(date_depart):
+            raise ApiError(400, "invalid_date", "date_depart doit suivre le format AAAA-MM-JJ.")
+        if date_retour is not None and (not valid_date(date_retour) or date_retour < date_depart):
+            raise ApiError(400, "invalid_date", "date_retour doit être une date AAAA-MM-JJ postérieure ou égale à date_depart.")
+        participants = params.get("participants")
+        if type(participants) is not int or not 1 <= participants <= 20:
+            raise ApiError(400, "invalid_participants", "participants doit être un entier de 1 à 20.")
+        budget = params.get("budget_max")
+        if budget is not None and (type(budget) is not int or budget <= 0):
+            raise ApiError(400, "invalid_budget", "budget_max doit être un entier positif (euros par personne).")
+        type_voyage = params.get("type_voyage")
+        activites = params.get("activites") or []
+        results = []
+        with self.lock:
+            for item in PRESTATIONS:
+                if item["destination"].casefold() != destination.strip().casefold():
+                    continue
+                remaining, price = self.remaining(team, item["id"], date_depart)
+                results.append({
+                    "id": item["id"], "nom": item["nom"], "type": item["type"],
+                    "destination": item["destination"], "description": item["description"],
+                    "tags": list(item["tags"]),
+                    "prix_unitaire_eur": price, "prix_total_eur": price * participants,
+                    "disponible": remaining >= participants, "places_restantes": remaining,
+                    "mis_a_jour_le": self.updated_at(team, item["id"], date_depart),
+                    "dans_budget": None if budget is None else price <= budget,
+                    "correspond_type_voyage": None if not type_voyage else type_voyage in item["voyages"],
+                    "activites_correspondantes": [a for a in activites if a in item["tags"]],
+                })
+        return {"source": "serveur-fictif-detour", "route": "/api/v1/recherche",
+                "consulte_le": utc_now().isoformat(),
+                "criteres": {"destination": destination.strip(), "date_depart": date_depart,
+                             "date_retour": date_retour, "participants": participants,
+                             "budget_max": budget, "type_voyage": type_voyage or None,
+                             "activites": activites,
+                             "date_verifiee": date_depart},
+                "resultats": results, "simulation": True}
 
     def create_option(self, team, data):
         prestation_id, on_date, participants = data.get("prestation_id"), data.get("date"), data.get("participants")
@@ -198,6 +263,7 @@ class StateStore:
         with self.lock:
             incident = self.state["teams"][team]["incidents"].setdefault(f"{prestation_id}|{on_date}", {})
             incident[incident_type] = value
+            incident["mis_a_jour_le"] = utc_now().isoformat()
             self.save()
             return {"equipe": team, "prestation_id": prestation_id, "date": on_date, **incident, "simulation": True}
 
@@ -240,13 +306,13 @@ def make_handler(store):
             try:
                 cookies = SimpleCookie()
                 cookies.load(self.headers.get("Cookie", ""))
-                return cookies["detour_session"].value if "detour_session" in cookies else None
+                return cookies[DASHBOARD_COOKIE].value if DASHBOARD_COOKIE in cookies else None
             except CookieError:
                 return None
 
         def session_cookie_header(self, token, max_age):
             secure = "; Secure" if isinstance(self.connection, ssl.SSLSocket) else ""
-            return f"detour_session={token}; Path=/dashboard; Max-Age={max_age}; HttpOnly; SameSite=Strict{secure}"
+            return f"{DASHBOARD_COOKIE}={token}; Path=/dashboard; Max-Age={max_age}; HttpOnly; SameSite=Strict{secure}"
 
         def require_same_origin(self):
             if self.headers.get("Sec-Fetch-Site") == "cross-site":
@@ -278,8 +344,6 @@ def make_handler(store):
             if self.command != "GET":
                 raise ApiError(405, "method_not_allowed", "Le tableau de bord ne modifie pas les réservations.")
             team = store.dashboard_team(self.dashboard_cookie())
-            if path == "/dashboard/api/me":
-                return self.send_json(200, {"equipe": team, "simulation": True})
             if path == "/dashboard/api/catalogue":
                 type_filter = query.get("type", [None])[0]
                 destination_filter = query.get("destination", [None])[0]
@@ -367,6 +431,24 @@ def make_handler(store):
                     result = store.availability(team, query.get("prestation_id", [None])[0],
                                                 query.get("date", [None])[0], participants)
                     return self.send_json(200, result)
+                if self.command == "GET" and path == "/api/v1/recherche":
+                    def optional_int(name):
+                        raw = query.get(name, [None])[0]
+                        if raw is None:
+                            return None
+                        try:
+                            return int(raw)
+                        except ValueError:
+                            return -1
+                    raw_activites = query.get("activites", [""])[0]
+                    params = {"destination": query.get("destination", [None])[0],
+                              "date_depart": query.get("date_depart", [None])[0],
+                              "date_retour": query.get("date_retour", [None])[0],
+                              "participants": optional_int("participants"),
+                              "budget_max": optional_int("budget_max"),
+                              "type_voyage": query.get("type_voyage", [None])[0],
+                              "activites": [a for a in raw_activites.split(",") if a]}
+                    return self.send_json(200, store.search(team, params))
                 if self.command == "POST" and path == "/api/v1/options":
                     return self.send_json(201, {"option": store.create_option(team, self.read_json())})
                 if self.command == "GET" and path == "/api/v1/options":
