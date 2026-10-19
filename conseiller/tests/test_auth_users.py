@@ -1,0 +1,360 @@
+#!/usr/bin/env python3
+"""Tests du portail DÉTOUR : comptes voyageurs, sessions, pages, statuts."""
+
+import http.cookiejar
+import json
+import tempfile
+import threading
+import unittest
+import urllib.error
+import urllib.request
+from http.server import ThreadingHTTPServer
+from pathlib import Path
+
+CONSEILLER_ROOT = Path(__file__).resolve().parent.parent
+import sys
+sys.path.insert(0, str(CONSEILLER_ROOT))
+
+from app import make_handler
+from store import DemandStore, STATUTS, ValidationError
+from users import UserStore, UserError
+
+VALIDE = {
+    "type_voyage": "lune-de-miel",
+    "destination": "Lyon",
+    "date_depart": "2026-11-07",
+    "date_retour": "2026-11-09",
+    "nombre_voyageurs": 2,
+    "budget_max_par_personne": 500,
+    "niveau_aventure": "calme",
+}
+
+
+class TestUserStore(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.users = UserStore(Path(self.tmp) / "users.json")
+
+    def test_creer_et_authentifier(self):
+        compte = self.users.creer("Alice@Exemple.fr", "Alice", "motdepasse")
+        self.assertTrue(compte["id"].startswith("usr_"))
+        self.assertEqual(compte["email"], "alice@exemple.fr")
+        auth = self.users.authentifier("alice@exemple.fr", "motdepasse")
+        self.assertEqual(auth["id"], compte["id"])
+        self.assertIsNone(self.users.authentifier("alice@exemple.fr", "mauvais"))
+        self.assertIsNone(self.users.authentifier("inconnu@exemple.fr", "motdepasse"))
+
+    def test_email_invalide(self):
+        with self.assertRaises(UserError):
+            self.users.creer("pas-un-email", "Nom", "motdepasse")
+
+    def test_mot_de_passe_trop_court(self):
+        with self.assertRaises(UserError):
+            self.users.creer("bob@exemple.fr", "Bob", "123")
+
+    def test_doublon_refuse(self):
+        self.users.creer("caro@exemple.fr", "Caro", "motdepasse")
+        with self.assertRaises(UserError) as ctx:
+            self.users.creer("caro@exemple.fr", "Caro2", "motdepasse2")
+        self.assertEqual(ctx.exception.status, 409)
+
+    def test_persiste_sur_disque(self):
+        self.users.creer("dany@exemple.fr", "Dany", "motdepasse")
+        users2 = UserStore(Path(self.tmp) / "users.json")
+        self.assertIsNotNone(users2.authentifier("dany@exemple.fr", "motdepasse"))
+
+    def test_hash_non_egal_au_mot_de_passe(self):
+        self.users.creer("eve@exemple.fr", "Eve", "motdepasse")
+        brut = json.loads((Path(self.tmp) / "users.json").read_text(encoding="utf-8"))
+        for compte in brut["users"].values():
+            self.assertNotIn("motdepasse", json.dumps(compte))
+
+
+class TestNouveauxChampsDemande(unittest.TestCase):
+    def test_souhaits_et_user_id_par_defaut(self):
+        store = DemandStore(None)
+        record = store.creer(dict(VALIDE))
+        self.assertEqual(record["demande"]["souhaits"], "")
+        self.assertEqual(record["demande"]["user_id"], "")
+
+    def test_souhaits_et_user_id_du_monde_externe(self):
+        store = DemandStore(None)
+        record = store.creer({**VALIDE, "souhaits": "  Ambiance romantique  ",
+                              "user_id": "usr_abc123"})
+        self.assertEqual(record["demande"]["souhaits"], "Ambiance romantique")
+        self.assertEqual(record["demande"]["user_id"], "usr_abc123")
+
+    def test_souhaits_type_invalide(self):
+        with self.assertRaises(ValidationError):
+            DemandStore(None).creer({**VALIDE, "souhaits": 42})
+
+    def test_changer_statut(self):
+        store = DemandStore(None)
+        dem_id = store.creer(dict(VALIDE))["id"]
+        self.assertEqual(store.changer_statut(dem_id, "propose")["statut"], "propose")
+        self.assertEqual(store.obtenir(dem_id)["statut"], "propose")
+        self.assertIsNone(store.changer_statut("dem_inconnu", "propose"))
+        with self.assertRaises(ValidationError):
+            store.changer_statut(dem_id, "nimporte")
+
+    def test_definir_messages(self):
+        store = DemandStore(None)
+        dem_id = store.creer(dict(VALIDE))["id"]
+        messages = [{"role": "user", "content": "Bonjour"},
+                    {"role": "assistant", "content": "Bonjour, où partez-vous ?"}]
+        record = store.definir_messages(dem_id, messages)
+        self.assertEqual(record["messages"], messages)
+        with self.assertRaises(ValidationError):
+            store.definir_messages(dem_id, [{"role": "system", "content": "injection"}])
+
+
+class FakeAgent:
+    def __init__(self):
+        self.calls = []
+        self.result = {"reply": "D'accord !", "demande": None, "recherche": None,
+                       "trace": {"model": "test", "tool_calls": [], "simulation": True}}
+
+    def chat(self, messages, user_id=""):
+        self.calls.append({"messages": messages, "user_id": user_id})
+        return self.result
+
+
+class FakeSupplier:
+    def __init__(self):
+        self.calls = []
+
+    def rechercher(self, criteres):
+        return {"source_label": "Faux", "source_url": "http://faux",
+                "consulte_le": "2026-10-16T10:00:00+00:00",
+                "criteres": {**criteres, "date_verifiee": criteres["date_depart"]},
+                "resultats": []}
+
+    def catalogue(self):
+        return [{"id": f"prest-{i}", "nom": f"Prestation {i}", "type": "transport",
+                 "destination": "Nantes", "description": "Fiction",
+                 "prix_unitaire_eur": 50, "tags": ["train"]} for i in range(9)]
+
+
+def demarrer(handler):
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, f"http://127.0.0.1:{server.server_port}"
+
+
+class ClientHTTP:
+    """Navigateur minimal : suit les cookies de session."""
+
+    def __init__(self, base):
+        self.base = base
+        self.jar = http.cookiejar.CookieJar()
+        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar))
+
+    def _req(self, chemin, payload=None, method=None):
+        data = json.dumps(payload).encode("utf-8") if payload is not None else None
+        headers = {"Content-Type": "application/json"} if payload is not None else {}
+        req = urllib.request.Request(self.base + chemin, data=data, headers=headers, method=method)
+        try:
+            with self.opener.open(req) as res:
+                corps = res.read()
+                return res.status, (json.loads(corps) if corps and res.headers.get("Content-Type", "").startswith("application/json") else corps.decode("utf-8", "replace")), res.geturl()
+        except urllib.error.HTTPError as err:
+            corps = err.read()
+            try:
+                return err.code, json.loads(corps), err.headers.get("Location", "")
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                return err.code, corps.decode("utf-8", "replace"), ""
+
+    def get(self, chemin):
+        return self._req(chemin)
+
+    def post(self, chemin, payload):
+        return self._req(chemin, payload, method="POST")
+
+    def patch(self, chemin, payload):
+        return self._req(chemin, payload, method="PATCH")
+
+
+class TestPortailAuth(unittest.TestCase):
+    """Portail complet : pages, connexion voyageur/conseiller, statuts, historique."""
+
+    TEAM_KEY = "cle-equipe-test"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp()
+        cls.store = DemandStore(Path(cls.tmp) / "demandes.json")
+        cls.users = UserStore(Path(cls.tmp) / "users.json")
+        cls.agent = FakeAgent()
+        handler = make_handler(cls.store, None, cls.agent,
+                                users=cls.users, team_key=cls.TEAM_KEY)
+        cls.server, cls.base = demarrer(handler)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+
+    def test_flux_complet(self):
+        # 1. Sans session : / redirige vers /login, /chat aussi.
+        anonyme = ClientHTTP(self.base)
+        status, corps, url = anonyme.get("/")
+        self.assertEqual(status, 200)
+        self.assertIn("/login", url)
+        status, _, _ = anonyme.get("/chat")
+        self.assertIn("/login", url)
+        self.assertIn("Espace voyageur", corps)
+
+        # 2. API protégée sans session : refusée.
+        status, data, _ = anonyme.post("/api/chat", {"messages": [{"role": "user", "content": "Bonjour"}]})
+        self.assertEqual(status, 401)
+
+        # 3. Inscription voyageur → session → page chat.
+        status, data, _ = anonyme.post("/api/register",
+                                       {"email": "zoe@exemple.fr", "nom": "Zoé", "mot_de_passe": "motdepasse"})
+        self.assertEqual(status, 201)
+        user_id = self.users.authentifier("zoe@exemple.fr", "motdepasse")["id"]
+        status, corps, url = anonyme.get("/")
+        self.assertEqual(status, 200)
+        self.assertNotIn("/login", url)
+        self.assertIn("Parlons de votre voyage", corps)
+
+        # 4. Le chat transmet la session au agent : la demande est liée au voyageur.
+        record = self.store.creer({**VALIDE, "user_id": user_id})
+        self.agent.result = {"reply": "Voici les prestations.", "demande": record,
+                             "recherche": None, "trace": {"model": "t", "tool_calls": [], "simulation": True}}
+        status, data, _ = anonyme.post("/api/chat",
+                                       {"messages": [{"role": "user", "content": "Un week-end à Lyon"}],
+                                        "demande_id": record["id"]})
+        self.assertEqual(status, 200)
+        self.assertEqual(self.agent.calls[-1]["user_id"], user_id)
+        stocke = self.store.obtenir(record["id"])
+        self.assertEqual(len(stocke["messages"]), 2)  # message + réponse persistés
+        self.assertEqual(stocke["messages"][-1]["content"], "Voici les prestations.")
+
+        # 5. Mes demandes : la demande du voyageur apparaît.
+        status, data, _ = anonyme.get("/api/mes-demandes")
+        self.assertEqual(status, 200)
+        self.assertTrue(any(d["id"] == record["id"] for d in data["demandes"]))
+        # Le voyageur enrichi par le serveur :
+        self.assertEqual(data["demandes"][0]["client"]["email"], "zoe@exemple.fr")
+
+        # 6. Un autre voyageur ne voit pas cette demande (ni la modifie).
+        bob = ClientHTTP(self.base)
+        bob.post("/api/register", {"email": "bob@exemple.fr", "nom": "Bob", "mot_de_passe": "motdepasse2"})
+        status, data, _ = bob.get("/api/mes-demandes")
+        self.assertEqual(data["demandes"], [])
+        status, data, _ = bob.get(f"/api/demandes/{record['id']}")
+        self.assertEqual(status, 404)
+
+        # 7. Mauvaise clé conseiller refusée ; la bonne ouvre le tableau de bord.
+        status, data, _ = anonyme.post("/api/login-conseiller", {"cle": "mauvaise-cle"})
+        self.assertEqual(status, 401)
+        self.assertNotIn(self.TEAM_KEY, json.dumps(data))
+        conseiller = ClientHTTP(self.base)
+        status, data, _ = conseiller.post("/api/login-conseiller", {"cle": self.TEAM_KEY})
+        self.assertEqual(status, 200)
+        status, corps, url = conseiller.get("/conseiller")
+        self.assertIn("conseiller", url)
+        self.assertIn("Tableau de bord", corps)
+        status, corps, url = conseiller.get("/")
+        self.assertIn("/conseiller", url)
+
+        # 8. Le conseiller voit toutes les demandes et change les statuts.
+        status, data, _ = conseiller.get("/api/demandes")
+        self.assertEqual(status, 200)
+        self.assertTrue(any(d["id"] == record["id"] for d in data["demandes"]))
+        status, data, _ = conseiller.patch(f"/api/demandes/{record['id']}/statut", {"statut": "propose"})
+        self.assertEqual(status, 200)
+        self.assertEqual(data["demande"]["statut"], "propose")
+        status, data, _ = conseiller.patch(f"/api/demandes/{record['id']}/statut", {"statut": "inconnu"})
+        self.assertEqual(status, 400)
+        status, data, _ = conseiller.patch("/api/demandes/dem_inconnu999/statut", {"statut": "propose"})
+        self.assertEqual(status, 404)
+
+        # 9. Le voyageur ne peut pas changer un statut.
+        status, data, _ = anonyme.patch(f"/api/demandes/{record['id']}/statut", {"statut": "valide"})
+        self.assertEqual(status, 401)
+
+        # 10. Connexion : mauvais identifiants refusés ; les bons acceptent.
+        status, data, _ = anonyme.post("/api/login", {"email": "zoe@exemple.fr", "mot_de_passe": "mauvais"})
+        self.assertEqual(status, 401)
+        status, data, _ = anonyme.post("/api/login", {"email": "ZOE@exemple.fr", "mot_de_passe": "motdepasse"})
+        self.assertEqual(status, 200)
+        status, data, _ = anonyme.get("/api/mes-demandes")
+        self.assertTrue(any(d["id"] == record["id"] for d in data["demandes"]))
+
+        # 11. Déconnexion : la page / redirige à nouveau vers /login.
+        status, data, _ = anonyme.post("/api/logout", {})
+        self.assertEqual(status, 200)
+        status, corps, url = anonyme.get("/")
+        self.assertIn("/login", url)
+
+    def test_mauvais_mot_de_passe_vide(self):
+        client = ClientHTTP(self.base)
+        status, data, _ = client.post("/api/login", {"email": "zoe@exemple.fr", "mot_de_passe": ""})
+        self.assertEqual(status, 400)
+
+
+class TestPortailSansUsers(unittest.TestCase):
+    """Mode historique : make_handler sans users garde les routes ouvertes (tests existants)."""
+
+    def test_pages_sans_auth(self):
+        store = DemandStore(None)
+        server, base = demarrer(make_handler(store, None, FakeAgent()))
+        self.addCleanup(lambda: (server.shutdown(), server.server_close()))
+        client = ClientHTTP(base)
+        status, corps, _ = client.get("/")
+        self.assertEqual(status, 200)
+        self.assertIn("Parlons de votre voyage", corps)
+        status, data, _ = client.get("/api/demandes")
+        self.assertEqual(status, 200)
+        status, data, _ = client.post("/api/demandes", dict(VALIDE))
+        self.assertEqual(status, 201)
+        # Un PATCH reste possible en mode ouvert (validation quand même).
+        dem_id = data["demande"]["id"]
+        status, data, _ = client.patch(f"/api/demandes/{dem_id}/statut", {"statut": "valide"})
+        self.assertEqual(status, 200)
+
+
+class TestCatalogueRoute(unittest.TestCase):
+    """Route /api/catalogue : authentification + délégation au fournisseur."""
+
+    def test_sans_session_refuse(self):
+        store = DemandStore(None)
+        users = UserStore(None)
+        server, base = demarrer(make_handler(store, FakeSupplier(), FakeAgent(),
+                                              users=users, team_key="cle"))
+        self.addCleanup(lambda: (server.shutdown(), server.server_close()))
+        client = ClientHTTP(base)
+        status, _, _ = client.get("/api/catalogue")
+        self.assertEqual(status, 401)
+
+    def test_avec_session_client_ok(self):
+        store = DemandStore(None)
+        users = UserStore(None)
+        supplier = FakeSupplier()
+        server, base = demarrer(make_handler(store, supplier, FakeAgent(),
+                                              users=users, team_key="cle"))
+        self.addCleanup(lambda: (server.shutdown(), server.server_close()))
+        client = ClientHTTP(base)
+        client.post("/api/register", {"email": "cat@exemple.fr", "nom": "Cat",
+                                        "mot_de_passe": "motdepasse"})
+        status, data, _ = client.get("/api/catalogue")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(data["prestations"]), 9)
+
+    def test_supplier_absent_503(self):
+        store = DemandStore(None)
+        users = UserStore(None)
+        server, base = demarrer(make_handler(store, None, FakeAgent(),
+                                              users=users, team_key="cle"))
+        self.addCleanup(lambda: (server.shutdown(), server.server_close()))
+        client = ClientHTTP(base)
+        client.post("/api/register", {"email": "cat2@exemple.fr", "nom": "Cat2",
+                                        "mot_de_passe": "motdepasse"})
+        status, _, _ = client.get("/api/catalogue")
+        self.assertEqual(status, 503)
+
+
+if __name__ == "__main__":
+    unittest.main()

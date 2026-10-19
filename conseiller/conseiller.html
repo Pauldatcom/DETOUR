@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>DÉTOUR | Tableau de bord conseiller</title>
+  <link rel="stylesheet" href="/app.css">
+  <script defer src="/pages.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="DÉTOUR, accueil"><span class="brand-mark">D</span><span>DÉTOUR</span></a>
+      <div class="topbar-right">
+        <button id="logout-button" class="secondary-button" type="button" hidden>Déconnexion</button>
+        <span class="sim-badge">SIMULATION</span>
+      </div>
+    </header>
+
+    <section class="hero hero-compact">
+      <div>
+        <div class="eyebrow">ESPACE CONSEILLER</div>
+        <h1>Tableau de bord</h1>
+        <p>Toutes les demandes des voyageurs, avec les résultats vérifiés auprès du serveur fictif. Suivez leur avancement, validez ou refusez chaque demande.</p>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="demandes-title">
+      <div class="section-heading">
+        <div><div class="eyebrow">01 / SUIVI</div><h2 id="demandes-title">Demandes des voyageurs</h2></div>
+        <button id="refresh-demandes" class="secondary-button" type="button">Actualiser ↻</button>
+      </div>
+      <div id="demandes-error" class="form-error" role="alert"></div>
+      <div class="table-wrap">
+        <table class="dash-table">
+          <thead>
+            <tr>
+              <th>Demande</th>
+              <th>Voyageur</th>
+              <th>Voyage</th>
+              <th>Dates</th>
+              <th>Budget</th>
+              <th>Créée le</th>
+              <th>Statut</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="demandes-body"></tbody>
+        </table>
+      </div>
+      <div id="demandes-empty" class="demande-empty" hidden>Aucune demande pour le moment.</div>
+    </section>
+
+    <section id="detail-section" class="panel" hidden aria-labelledby="detail-title">
+      <div class="section-heading">
+        <div><div class="eyebrow">02 / DÉTAIL</div><h2 id="detail-title">Détail de la demande</h2></div>
+        <button id="detail-close" class="secondary-button" type="button">Fermer</button>
+      </div>
+      <div id="detail-content"></div>
+    </section>
+
+    <footer>DONNÉES FICTIVES <span>•</span> AUCUN ACHAT RÉEL <span>•</span> DÉCISION HUMAINE</footer>
+  </div>
+</body>
+</html>

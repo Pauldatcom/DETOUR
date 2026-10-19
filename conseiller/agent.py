@@ -1,0 +1,237 @@
+"""Agent conversationnel DÉTOUR : le modèle propose, le programme valide et exécute.
+"""
+
+import json
+import os
+import ssl
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+from fournisseur import SupplierError
+from store import ValidationError, criteres_depuis_demande
+from utils import (DEFAULT_MODEL, MAX_MESSAGES, MAX_TOOL_ITERATIONS,
+                   OPENROUTER_URL, TOOL_NAME)
+
+def _ssl_context():
+    ctx = ssl.create_default_context()
+    for path in (
+        os.environ.get("SSL_CERT_FILE"),
+        "/etc/ssl/cert.pem",
+        "/etc/ssl/certs/ca-certificates.crt",
+    ):
+        if path and Path(path).exists():
+            try:
+                ctx.load_verify_locations(path)
+            except (OSError, ssl.SSLError):
+                pass
+    return ctx
+
+
+class OpenRouterError(Exception):
+    def __init__(self, message, status=502):
+        super().__init__(message)
+        self.status = status
+
+
+SYSTEM_PROMPT = """Tu es l'assistant voyage de DÉTOUR, une agence de voyages insolites et de week-ends surprises. Tu discutes avec un voyageur pour préparer sa demande.
+
+CONTEXTE
+- Le catalogue est fictif et restreint : destinations possibles uniquement Nantes, Lyon et Lille.
+- Chaque destination propose un transport, un hébergement et une activité.
+- Toutes les données sont fictives : c'est une démonstration.
+
+TON TRAVAIL
+1. Recueillir les informations du voyageur avec des questions courtes et amicales.
+2. Une fois le minimum réuni, appeler l'outil chercher_voyages pour enregistrer la demande et vérifier les prestations.
+3. Présenter les résultats en t'appuyant uniquement sur ce que l'outil renvoie.
+
+INFORMATIONS REQUISES AVANT L'APPEL DE L'OUTIL (minimum)
+- type_voyage : "trek-randonnee", "lune-de-miel", "voyage-familial" ou "autres"
+- destination : "Nantes", "Lyon" ou "Lille"
+- date_depart et date_retour : format AAAA-MM-JJ
+- nombre_voyageurs : entier de 1 à 20
+- budget_max_par_personne : entier positif en euros
+- niveau_aventure : "calme", "modere" ou "intense"
+
+AUTRES INFORMATIONS À RECUEILLIR AUSSI AVANT L'APPEL
+Pose une question à la fois pour chacune (une seule par tour) :
+- présence d'enfants et leur nombre (has_enfants, nombre_enfants), si le voyageur n'en a pas parlé
+- besoin_guide : "Souhaitez-vous un guide pour ce voyage ?"
+- activites préférées (activites) : "créatif", "jeu", "cuisine", "intérieur", "extérieur"
+- souhaits : "Décrivez en quelques mots l'ambiance et les envies pour ce voyage" (texte libre)
+- allergies ou contraintes (contraintes, texte libre)
+Si le voyageur presse de finir, appelez l'outil avec ce que vous avez, sans inventer le reste.
+
+RÈGLES ABSOLUES
+- Ne devine rien : si une information requise manque, pose la question.
+- N'invente jamais un prix, une disponibilité, une prestation ou une date de mise à jour : ils viennent uniquement de l'outil.
+- Tu ne prends aucune réservation et ne poses aucune option. Aucune réservation n'existe à l'issue de la conversation.
+- Si le voyageur veut une autre destination, explique que le catalogue est restreint pour le moment.
+- Si l'outil renvoie une erreur, explique-la honnêtement au voyageur sans inventer de résultat.
+
+APRÈS L'OUTIL
+- Présente chaque prestation vérifiée : nom, type, prix par personne et total pour le groupe, disponibilité.
+- Précise que les prix et disponibilités ont été vérifiés auprès du serveur à la date indiquée ; la disponibilité est vérifiée à la date de départ uniquement.
+- Signale ce qui n'est pas vérifiable au catalogue : le niveau d'aventure, le besoin de guide et les allergies ne figurent pas dans le serveur.
+- Un conseiller humain préparera ensuite la proposition définitive.
+
+STYLE
+- Réponses courtes, en français, une question à la fois quand tu collectes les informations."""
+
+
+TOOL_DEFINITION = {
+    "type": "function",
+    "function": {
+        "name": TOOL_NAME,
+        "description": (
+            "Enregistre la demande de voyage du voyageur et recherche les prestations "
+            "disponibles dans le catalogue fictif DÉTOUR (transport, hébergement, activité). "
+            "À appeler une fois les informations essentielles réunies. Ne réserve rien."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "type_voyage": {"type": "string", "enum": ["trek-randonnee", "lune-de-miel", "voyage-familial", "autres"]},
+                "destination": {"type": "string", "enum": ["Nantes", "Lyon", "Lille"]},
+                "date_depart": {"type": "string", "description": "Date de départ, format AAAA-MM-JJ."},
+                "date_retour": {"type": "string", "description": "Date de retour, format AAAA-MM-JJ."},
+                "nombre_voyageurs": {"type": "integer", "description": "Nombre total de voyageurs, de 1 à 20."},
+                "has_enfants": {"type": "boolean", "description": "Des enfants participent-ils au voyage ?"},
+                "nombre_enfants": {"type": "integer", "description": "Nombre d'enfants, si has_enfants est vrai."},
+                "budget_max_par_personne": {"type": "integer", "description": "Budget maximum par personne, en euros."},
+                "niveau_aventure": {"type": "string", "enum": ["calme", "modere", "intense"]},
+                "besoin_guide": {"type": "boolean", "description": "Un guide est-il requis ?"},
+                "activites": {"type": "array", "items": {"type": "string"},
+                              "description": "Activités souhaitées : créatif, jeu, cuisine, intérieur, extérieur."},
+                "contraintes": {"type": "string", "description": "Allergies ou contraintes importantes."},
+                "souhaits": {"type": "string",
+                             "description": "Description libre de l'ambiance et des envies du voyageur pour ce voyage."},
+            },
+            "required": ["type_voyage", "destination", "date_depart", "date_retour",
+                         "nombre_voyageurs", "budget_max_par_personne", "niveau_aventure"],
+        },
+    },
+}
+
+
+class Agent:
+    def __init__(self, supplier, store, api_key="", model=DEFAULT_MODEL,
+                 base_url=OPENROUTER_URL, timeout=60):
+        self.supplier = supplier
+        self.store = store
+        self._api_key = api_key
+        self.model = model
+        self.base_url = base_url
+        self.timeout = timeout
+
+    def chat(self, messages, user_id=""):
+        """Exécute un tour de conversation et retourne reply, demande, recherche, trace.
+
+        `user_id` provient de la session serveur : il n'est jamais demandé au
+        modèle ni exposé dans le schéma de l'outil."""
+        if not self._api_key:
+            raise OpenRouterError("Clé OpenRouter absente : définir OPENROUTER_API_KEY.", 503)
+        trace = {"model": self.model, "tool_calls": [], "simulation": True}
+        conversation: list = [{"role": "system", "content": SYSTEM_PROMPT}]
+        conversation += [{"role": m["role"], "content": m["content"]}
+                         for m in messages[-MAX_MESSAGES:]]
+        demande, recherche = None, None
+
+        for _ in range(MAX_TOOL_ITERATIONS):
+            message = self._call_model(conversation)
+            tool_calls = message.get("tool_calls") or []
+            if not tool_calls:
+                return {"reply": message.get("content") or "",
+                        "demande": demande, "recherche": recherche, "trace": trace}
+            conversation.append({"role": "assistant", "content": message.get("content") or "",
+                                 "tool_calls": tool_calls})
+            for call in tool_calls:
+                outcome = self._execute_tool(call, trace, user_id=user_id)
+                demande = outcome.get("demande") or demande
+                recherche = outcome.get("recherche") or recherche
+                conversation.append({
+                    "role": "tool",
+                    "tool_call_id": call.get("id") or "call_inconnu",
+                    "content": json.dumps(outcome["payload"], ensure_ascii=False),
+                })
+
+        message = self._call_model(conversation, with_tools=False)
+        return {"reply": message.get("content") or "",
+                "demande": demande, "recherche": recherche, "trace": trace}
+
+    def _call_model(self, conversation, with_tools=True):
+        payload = {"model": self.model, "messages": conversation}
+        if with_tools:
+            payload["tools"] = [TOOL_DEFINITION]
+            payload["tool_choice"] = "auto"
+        request = urllib.request.Request(
+            self.base_url,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={"Authorization": f"Bearer {self._api_key}",
+                     "Content-Type": "application/json"},
+            method="POST")
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout, context=_ssl_context()) as response:
+                data = json.loads(response.read())
+        except urllib.error.HTTPError as err:
+            detail = f"HTTP {err.code}"
+            try:
+                detail = json.loads(err.read()).get("error", {}).get("message", detail)
+            except Exception:
+                pass
+            if err.code in (401, 403):
+                raise OpenRouterError("OpenRouter a refusé la clé API (vérifiez OPENROUTER_API_KEY).") from err
+            if err.code == 429:
+                raise OpenRouterError("Limite d'appels OpenRouter atteinte, réessayez dans un instant.") from err
+            raise OpenRouterError(f"OpenRouter : {detail}") from err
+        except (urllib.error.URLError, TimeoutError, OSError) as err:
+            raise OpenRouterError("OpenRouter injoignable, vérifiez votre connexion.") from err
+        except json.JSONDecodeError as err:
+            raise OpenRouterError("Réponse illisible d'OpenRouter.") from err
+        try:
+            return data["choices"][0]["message"]
+        except (KeyError, IndexError, TypeError) as err:
+            raise OpenRouterError("OpenRouter : réponse sans message exploitable.") from err
+
+    def _execute_tool(self, call, trace, user_id=""):
+        function = call.get("function") or {}
+        name = function.get("name")
+        entry = {"outil": name, "statut": "refuse"}
+        if name != TOOL_NAME:
+            entry["erreur"] = f"Outil inconnu : {name}. Seul {TOOL_NAME} est autorisé."
+            trace["tool_calls"].append(entry)
+            return {"payload": {"erreur": entry["erreur"]}}
+        try:
+            args = json.loads(function.get("arguments") or "{}")
+            if not isinstance(args, dict):
+                raise ValueError
+        except (json.JSONDecodeError, ValueError):
+            entry["erreur"] = "Arguments invalides : un objet JSON était attendu."
+            trace["tool_calls"].append(entry)
+            return {"payload": {"erreur": entry["erreur"]}}
+        args.pop("user_id", None)
+        args["user_id"] = user_id
+        try:
+            record = self.store.creer(args)
+        except ValidationError as err:
+            entry["statut"] = "invalide"
+            entry["erreur"] = str(err)
+            trace["tool_calls"].append(entry)
+            return {"payload": {"erreur": f"Demande refusée : {err}"}}
+        entry["demande_id"] = record["id"]
+        entry["arguments"] = record["demande"]
+        entry["statut"] = "enregistree"
+        try:
+            resultat = self.supplier.rechercher(criteres_depuis_demande(record))
+            recherche = self.store.ajouter_recherche(record["id"], resultat)
+        except SupplierError as err:
+            entry["statut"] = "serveur_indisponible"
+            entry["erreur"] = str(err)
+            trace["tool_calls"].append(entry)
+            return {"demande": record,
+                    "payload": {"erreur": str(err),
+                                "consigne": "Le serveur de prestations est indisponible. Informe le voyageur sans inventer de prestation."}}
+        entry["statut"] = "ok"
+        trace["tool_calls"].append(entry)
+        return {"demande": record, "recherche": recherche, "payload": recherche}
