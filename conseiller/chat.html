@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>DÉTOUR | Votre voyage</title>
+  <link rel="stylesheet" href="/app.css">
+  <script defer src="/pages.js"></script>
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="DÉTOUR, accueil client"><span class="brand-mark">D</span><span>DÉTOUR</span></a>
+      <div class="topbar-right">
+        <span id="nav-user" class="nav-user" hidden></span>
+        <button id="logout-button" class="secondary-button" type="button" hidden>Déconnexion</button>
+        <span class="sim-badge">SIMULATION</span>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div>
+        <div class="eyebrow">BIENVENUE CHEZ DÉTOUR</div>
+        <h1>Décrivez votre voyage,<br><em>nous vérifions le reste.</em></h1>
+        <p>Discutez avec notre assistant : il recueille vos envies, enregistre votre demande et vérifie les prix et disponibilités du catalogue. Un conseiller humain prépare ensuite votre proposition.</p>
+      </div>
+      <div class="hero-stamp"><span>01 / 01</span><strong>Discuter<br>Enregistrer<br>Vérifier</strong></div>
+    </section>
+
+    <section id="catalogue-section" class="panel" aria-labelledby="catalogue-title">
+      <div class="section-heading">
+        <div><div class="eyebrow">CATALOGUE</div><h2 id="catalogue-title">Prestations disponibles</h2></div>
+      </div>
+      <p class="next-step">Parcourez le catalogue fictif DÉTOUR. Pour vérifier les prix et disponibilités à une date précise, discutez avec l'assistant ci-dessous.</p>
+      <div id="catalogue-error" class="form-error" role="alert" aria-live="polite"></div>
+      <div id="catalogue-grid" class="catalogue-grid"></div>
+    </section>
+
+    <section id="chat-section" class="panel" aria-labelledby="chat-title">
+      <div class="section-heading">
+        <div><div class="eyebrow">01 / VOS ENVIES</div><h2 id="chat-title">Parlons de votre voyage</h2></div>
+        <button id="reset-chat" class="secondary-button" type="button">Nouvelle conversation ↻</button>
+      </div>
+      <div class="chat-layout">
+        <aside class="history" aria-label="Mes conversations">
+          <h3 class="history-title">Mes conversations</h3>
+          <div id="history-list" class="history-list"></div>
+        </aside>
+        <div class="chat-main">
+          <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
+          <div id="chat-status" class="chat-status" hidden>L'assistant prépare sa réponse…</div>
+          <form id="chat-form" class="chat-input-row">
+            <label class="sr-only" for="chat-input">Votre message</label>
+            <input id="chat-input" name="chat-input" type="text" autocomplete="off" placeholder="ex. Un week-end à Nantes pour deux personnes en novembre…" required>
+            <button type="submit" class="primary-button">Envoyer <span aria-hidden="true">↗</span></button>
+          </form>
+          <div id="chat-error" class="form-error" role="alert" aria-live="polite"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="recap-section" class="panel" hidden aria-labelledby="recap-title">
+      <div class="section-heading">
+        <div><div class="eyebrow">02 / VOTRE DEMANDE</div><h2 id="recap-title">Votre demande est enregistrée</h2></div>
+      </div>
+      <p class="next-step">Votre demande est transmise à un conseiller. Ce n'est pas encore une proposition : le conseiller la préparera et la validera.</p>
+      <div id="recap-content"></div>
+    </section>
+
+    <section id="search-section" class="panel" hidden aria-labelledby="search-title">
+      <div class="section-heading">
+        <div><div class="eyebrow">03 / CATALOGUE</div><h2 id="search-title">Prestations correspondant à votre demande</h2></div>
+        <button id="search-button" class="secondary-button" type="button">Actualiser prix et disponibilités ↻</button>
+      </div>
+      <div id="search-error" class="form-error" role="alert" aria-live="polite"></div>
+      <div id="search-results"></div>
+    </section>
+
+    <footer>DONNÉES FICTIVES <span>•</span> AUCUN ACHAT RÉEL <span>•</span> DÉCISION HUMAINE</footer>
+  </div>
+</body>
+</html>

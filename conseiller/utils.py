@@ -1,0 +1,49 @@
+"""Définitions globales de l'application conseiller DÉTOUR.
+
+Ce module centralise les constantes partagées (contrat métier, limites,
+identifiants d'outils) pour qu'elles restent visibles dans le dépôt.
+Les valeurs secrètes ou déployables (clés, URL effectives, modèle choisi)
+restent dans l'environnement ou `.env`, jamais ici.
+"""
+
+import re
+
+# Fournisseur de prestations (surchargeable par TRAVEL_API_URL).
+DEFAULT_URL = "http://127.0.0.1:8765"
+SOURCE_LABEL = "Serveur fictif DÉTOUR"
+
+# Agent conversationnel (surchargeable par OPENROUTER_MODEL).
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+DEFAULT_MODEL = "openai/gpt-4o-mini"
+MAX_MESSAGES = 40
+MAX_TOOL_ITERATIONS = 3
+TOOL_NAME = "chercher_voyages"
+
+# Contrat métier partagé avec le serveur fictif.
+TYPES_VOYAGE = ("trek-randonnee", "lune-de-miel", "voyage-familial", "autres")
+NIVEAUX_AVENTURE = ("calme", "modere", "intense")
+ACTIVITES_POSSIBLES = ("créatif", "jeu", "cuisine", "intérieur", "extérieur", "train", "sans voiture")
+
+# Statuts d'une demande.
+STATUT_NOUVELLE = "nouvelle"
+STATUT_A_ANALYSER = "a_analyser"
+STATUT_PROPOSE = "propose"
+STATUT_VALIDE = "valide"
+STATUT_REFUSE = "refuse"
+STATUTS = (STATUT_NOUVELLE, STATUT_A_ANALYSER, STATUT_PROPOSE, STATUT_VALIDE, STATUT_REFUSE)
+STATUT_LABELS = {
+    STATUT_NOUVELLE: "Nouvelle",
+    STATUT_A_ANALYSER: "À analyser",
+    STATUT_PROPOSE: "Proposée",
+    STATUT_VALIDE: "Validée",
+    STATUT_REFUSE: "Refusée",
+}
+
+# Comptes voyageurs.
+ITERATIONS = 260_000
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+USER_ID_PREFIX = "usr_"
+
+# Sessions du portail (en mémoire serveur).
+SESSION_COOKIE = "detour_portail"
+SESSION_MAX = 60_000
