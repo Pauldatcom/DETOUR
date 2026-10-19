@@ -155,6 +155,7 @@ async function loadDashboard() {
 }
 
 $("#travel-date").value = tomorrow();
+const TEAM_KEY_STORAGE = "detour-dashboard-team";
 $("#login-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   $("#login-error").textContent = "";
@@ -163,6 +164,7 @@ $("#login-form").addEventListener("submit", async (event) => {
   input.value = "";
   try {
     const data = await request("/dashboard/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ team_key: teamKey }) });
+    sessionStorage.setItem(TEAM_KEY_STORAGE, data.equipe);
     showDashboard(data.equipe);
     await loadDashboard();
   } catch (error) { $("#login-error").textContent = error.message; }
@@ -170,6 +172,7 @@ $("#login-form").addEventListener("submit", async (event) => {
 
 $("#logout").addEventListener("click", async () => {
   try { await request("/dashboard/api/logout", { method: "POST" }); } catch { /* Clear the visible session even if the server is unavailable. */ }
+  sessionStorage.removeItem(TEAM_KEY_STORAGE);
   state.catalogue = [];
   state.json = null;
   $("#response-json").textContent = "{}";
@@ -202,7 +205,11 @@ for (const button of document.querySelectorAll(".tab")) {
   });
 }
 
-request("/dashboard/api/me").then((data) => {
-  showDashboard(data.equipe);
-  return loadDashboard();
-}).catch(() => showLogin());
+// Au chargement : la session dashboard survit aux redémarrages du serveur
+// (sessions persistées dans state.json). Le catalogue sert de sonde :
+// 200 → session valide, 401 → écran de connexion.
+const savedTeam = sessionStorage.getItem(TEAM_KEY_STORAGE);
+if (savedTeam) showDashboard(savedTeam);
+loadDashboard().catch(() => {
+  /* request() a déjà affiché l'écran de connexion sur 401. */
+});

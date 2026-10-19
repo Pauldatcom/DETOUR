@@ -16,7 +16,7 @@ Le serveur écoute sur `http://127.0.0.1:8765`. Utilisez `demo-key` pour les ess
 
 Ouvrez `http://127.0.0.1:8765/dashboard` et saisissez votre clé d'équipe. Vous pouvez parcourir les prestations, choisir une date et un nombre de participants, vérifier le prix et les places, puis copier les réponses JSON. L'onglet **Mon espace** affiche les options et réservations de votre équipe. Actualisez-le après les actions réalisées par votre application ou après un imprévu annoncé par le formateur.
 
-Le tableau de bord est en lecture seule. Pour poser une option, confirmer ou annuler une réservation, utilisez l'API depuis votre programme. La connexion au tableau de bord crée une session temporaire de 30 minutes dans un cookie `HttpOnly`. La clé saisie n'est pas placée dans l'URL ni conservée dans le navigateur par la page. Sur un réseau partagé, utilisez ce serveur uniquement dans un environnement de confiance ou derrière HTTPS.
+Le tableau de bord est en lecture seule. Pour poser une option, confirmer ou annuler une réservation, utilisez l'API depuis votre programme. La connexion au tableau de bord crée une session de 30 minutes dans un cookie `HttpOnly`, persistée dans le fichier d'état : elle survit aux redémarrages du serveur. La clé saisie n'est pas placée dans l'URL ni conservée dans le navigateur par la page. Sur un réseau partagé, utilisez ce serveur uniquement dans un environnement de confiance ou derrière HTTPS.
 
 ## Consulter les offres et les disponibilités
 
@@ -27,6 +27,27 @@ curl -H 'X-Team-Key: demo-key' 'http://127.0.0.1:8765/api/v1/disponibilites?pres
 ```
 
 Le catalogue accepte les filtres `destination` et `type` (`transport`, `hebergement`, `activite`). Il renvoie un tableau `prestations`. La disponibilité renvoie notamment `disponible`, `places_restantes`, `prix_unitaire_eur` et `prix_total_eur`. Pour la démonstration, `train-nantes-01` coûte 48 € par personne et dispose de 8 places avant toute option ou réservation. Une disponibilité consultée ne bloque pas les places.
+
+## Rechercher des prestations pour une demande
+
+```bash
+curl -H 'X-Team-Key: demo-key' \
+  'http://127.0.0.1:8765/api/v1/recherche?destination=Nantes&date_depart=2026-11-07&date_retour=2026-11-09&participants=2&budget_max=200&type_voyage=voyage-familial&activites=cr%C3%A9atif'
+```
+
+Paramètres : `destination`, `date_depart` et `participants` sont obligatoires ; `date_retour`, `budget_max` (euros par personne), `type_voyage` et `activites` (liste séparée par des virgules) sont facultatifs. Seule la destination filtre le résultat. Le reste est signalé prestation par prestation (`disponible`, `dans_budget`, `correspond_type_voyage`, `activites_correspondantes`) pour ne rien masquer au conseiller. La disponibilité et le prix sont vérifiés à la date de départ uniquement. Chaque prestation porte `mis_a_jour_le`, et la réponse porte `source` et `consulte_le`. Aucune option n'est posée.
+
+## Simuler une évolution du catalogue
+
+Avec la clé formateur (`demo-instructor` en mode `--demo`), modifiez le prix ou la capacité d'une prestation pour une date. `mis_a_jour_le` prend alors la date de l'incident. Une capacité à `0` rend la prestation indisponible.
+
+```bash
+curl -X POST -H 'Content-Type: application/json' -H 'X-Instructor-Key: demo-instructor' \
+  -d '{"prestation_id":"train-nantes-01","date":"2026-11-07","type":"prix_unitaire_eur","valeur":75}' \
+  'http://127.0.0.1:8765/api/v1/instructor/teams/demo/incidents'
+```
+
+Pour revenir à l'état initial : `POST /api/v1/instructor/teams/demo/reset` avec le même en-tête.
 
 ## Poser une option et réserver
 
