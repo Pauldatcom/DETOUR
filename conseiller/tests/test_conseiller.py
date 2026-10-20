@@ -136,7 +136,7 @@ class TestAnalyserInformations(unittest.TestCase):
 class TestFusionnerReponses(unittest.TestCase):
     """Traveler answers merge into an existing request without wiping other fields."""
 
-    def test_budget_mis_a_jour_sans_ecraser_destination(self):
+    def test_budget_update_preserves_destination(self):
         existant = {
             "type_voyage": "lune-de-miel",
             "destination": "Nantes",
@@ -152,7 +152,7 @@ class TestFusionnerReponses(unittest.TestCase):
         self.assertEqual(merged["destination"], "Nantes")
         self.assertEqual(merged["type_voyage"], "lune-de-miel")
 
-    def test_valeur_invalide_refusee(self):
+    def test_invalid_value_is_rejected(self):
         with self.assertRaises(ValidationError):
             fusionner_reponses({}, {"budget_max_par_personne": -5})
 
@@ -193,7 +193,7 @@ class TestDemandStore(unittest.TestCase):
     def test_obtenir_inexistant(self):
         self.assertIsNone(self.store.obtenir("dem_inconnu"))
 
-    def test_enregistrer_reponses_cree_brouillon_puis_complete(self):
+    def test_save_answers_creates_draft_then_completes(self):
         record, mis = self.store.enregistrer_reponses(None, {
             "type_voyage": "lune-de-miel",
             "destination": "Nantes",
@@ -216,7 +216,7 @@ class TestDemandStore(unittest.TestCase):
         self.assertEqual(updated["champs_manquants"], [])
         self.assertEqual(updated["qualification"], "pret_relecture")
 
-    def test_enregistrer_reponses_preserve_si_echec(self):
+    def test_save_answers_preserves_fields_on_failure(self):
         record, _ = self.store.enregistrer_reponses(None, {
             "destination": "Lyon",
             "budget_max_par_personne": 300,
@@ -229,7 +229,7 @@ class TestDemandStore(unittest.TestCase):
         self.assertEqual(fetched["demande"]["budget_max_par_personne"], 300)
         self.assertEqual(fetched["demande"]["destination"], "Lyon")
 
-    def test_enregistrer_reponses_demande_inconnue(self):
+    def test_save_answers_unknown_request_returns_none(self):
         record, mis = self.store.enregistrer_reponses("dem_deadbeef", {"destination": "Lille"})
         self.assertIsNone(record)
         self.assertEqual(mis, [])
@@ -682,7 +682,7 @@ class TestAgent(unittest.TestCase):
         self.assertIn("budget maximum par personne", tool_payload["consigne"])
         self.assertIn("Ne redemande pas", tool_payload["consigne"])
 
-    def test_budget_ajoute_sur_demande_existante(self):
+    def test_budget_updates_existing_request(self):
         existing, _ = self.store.enregistrer_reponses(None, {
             "type_voyage": "lune-de-miel",
             "destination": "Nantes",
@@ -761,7 +761,7 @@ class TestChatRoute(unittest.TestCase):
         self.assertTrue(data["simulation"])
         self.assertEqual(agent.calls[0]["messages"][0]["content"], "Bonjour")
 
-    def test_chat_transmet_demande_id_au_agent(self):
+    def test_chat_forwards_demande_id_to_agent(self):
         agent = FakeAgent()
         base = self.serve(agent)
         status, _ = post(f"{base}/api/chat", {
