@@ -19,7 +19,13 @@ from pathlib import Path
 CONSEILLER_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(CONSEILLER_ROOT))
 
-from store import DemandStore, ValidationError, criteres_depuis_demande, valider_demande
+from store import (
+    DemandStore,
+    ValidationError,
+    analyser_informations,
+    criteres_depuis_demande,
+    valider_demande,
+)
 from app import load_env_file, make_handler
 from agent import Agent, OpenRouterError
 from fournisseur import SupplierClient, SupplierError
@@ -96,6 +102,34 @@ class TestValidation(unittest.TestCase):
         data = dict(VALIDE, activites=["créatif", "créatif", "jeu"])
         result = valider_demande(data)
         self.assertEqual(result["activites"], ["créatif", "jeu"])
+
+
+class TestAnalyserInformations(unittest.TestCase):
+    """Required fields are split into provided vs missing for the agent."""
+
+    def test_budget_manquant_destination_et_dates_fournies(self):
+        brouillon = {
+            "type_voyage": "lune-de-miel",
+            "destination": "Nantes",
+            "date_depart": "2026-11-07",
+            "date_retour": "2026-11-09",
+            "nombre_voyageurs": 2,
+            "niveau_aventure": "calme",
+            # budget_max_par_personne intentionally absent
+        }
+        info = analyser_informations(brouillon)
+        self.assertFalse(info["complet"])
+        self.assertEqual(info["manquants"], ["budget_max_par_personne"])
+        self.assertIn("destination", info["fournis"])
+        self.assertIn("date_depart", info["fournis"])
+        self.assertIn("date_retour", info["fournis"])
+        self.assertNotIn("budget_max_par_personne", info["fournis"])
+
+    def test_demande_complete(self):
+        info = analyser_informations(dict(VALIDE))
+        self.assertTrue(info["complet"])
+        self.assertEqual(info["manquants"], [])
+        self.assertEqual(len(info["fournis"]), 7)
 
 
 class TestDemandStore(unittest.TestCase):
@@ -550,9 +584,29 @@ class TestAgent(unittest.TestCase):
         bad["tool_calls"][0]["function"]["arguments"] = json.dumps({"type_voyage": "inconnu"})
         agent, _ = self.make_agent([{"message": bad}, {"message": FINAL_MESSAGE}])
         result = agent.chat([{"role": "user", "content": "Nantes"}])
-        self.assertEqual(result["trace"]["tool_calls"][0]["statut"], "invalide")
+        self.assertEqual(result["trace"]["tool_calls"][0]["statut"], "informations_manquantes")
+        info = result["trace"]["tool_calls"][0]["informations"]
+        self.assertIn("type_voyage", info["manquants"])
         self.assertIsNone(result["demande"])
         self.assertEqual(len(self.store.lister()), 0)
+
+    def test_budget_manquant_identifie_sans_redemander_le_reste(self):
+        partial = copy.deepcopy(TOOL_CALL_MESSAGE)
+        arguments = json.loads(partial["tool_calls"][0]["function"]["arguments"])
+        del arguments["budget_max_par_personne"]
+        partial["tool_calls"][0]["function"]["arguments"] = json.dumps(arguments)
+        agent, fake = self.make_agent([{"message": partial}, {"message": FINAL_MESSAGE}])
+        result = agent.chat([{"role": "user", "content": "Nantes en novembre"}])
+        call = result["trace"]["tool_calls"][0]
+        self.assertEqual(call["statut"], "informations_manquantes")
+        self.assertEqual(call["informations"]["manquants"], ["budget_max_par_personne"])
+        self.assertIn("destination", call["informations"]["fournis"])
+        self.assertIn("date_depart", call["informations"]["fournis"])
+        self.assertNotIn("budget_max_par_personne", call["informations"]["fournis"])
+        self.assertIsNone(result["demande"])
+        tool_payload = fake.requests[1]["body"]["messages"][-1]["content"]
+        self.assertIn("budget maximum par personne", tool_payload)
+        self.assertIn("Ne redemande pas", tool_payload)
 
     def test_outil_inconnu_refuse(self):
         bad = copy.deepcopy(TOOL_CALL_MESSAGE)
