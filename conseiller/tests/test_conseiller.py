@@ -107,7 +107,7 @@ class TestValidation(unittest.TestCase):
 class TestAnalyserInformations(unittest.TestCase):
     """Required fields are split into provided vs missing for the agent."""
 
-    def test_budget_manquant_destination_et_dates_fournies(self):
+    def test_missing_budget_with_destination_and_dates_provided(self):
         brouillon = {
             "type_voyage": "lune-de-miel",
             "destination": "Nantes",
@@ -125,7 +125,7 @@ class TestAnalyserInformations(unittest.TestCase):
         self.assertIn("date_retour", info["fournis"])
         self.assertNotIn("budget_max_par_personne", info["fournis"])
 
-    def test_demande_complete(self):
+    def test_complete_request(self):
         info = analyser_informations(dict(VALIDE))
         self.assertTrue(info["complet"])
         self.assertEqual(info["manquants"], [])
@@ -579,7 +579,7 @@ class TestAgent(unittest.TestCase):
         with self.assertRaises(ValidationError):
             self.store.definir_qualification(result["demande"]["id"], "pret_proposition", acteur="agent")
 
-    def test_arguments_invalides_renvoyes_au_modele(self):
+    def test_invalid_arguments_returned_to_model(self):
         bad = copy.deepcopy(TOOL_CALL_MESSAGE)
         bad["tool_calls"][0]["function"]["arguments"] = json.dumps({"type_voyage": "inconnu"})
         agent, _ = self.make_agent([{"message": bad}, {"message": FINAL_MESSAGE}])
@@ -590,7 +590,7 @@ class TestAgent(unittest.TestCase):
         self.assertIsNone(result["demande"])
         self.assertEqual(len(self.store.lister()), 0)
 
-    def test_budget_manquant_identifie_sans_redemander_le_reste(self):
+    def test_missing_budget_identified_without_reasking_provided_fields(self):
         partial = copy.deepcopy(TOOL_CALL_MESSAGE)
         arguments = json.loads(partial["tool_calls"][0]["function"]["arguments"])
         del arguments["budget_max_par_personne"]
