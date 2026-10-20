@@ -848,42 +848,42 @@ class TestCorrigerDemande(unittest.TestCase):
         self.dem = self.store.creer(dict(VALIDE, user_id="client_1"))
 
     def test_correction_updates_field_and_records_history(self):
-        result = self.store.corriger(self.dem["id"], {"budget_max_par_personne": 600}, "Narimen")
+        result = self.store.corriger(self.dem["id"], {"budget_max_par_personne": 600}, "Alice")
         self.assertEqual(result["demande"]["budget_max_par_personne"], 600)
         self.assertEqual(len(result["modifications"]), 1)
         entry = result["modifications"][0]
         self.assertEqual(entry["champ"], "budget_max_par_personne")
         self.assertEqual(entry["avant"], 500)
         self.assertEqual(entry["apres"], 600)
-        self.assertEqual(entry["par"], "Narimen")
+        self.assertEqual(entry["par"], "Alice")
         self.assertTrue(entry["le"])
 
     def test_correction_clears_previous_validation(self):
         self.store.definir_qualification(self.dem["id"], QUALIF_PRET_PROPOSITION)
-        result = self.store.corriger(self.dem["id"], {"destination": "Lyon"}, "Narimen")
+        result = self.store.corriger(self.dem["id"], {"destination": "Lyon"}, "Alice")
         self.assertIsNone(result["qualification_validee_par"])
         self.assertEqual(result["qualification"], QUALIF_PRET_RELECTURE)
 
     def test_same_value_records_nothing(self):
-        result = self.store.corriger(self.dem["id"], {"destination": "Nantes"}, "Narimen")
+        result = self.store.corriger(self.dem["id"], {"destination": "Nantes"}, "Alice")
         self.assertEqual(result["modifications"], [])
 
     def test_invalid_value_is_rejected_and_nothing_changes(self):
         with self.assertRaises(ValidationError):
-            self.store.corriger(self.dem["id"], {"budget_max_par_personne": -5}, "Narimen")
+            self.store.corriger(self.dem["id"], {"budget_max_par_personne": -5}, "Alice")
         unchanged = self.store.obtenir(self.dem["id"])
         self.assertEqual(unchanged["demande"]["budget_max_par_personne"], 500)
 
     def test_user_id_cannot_be_changed(self):
         with self.assertRaises(ValidationError):
-            self.store.corriger(self.dem["id"], {"user_id": "someone_else"}, "Narimen")
+            self.store.corriger(self.dem["id"], {"user_id": "someone_else"}, "Alice")
 
     def test_author_is_required(self):
         with self.assertRaises(ValidationError):
             self.store.corriger(self.dem["id"], {"destination": "Lyon"}, "  ")
 
     def test_unknown_request_returns_none(self):
-        self.assertIsNone(self.store.corriger("dem_unknown", {"destination": "Lyon"}, "Narimen"))
+        self.assertIsNone(self.store.corriger("dem_unknown", {"destination": "Lyon"}, "Alice"))
 
 
 class TestCorrectionRoute(unittest.TestCase):
