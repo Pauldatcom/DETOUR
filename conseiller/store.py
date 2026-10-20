@@ -9,7 +9,9 @@ from pathlib import Path
 
 from utils import (ACTIVITES_POSSIBLES, NIVEAUX_AVENTURE, QUALIF_EN_COURS,
                    QUALIF_INCOMPLET, QUALIF_PRET_PROPOSITION, QUALIF_PRET_RELECTURE,
-                   STATUTS, STATUT_A_ANALYSER, STATUT_PROPOSE, STATUT_VALIDE, TYPES_VOYAGE)
+                   STATUTS, STATUT_A_ANALYSER, STATUT_PROPOSE, STATUT_VALIDE,
+                   TYPES_ACTIVITE_PHYSIQUE, TYPES_AVEC_GUIDE, TYPES_VOYAGE)
+
 
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
@@ -251,6 +253,15 @@ def valider_demande(data):
 
     besoin_guide = bool(data.get("besoin_guide", False))
 
+    avec_voiture = data.get("avec_voiture", False)
+    if not isinstance(avec_voiture, bool):
+        raise ValidationError("avec_voiture must be true or false.")
+    permis_conduire = data.get("permis_conduire")
+    if permis_conduire is not None and not isinstance(permis_conduire, bool):
+        raise ValidationError("permis_conduire must be true, false or null.")
+    if not avec_voiture:
+        permis_conduire = None  # the driving license only matters for a self-drive trip
+
     activites = data.get("activites", [])
     if not isinstance(activites, list):
         raise ValidationError("activites doit être une liste.")
@@ -288,6 +299,8 @@ def valider_demande(data):
         "budget_max_par_personne": budget,
         "niveau_aventure": niveau,
         "besoin_guide": besoin_guide,
+        "avec_voiture": avec_voiture,
+        "permis_conduire": permis_conduire,
         "activites": activites,
         "contraintes": contraintes,
         "conseiller": conseiller,
@@ -550,6 +563,24 @@ class DemandStore:
             recalculer_qualification(record)
             self.save()
             return _publier(record)
+
+
+def questions_conditionnelles(demande):
+    """Return the extra questions that apply to this request (#22).
+
+    Only relevant questions are returned: the agent must not ask the others.
+    """
+    if not isinstance(demande, dict):
+        return []
+    questions = []
+    type_voyage = demande.get("type_voyage")
+    if type_voyage in TYPES_ACTIVITE_PHYSIQUE:
+        questions.append("niveau_aventure")
+    if type_voyage in TYPES_AVEC_GUIDE:
+        questions.append("besoin_guide")
+    if demande.get("avec_voiture") is True:
+        questions.append("permis_conduire")
+    return questions
 
 
 def criteres_depuis_demande(demande):

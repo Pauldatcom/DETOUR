@@ -32,6 +32,7 @@ from agent import Agent, OpenRouterError
 from fournisseur import SupplierClient, SupplierError
 from propositions import PropositionStore, PropositionError, aligner_sur_serveur
 from utils import QUALIF_PRET_PROPOSITION, QUALIF_PRET_RELECTURE
+from store import questions_conditionnelles
 
 
 VALIDE = {
@@ -1120,6 +1121,43 @@ class TestCorrectionRoute(unittest.TestCase):
         status, _ = self.patch("/api/demandes/dem_abc123/correction",
                                {"champs": {"destination": "Lyon"}})
         self.assertEqual(status, 404)
+
+
+
+class TestConditionalQuestions(unittest.TestCase):
+    """Only the questions that match the trip are asked (#22)."""
+
+    def test_trek_asks_level_and_guide(self):
+        questions = questions_conditionnelles(dict(VALIDE, type_voyage="trek-randonnee"))
+        self.assertEqual(questions, ["niveau_aventure", "besoin_guide"])
+
+    def test_honeymoon_without_car_asks_nothing(self):
+        questions = questions_conditionnelles(dict(VALIDE, type_voyage="lune-de-miel"))
+        self.assertEqual(questions, [])
+
+    def test_self_drive_asks_driving_license(self):
+        questions = questions_conditionnelles(
+            dict(VALIDE, type_voyage="lune-de-miel", avec_voiture=True))
+        self.assertEqual(questions, ["permis_conduire"])
+
+    def test_answers_are_stored_in_the_request(self):
+        record = DemandStore(None).creer(dict(VALIDE, avec_voiture=True, permis_conduire=True))
+        self.assertTrue(record["demande"]["avec_voiture"])
+        self.assertTrue(record["demande"]["permis_conduire"])
+
+    def test_license_is_dropped_without_car(self):
+        result = valider_demande(dict(VALIDE, avec_voiture=False, permis_conduire=True))
+        self.assertIsNone(result["permis_conduire"])
+
+    def test_invalid_car_answer_is_rejected(self):
+        with self.assertRaises(ValidationError):
+            valider_demande(dict(VALIDE, avec_voiture="yes"))
+
+    def test_answers_are_not_sent_to_the_server(self):
+        record = DemandStore(None).creer(dict(VALIDE, avec_voiture=True, permis_conduire=True))
+        criteres = criteres_depuis_demande(record)
+        self.assertNotIn("avec_voiture", criteres)
+        self.assertNotIn("permis_conduire", criteres)
 
 
 if __name__ == "__main__":
