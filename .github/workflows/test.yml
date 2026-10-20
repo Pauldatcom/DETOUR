@@ -70,7 +70,7 @@ jobs:
         with:
           version: ${{ env.PNPM_VERSION }}
           cache: 'true'
-          lockfile: 'web/pnpm-lock.yaml'
+          cache_dependency_path: 'web/pnpm-lock.yaml'
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -109,7 +109,7 @@ jobs:
         with:
           version: ${{ env.PNPM_VERSION }}
           cache: 'true'
-          lockfile: 'web/pnpm-lock.yaml'
+          cache_dependency_path: 'web/pnpm-lock.yaml'
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -140,7 +140,7 @@ jobs:
         with:
           version: ${{ env.PNPM_VERSION }}
           cache: 'true'
-          lockfile: 'web/pnpm-lock.yaml'
+          cache_dependency_path: 'web/pnpm-lock.yaml'
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
