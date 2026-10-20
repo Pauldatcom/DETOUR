@@ -234,6 +234,44 @@ class DemandStore:
             self.save()
             return _publier(record)
 
+    def corriger(self, dem_id, champs, auteur):
+        """Let the advisor correct fields of a request. Every change is recorded.
+
+        A correction invalidates a previous validation: the advisor must review
+        the corrected request again before it goes to proposal.
+        """
+        if not isinstance(champs, dict) or not champs:
+            raise ValidationError("fields must be a non-empty object.")
+        if "user_id" in champs:
+            raise ValidationError("user_id cannot be changed.")
+        if not isinstance(auteur, str) or not auteur.strip():
+            raise ValidationError("author is required.")
+        with self.lock:
+            record = self.demandes.get(dem_id)
+            if not record:
+                return None
+            before = record["demande"]
+            updated = valider_demande({**before, **champs})
+            now = utc_now_iso()
+            history = record.setdefault("modifications", [])
+            changed = False
+            for field, value in updated.items():
+                if before.get(field) != value:
+                    changed = True
+                    history.append({
+                        "champ": field,
+                        "avant": before.get(field),
+                        "apres": value,
+                        "par": auteur.strip(),
+                        "le": now,
+                    })
+            record["demande"] = updated
+            if changed:
+                record["qualification_validee_par"] = None
+                record["qualification_validee_le"] = None
+            recalculer_qualification(record)
+            self.save()
+            return _publier(record)
 
     def ajouter_recherche(self, dem_id, recherche):
         """Ajoute une recherche à la demande, sans écraser les précédentes."""

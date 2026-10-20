@@ -24,6 +24,7 @@ from app import load_env_file, make_handler
 from agent import Agent, OpenRouterError
 from fournisseur import SupplierClient, SupplierError
 from propositions import PropositionStore, PropositionError, aligner_sur_serveur
+from utils import QUALIF_PRET_PROPOSITION, QUALIF_PRET_RELECTURE
 
 
 VALIDE = {
@@ -837,6 +838,92 @@ class TestAlignerSurServeur(unittest.TestCase):
             {"id": "bateau-lyon-99", "nom": "Croisière", "prix_unitaire_eur": 40}]}
         with self.assertRaises(PropositionError):
             aligner_sur_serveur(data, self.RESULTATS)
+
+
+class TestCorrigerDemande(unittest.TestCase):
+    """The advisor can correct a request; every change is recorded."""
+
+    def setUp(self):
+        self.store = DemandStore(None)  # no path: nothing is written to disk
+        self.dem = self.store.creer(dict(VALIDE, user_id="client_1"))
+
+    def test_correction_updates_field_and_records_history(self):
+        result = self.store.corriger(self.dem["id"], {"budget_max_par_personne": 600}, "Alice")
+        self.assertEqual(result["demande"]["budget_max_par_personne"], 600)
+        self.assertEqual(len(result["modifications"]), 1)
+        entry = result["modifications"][0]
+        self.assertEqual(entry["champ"], "budget_max_par_personne")
+        self.assertEqual(entry["avant"], 500)
+        self.assertEqual(entry["apres"], 600)
+        self.assertEqual(entry["par"], "Alice")
+        self.assertTrue(entry["le"])
+
+    def test_correction_clears_previous_validation(self):
+        self.store.definir_qualification(self.dem["id"], QUALIF_PRET_PROPOSITION)
+        result = self.store.corriger(self.dem["id"], {"destination": "Lyon"}, "Alice")
+        self.assertIsNone(result["qualification_validee_par"])
+        self.assertEqual(result["qualification"], QUALIF_PRET_RELECTURE)
+
+    def test_same_value_records_nothing(self):
+        result = self.store.corriger(self.dem["id"], {"destination": "Nantes"}, "Alice")
+        self.assertEqual(result["modifications"], [])
+
+    def test_invalid_value_is_rejected_and_nothing_changes(self):
+        with self.assertRaises(ValidationError):
+            self.store.corriger(self.dem["id"], {"budget_max_par_personne": -5}, "Alice")
+        unchanged = self.store.obtenir(self.dem["id"])
+        self.assertEqual(unchanged["demande"]["budget_max_par_personne"], 500)
+
+    def test_user_id_cannot_be_changed(self):
+        with self.assertRaises(ValidationError):
+            self.store.corriger(self.dem["id"], {"user_id": "someone_else"}, "Alice")
+
+    def test_author_is_required(self):
+        with self.assertRaises(ValidationError):
+            self.store.corriger(self.dem["id"], {"destination": "Lyon"}, "  ")
+
+    def test_unknown_request_returns_none(self):
+        self.assertIsNone(self.store.corriger("dem_unknown", {"destination": "Lyon"}, "Alice"))
+
+
+class TestCorrectionRoute(unittest.TestCase):
+    """PATCH /api/demandes/<id>/correction updates the request through HTTP."""
+
+    def setUp(self):
+        self.store = DemandStore(None)
+        server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(self.store))
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(lambda: (server.shutdown(), server.server_close()))
+        self.base = f"http://127.0.0.1:{server.server_port}"
+        self.dem_id = self.store.creer(dict(VALIDE))["id"]
+
+    def patch(self, path, payload):
+        req = urllib.request.Request(
+            self.base + path, data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"}, method="PATCH")
+        try:
+            with urllib.request.urlopen(req) as res:
+                return res.status, json.loads(res.read())
+        except urllib.error.HTTPError as err:
+            return err.code, json.loads(err.read())
+
+    def test_correction_route_updates_request(self):
+        status, data = self.patch(f"/api/demandes/{self.dem_id}/correction",
+                                  {"champs": {"budget_max_par_personne": 600}})
+        self.assertEqual(status, 200)
+        self.assertEqual(data["demande"]["demande"]["budget_max_par_personne"], 600)
+        self.assertEqual(len(data["demande"]["modifications"]), 1)
+
+    def test_invalid_value_returns_400(self):
+        status, data = self.patch(f"/api/demandes/{self.dem_id}/correction",
+                                  {"champs": {"budget_max_par_personne": -5}})
+        self.assertEqual(status, 400)
+        self.assertEqual(data["erreur"]["code"], "validation_error")
+
+    def test_unknown_request_returns_404(self):
+        status, _ = self.patch("/api/demandes/dem_abc123/correction",
+                               {"champs": {"destination": "Lyon"}})
+        self.assertEqual(status, 404)
 
 
 if __name__ == "__main__":
