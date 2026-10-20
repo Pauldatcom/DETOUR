@@ -115,6 +115,25 @@ TOOL_DEFINITION = {
 }
 
 
+PROPOSITION_SYSTEM = (
+    "Tu es l'assistant DÉTOUR. Un conseiller te demande de préparer une proposition "
+    "de voyage basée sur les prestations vérifiées par le serveur fictif. "
+    "Tu réponds uniquement avec un objet JSON valide."
+)
+
+
+def _extraire_json(content):
+    content = (content or "").strip()
+    if "```json" in content:
+        content = content.split("```json", 1)[1]
+        content = content.split("```", 1)[0]
+    elif "```" in content:
+        parts = content.split("```")
+        if len(parts) >= 3:
+            content = parts[1]
+    return json.loads(content.strip())
+
+
 class Agent:
     def __init__(self, supplier, store, api_key="", model=DEFAULT_MODEL,
                  base_url=OPENROUTER_URL, timeout=60):
@@ -159,6 +178,43 @@ class Agent:
         message = self._call_model(conversation, with_tools=False)
         return {"reply": message.get("content") or "",
                 "demande": demande, "recherche": recherche, "trace": trace}
+
+    def generer_proposition(self, demande_record, recherche):
+        """Génère une proposition structurée via OpenRouter (sans outil)."""
+        if not self._api_key:
+            raise OpenRouterError("Clé OpenRouter absente : définir OPENROUTER_API_KEY.", 503)
+        d = demande_record.get("demande", demande_record)
+        resultats = (recherche or {}).get("resultats", [])
+        prompt = (
+            f"Prépare une proposition de voyage au format JSON.\n\n"
+            f"Demande du voyageur :\n"
+            f"- Destination : {d.get('destination', '')}\n"
+            f"- Dates : {d.get('date_depart', '')} → {d.get('date_retour', '')}\n"
+            f"- Voyageurs : {d.get('nombre_voyageurs', 1)}\n"
+            f"- Budget max/pers : {d.get('budget_max_par_personne', 0)} €\n"
+            f"- Type : {d.get('type_voyage', '')}\n"
+            f"- Niveau aventure : {d.get('niveau_aventure', '')}\n"
+            f"- Souhaits : {d.get('souhaits', '')}\n\n"
+            f"Prestations disponibles :\n"
+            f"{json.dumps(resultats, ensure_ascii=False)}\n\n"
+            f"Réponds avec un objet JSON : "
+            f'{{"titre": "...", "description": "...", '
+            f'"prestations": [{{"id": "...", "nom": "...", '
+            f'"type": "...", "prix_unitaire_eur": 0, "quantite": 1}}]}}\n'
+            f"Réponds uniquement avec le JSON."
+        )
+        conversation = [
+            {"role": "system", "content": PROPOSITION_SYSTEM},
+            {"role": "user", "content": prompt},
+        ]
+        message = self._call_model(conversation, with_tools=False)
+        try:
+            prop_data = _extraire_json(message.get("content", ""))
+        except (json.JSONDecodeError, IndexError) as err:
+            raise OpenRouterError("Réponse du modèle illisible (JSON attendu).") from err
+        if not isinstance(prop_data, dict):
+            raise OpenRouterError("Réponse du modèle invalide (objet attendu).")
+        return prop_data
 
     def _call_model(self, conversation, with_tools=True):
         payload = {"model": self.model, "messages": conversation}

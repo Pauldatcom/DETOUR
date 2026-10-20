@@ -23,6 +23,7 @@ from store import DemandStore, ValidationError, criteres_depuis_demande, valider
 from app import load_env_file, make_handler
 from agent import Agent, OpenRouterError
 from fournisseur import SupplierClient, SupplierError
+from propositions import PropositionStore, PropositionError
 
 
 VALIDE = {
@@ -647,6 +648,158 @@ class TestEnvLoader(unittest.TestCase):
 
     def test_fichier_absent_ne_leve_rien(self):
         load_env_file(Path("/tmp/detour-inexistant-.env"))
+
+
+PROPOSITION_VALIDE = {
+    "titre": "Week-end à Nantes",
+    "description": "Un séjour romantique à Nantes.",
+    "prestations": [
+        {"id": "train-nantes-01", "nom": "Train Nantes", "type": "transport",
+         "prix_unitaire_eur": 48, "quantite": 2},
+        {"id": "hotel-nantes-01", "nom": "Hôtel Nantes", "type": "hébergement",
+         "prix_unitaire_eur": 120, "quantite": 1},
+    ],
+}
+
+
+class TestPropositionStore(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.path = Path(self.tmpdir) / "propositions.json"
+        self.store = PropositionStore(self.path)
+        self.demand_store = DemandStore(Path(self.tmpdir) / "demandes.json")
+
+    def test_creer_et_obtenir(self):
+        prop = self.store.creer("dem_abc123", dict(PROPOSITION_VALIDE), conseiller="Alice")
+        self.assertTrue(prop["id"].startswith("prop_"))
+        self.assertEqual(prop["statut"], "brouillon")
+        self.assertEqual(prop["conseiller"], "Alice")
+        self.assertEqual(prop["prix_total_eur"], 216)
+        fetched = self.store.obtenir(prop["id"])
+        assert fetched is not None
+        self.assertEqual(fetched["titre"], "Week-end à Nantes")
+
+    def test_persiste_sur_disque(self):
+        prop = self.store.creer("dem_abc123", dict(PROPOSITION_VALIDE))
+        store2 = PropositionStore(self.path)
+        self.assertEqual(len(store2.lister()), 1)
+        self.assertEqual(store2.obtenir(prop["id"])["titre"], "Week-end à Nantes")
+
+    def test_lister_par_demande(self):
+        self.store.creer("dem_aaa", dict(PROPOSITION_VALIDE))
+        self.store.creer("dem_bbb", dict(PROPOSITION_VALIDE))
+        self.store.creer("dem_aaa", dict(PROPOSITION_VALIDE, titre="Autre"))
+        self.assertEqual(len(self.store.lister_par_demande("dem_aaa")), 2)
+        self.assertEqual(len(self.store.lister_par_demande("dem_bbb")), 1)
+
+    def test_lister_par_user(self):
+        dem = self.demand_store.creer({**VALIDE, "user_id": "usr_abc"})
+        self.store.creer(dem["id"], dict(PROPOSITION_VALIDE))
+        self.store.creer("dem_autre", dict(PROPOSITION_VALIDE))
+        props = self.store.lister_par_user("usr_abc", self.demand_store)
+        self.assertEqual(len(props), 1)
+
+    def test_mettre_a_jour(self):
+        prop = self.store.creer("dem_abc", dict(PROPOSITION_VALIDE))
+        updated = self.store.mettre_a_jour(prop["id"], {"titre": "Modifié",
+             "description": "Nouvelle desc", "prestations": []})
+        self.assertEqual(updated["titre"], "Modifié")
+        self.assertEqual(updated["prix_total_eur"], 0)
+
+    def test_changer_statut(self):
+        prop = self.store.creer("dem_abc", dict(PROPOSITION_VALIDE))
+        self.assertEqual(self.store.changer_statut(prop["id"], "envoyee")["statut"], "envoyee")
+        with self.assertRaises(PropositionError):
+            self.store.changer_statut(prop["id"], "inconnu")
+        self.assertIsNone(self.store.changer_statut("prop_inconnu", "envoyee"))
+
+    def test_prestation_invalide(self):
+        with self.assertRaises(PropositionError):
+            self.store.creer("dem_abc", {"titre": "Test", "prestations": [{"nom": ""}]})
+
+    def test_titre_manquant(self):
+        with self.assertRaises(PropositionError):
+            self.store.creer("dem_abc", {"titre": "", "prestations": []})
+
+
+class TestConfigAndMetrics(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.store = DemandStore(None)
+        cls.props = PropositionStore(None)
+        cls.handler = make_handler(cls.store, FakeSupplier(), FakeAgent(),
+                                    propositions=cls.props)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        cls.port = sock.getsockname()[1]
+        sock.close()
+        cls.server = ThreadingHTTPServer(("127.0.0.1", cls.port), cls.handler)
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+
+    def url(self, path):
+        return f"http://127.0.0.1:{self.port}{path}"
+
+    def test_config_public(self):
+        with urllib.request.urlopen(self.url("/api/config")) as res:
+            data = json.loads(res.read())
+        self.assertIn("simulation", data)
+        self.assertIn("agent_actif", data)
+        self.assertIn("google_oauth", data)
+
+    def test_metrics_public(self):
+        with urllib.request.urlopen(self.url("/metrics")) as res:
+            body = res.read().decode("utf-8")
+        self.assertIn("detour_demandes_total", body)
+        self.assertIn("detour_propositions_total", body)
+
+    def test_metrics_avec_token(self):
+        os.environ["METRICS_TOKEN"] = "secret-token"
+        try:
+            store = DemandStore(None)
+            props = PropositionStore(None)
+            handler = make_handler(store, FakeSupplier(), FakeAgent(), propositions=props)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            base = f"http://127.0.0.1:{server.server_port}"
+            self.addCleanup(lambda: (server.shutdown(), server.server_close()))
+            try:
+                urllib.request.urlopen(base + "/metrics")
+                self.fail("Devrait refuser sans token.")
+            except urllib.error.HTTPError as e:
+                self.assertEqual(e.code, 401)
+            with urllib.request.urlopen(base + "/metrics?token=secret-token") as res:
+                self.assertEqual(res.status, 200)
+        finally:
+            os.environ.pop("METRICS_TOKEN", None)
+
+
+class FakeAgentWithGeneration(FakeAgent):
+    def generer_proposition(self, demande_record, recherche):
+        return {"titre": "Généré", "description": "Proposition générée",
+                "prestations": [{"id": "train-01", "nom": "Train", "type": "transport",
+                                 "prix_unitaire_eur": 50, "quantite": 2}]}
+
+
+class TestPropositionGeneration(unittest.TestCase):
+    """Test de la génération de proposition via l'agent (sans vrai OpenRouter)."""
+
+    def test_generer_proposition_retourne_json(self):
+        agent = FakeAgentWithGeneration()
+        demande = {"demande": {"destination": "Nantes", "date_depart": "2026-11-07",
+                               "date_retour": "2026-11-09", "nombre_voyageurs": 2,
+                               "budget_max_par_personne": 500, "type_voyage": "trek-randonnee",
+                               "niveau_aventure": "modere", "souhaits": ""}}
+        recherche = {"resultats": [{"id": "train-nantes-01", "nom": "Train", "type": "transport",
+                                    "prix_unitaire_eur": 48, "prix_total_eur": 96}]}
+        result = agent.generer_proposition(demande, recherche)
+        self.assertEqual(result["titre"], "Généré")
+        self.assertIsInstance(result["prestations"], list)
 
 
 if __name__ == "__main__":
