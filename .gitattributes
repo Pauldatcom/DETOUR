@@ -1,0 +1,23 @@
+# Normalise line endings across the whole repository.
+#
+# Why: without this file, a Windows checkout with core.autocrlf=true writes
+# CRLF while the repository stores LF. Prettier (endOfLine: "lf") and ESLint
+# compare the exact bytes, so CI would fail for contributors on Windows.
+* text=auto eol=lf
+
+# Binary files: no line ending conversion.
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.mp4 binary
+
+# Lockfile: generated, never formatted.
+pnpm-lock.yaml linguist-generated=true -diff
