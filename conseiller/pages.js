@@ -274,6 +274,53 @@ function detailChamp(label, valeur) {
   return div;
 }
 
+const DECISION_LABELS = {
+  keep: "Garder",
+  replace: "Remplacer",
+  drop: "Retirer",
+};
+
+/** Form to keep / replace / drop a changed line (stores choice only — no send, no option). */
+function formDecisionPrestation(propId, changement, demId) {
+  const wrap = document.createElement("div");
+  wrap.className = "decision-form";
+  const motif = document.createElement("input");
+  motif.type = "text";
+  motif.placeholder = "Motif (obligatoire)";
+  motif.setAttribute("aria-label", "Motif de la décision");
+  const erreur = document.createElement("div");
+  erreur.className = "form-error";
+  const actions = document.createElement("div");
+  for (const [choix, label] of Object.entries(DECISION_LABELS)) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "secondary-button";
+    btn.textContent = label;
+    btn.addEventListener("click", async () => {
+      erreur.textContent = "";
+      btn.disabled = true;
+      try {
+        await apiJSON(`/api/propositions/${encodeURIComponent(propId)}/decisions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prestation_id: changement.id,
+            choix,
+            motif: motif.value,
+          }),
+        });
+        await afficherDetail(demId);
+      } catch (err) {
+        erreur.textContent = err.message;
+        btn.disabled = false;
+      }
+    });
+    actions.append(btn);
+  }
+  wrap.append(motif, actions, erreur);
+  return wrap;
+}
+
 /** Human-readable delta between proposal v1 and a newer server reading. */
 function texteChangementLecture(c) {
   if (c.inchange) {
@@ -337,10 +384,28 @@ async function afficherPropositionsDemande(content, demId) {
           const li = document.createElement("li");
           li.textContent = texteChangementLecture(c);
           sous.append(li);
+          if (!c.inchange) {
+            li.append(formDecisionPrestation(prop.id, c, demId));
+          }
         }
         bloc.append(Object.assign(document.createElement("div"), {
           textContent: "Nouvelle lecture :",
         }), sous);
+      }
+      const decisions = prop.decisions || [];
+      if (decisions.length) {
+        const titreDec = document.createElement("div");
+        titreDec.textContent = "Décisions conseiller :";
+        const listeDec = document.createElement("ul");
+        listeDec.className = "detail-liste";
+        for (const d of decisions) {
+          const li = document.createElement("li");
+          li.textContent =
+            `${d.prestation_id} — ${DECISION_LABELS[d.choix] || d.choix}` +
+            ` · ${d.par} · ${formatDateTime(d.le)} · ${d.motif}`;
+          listeDec.append(li);
+        }
+        bloc.append(titreDec, listeDec);
       }
       content.append(bloc);
     }
