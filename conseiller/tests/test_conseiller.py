@@ -1259,6 +1259,79 @@ class TestStatutARevoirApresChangement(unittest.TestCase):
         self.assertEqual(data["demande"]["statut"], "a_analyser")
 
 
+class TestDecisionPrestation(unittest.TestCase):
+    """Advisor keep/replace/drop is stored with name, time and reason — no send, no option."""
+
+    def setUp(self):
+        self.props = PropositionStore(None)
+        self.prop = self.props.creer("dem_abc", dict(PROPOSITION_VALIDE))
+
+    def test_replace_stocke_nom_heure_et_motif(self):
+        record = self.props.enregistrer_decision(
+            self.prop["id"], "train-nantes-01", "replace", "Nora",
+            "budget no longer holds")
+        self.assertEqual(len(record["decisions"]), 1)
+        d = record["decisions"][0]
+        self.assertEqual(d["choix"], "replace")
+        self.assertEqual(d["par"], "Nora")
+        self.assertEqual(d["motif"], "budget no longer holds")
+        self.assertEqual(d["prestation_id"], "train-nantes-01")
+        self.assertTrue(d["le"])
+        self.assertEqual(record["statut"], "brouillon")
+
+    def test_sans_nom_conseiller_refuse(self):
+        with self.assertRaises(PropositionError):
+            self.props.enregistrer_decision(
+                self.prop["id"], "train-nantes-01", "keep", "", "ok")
+        with self.assertRaises(PropositionError):
+            self.props.enregistrer_decision(
+                self.prop["id"], "train-nantes-01", "keep", "   ", "ok")
+        self.assertEqual(self.props.obtenir(self.prop["id"])["decisions"], [])
+
+    def test_sans_motif_refuse(self):
+        with self.assertRaises(PropositionError):
+            self.props.enregistrer_decision(
+                self.prop["id"], "train-nantes-01", "drop", "Nora", "")
+
+    def test_decision_ne_passe_pas_en_envoyee(self):
+        record = self.props.enregistrer_decision(
+            self.prop["id"], "train-nantes-01", "keep", "Nora", "prix acceptable")
+        self.assertNotEqual(record["statut"], "envoyee")
+        self.assertEqual(record["statut"], "brouillon")
+
+    def test_http_decision_sans_appel_option(self):
+        class SpySupplier(FakeSupplier):
+            def __init__(self):
+                super().__init__()
+                self.option_calls = 0
+
+            def creer_option(self, *args, **kwargs):
+                self.option_calls += 1
+                raise AssertionError("option endpoint must not be called")
+
+        supplier = SpySupplier()
+        store = DemandStore(None)
+        props = PropositionStore(None)
+        server = ThreadingHTTPServer(
+            ("127.0.0.1", 0), make_handler(store, supplier, propositions=props))
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(lambda: (server.shutdown(), server.server_close()))
+        base = f"http://127.0.0.1:{server.server_port}"
+        dem_id = store.creer(dict(VALIDE))["id"]
+        prop = props.creer(dem_id, dict(PROPOSITION_VALIDE))
+        status, data = post(f"{base}/api/propositions/{prop['id']}/decisions", {
+            "prestation_id": "train-nantes-01",
+            "choix": "replace",
+            "motif": "budget no longer holds",
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(data["proposition"]["decisions"][0]["choix"], "replace")
+        self.assertEqual(data["proposition"]["decisions"][0]["par"], "Conseiller DÉTOUR")
+        self.assertEqual(data["proposition"]["statut"], "brouillon")
+        self.assertEqual(supplier.option_calls, 0)
+        self.assertEqual(supplier.calls, [])  # no supplier call at all
+
+
 class TestCorrigerDemande(unittest.TestCase):
     """The advisor can correct a request; every change is recorded."""
 
