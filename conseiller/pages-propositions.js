@@ -20,6 +20,10 @@ function formDecisionPrestation(propId, changement, demId) {
   motif.type = "text";
   motif.placeholder = "Motif (obligatoire)";
   motif.setAttribute("aria-label", "Motif de la décision");
+  const remp = document.createElement("input");
+  remp.type = "text";
+  remp.placeholder = "Id remplacement (si Remplacer)";
+  remp.setAttribute("aria-label", "Identifiant de la prestation de remplacement");
   const erreur = document.createElement("div");
   erreur.className = "form-error";
   const actions = document.createElement("div");
@@ -32,14 +36,18 @@ function formDecisionPrestation(propId, changement, demId) {
       erreur.textContent = "";
       btn.disabled = true;
       try {
+        const body = {
+          prestation_id: changement.id,
+          choix,
+          motif: motif.value,
+        };
+        if (choix === "replace") {
+          body.remplacement_id = remp.value;
+        }
         await apiJSON(`/api/propositions/${encodeURIComponent(propId)}/decisions`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prestation_id: changement.id,
-            choix,
-            motif: motif.value,
-          }),
+          body: JSON.stringify(body),
         });
         await afficherDetail(demId);
       } catch (err) {
@@ -49,7 +57,7 @@ function formDecisionPrestation(propId, changement, demId) {
     });
     actions.append(btn);
   }
-  wrap.append(motif, actions, erreur);
+  wrap.append(motif, remp, actions, erreur);
   return wrap;
 }
 
@@ -89,8 +97,10 @@ async function afficherPropositionsDemande(content, demId) {
     for (const prop of props) {
       const bloc = document.createElement("div");
       bloc.className = "source-box";
+      const version = prop.version || 1;
+      const lienParent = prop.parente_id ? ` · v${version} (depuis ${prop.parente_id})` : ` · v${version}`;
       bloc.append(Object.assign(document.createElement("div"), {
-        textContent: `${prop.titre} (${prop.id}) — total ${prop.prix_total_eur} €`,
+        textContent: `${prop.titre} (${prop.id})${lienParent} — total ${prop.prix_total_eur} €`,
       }));
       const liste = document.createElement("ul");
       liste.className = "detail-liste";
