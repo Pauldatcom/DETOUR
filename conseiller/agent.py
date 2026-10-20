@@ -10,7 +10,7 @@ from pathlib import Path
 
 from fournisseur import SupplierError
 from propositions import PropositionError, aligner_sur_serveur
-from store import ValidationError, criteres_depuis_demande
+from store import ValidationError, analyser_informations, criteres_depuis_demande
 from utils import (DEFAULT_MODEL, MAX_MESSAGES, MAX_TOOL_ITERATIONS,
                    OPENROUTER_URL, TOOL_NAME)
 
@@ -55,6 +55,11 @@ INFORMATIONS REQUISES AVANT L'APPEL DE L'OUTIL (minimum)
 - budget_max_par_personne : entier positif en euros
 - niveau_aventure : "calme", "modere" ou "intense"
 
+CONTRÔLE DES INFORMATIONS (fait par le programme, pas par toi)
+- Tu peux appeler l'outil dès que tu as un brouillon : s'il manque des champs obligatoires, l'outil renvoie `informations.manquants` et `informations.fournis`.
+- Demande uniquement les champs dans `manquants`. Ne redemande jamais un champ listé dans `fournis`.
+- Distingue clairement ce qui est déjà fourni de ce qui manque.
+
 AUTRES INFORMATIONS À RECUEILLIR AUSSI AVANT L'APPEL
 Pose une question à la fois pour chacune (une seule par tour) :
 - présence d'enfants et leur nombre (has_enfants, nombre_enfants), si le voyageur n'en a pas parlé
@@ -65,7 +70,7 @@ Pose une question à la fois pour chacune (une seule par tour) :
 Si le voyageur presse de finir, appelez l'outil avec ce que vous avez, sans inventer le reste.
 
 RÈGLES ABSOLUES
-- Ne devine rien : si une information requise manque, pose la question.
+- Ne devine rien : si une information requise manque, pose la question (seulement pour les manquants).
 - N'invente jamais un prix, une disponibilité, une prestation ou une date de mise à jour : ils viennent uniquement de l'outil.
 - Tu ne prends aucune réservation et ne poses aucune option. Aucune réservation n'existe à l'issue de la conversation.
 - Si le voyageur veut une autre destination, explique que le catalogue est restreint pour le moment.
@@ -276,15 +281,42 @@ class Agent:
         args.pop("qualification", None)
         args.pop("user_id", None)
         args["user_id"] = user_id
+        # Program check: identify missing vs already provided required fields.
+        analyse = analyser_informations(args)
+        if not analyse["complet"]:
+            entry["statut"] = "informations_manquantes"
+            entry["informations"] = {
+                "fournis": analyse["fournis"],
+                "manquants": analyse["manquants"],
+            }
+            trace["tool_calls"].append(entry)
+            labels = analyse["labels"]
+            manquants_lisible = [labels.get(c, c) for c in analyse["manquants"]]
+            fournis_lisible = [labels.get(c, c) for c in analyse["fournis"]]
+            return {
+                "payload": {
+                    "informations": analyse,
+                    "consigne": (
+                        "Demande incomplète. Demande uniquement : "
+                        + ", ".join(manquants_lisible)
+                        + ". Ne redemande pas : "
+                        + (", ".join(fournis_lisible) if fournis_lisible else "(rien encore)")
+                        + "."
+                    ),
+                }
+            }
         try:
             record = self.store.creer(args)
         except ValidationError as err:
             entry["statut"] = "invalide"
             entry["erreur"] = str(err)
+            entry["informations"] = analyser_informations(args)
             trace["tool_calls"].append(entry)
-            return {"payload": {"erreur": f"Demande refusée : {err}"}}
+            return {"payload": {"erreur": f"Demande refusée : {err}",
+                                "informations": entry["informations"]}}
         entry["demande_id"] = record["id"]
         entry["arguments"] = record["demande"]
+        entry["informations"] = analyser_informations(record["demande"])
         entry["statut"] = "enregistree"
         try:
             resultat = self.supplier.rechercher(criteres_depuis_demande(record))
@@ -298,4 +330,6 @@ class Agent:
                                 "consigne": "Le serveur de prestations est indisponible. Informe le voyageur sans inventer de prestation."}}
         entry["statut"] = "ok"
         trace["tool_calls"].append(entry)
-        return {"demande": record, "recherche": recherche, "payload": recherche}
+        payload = dict(recherche) if isinstance(recherche, dict) else {"recherche": recherche}
+        payload["informations"] = entry["informations"]
+        return {"demande": record, "recherche": recherche, "payload": payload}

@@ -32,10 +32,32 @@ class ValidationError(ValueError):
     pass
 
 
+# Required fields for a travel request (agent must not re-ask when already provided).
+CHAMPS_REQUIS = (
+    "type_voyage",
+    "destination",
+    "date_depart",
+    "date_retour",
+    "nombre_voyageurs",
+    "budget_max_par_personne",
+    "niveau_aventure",
+)
+
+CHAMPS_REQUIS_LABELS = {
+    "type_voyage": "type de voyage",
+    "destination": "destination",
+    "date_depart": "date de départ",
+    "date_retour": "date de retour",
+    "nombre_voyageurs": "nombre de voyageurs",
+    "budget_max_par_personne": "budget maximum par personne",
+    "niveau_aventure": "niveau d'aventure",
+}
+
+
 def champs_manquants(demande):
     """Champs obligatoires absents ou invalides. Une liste vide signifie que la demande est complète."""
     if not isinstance(demande, dict):
-        return ["demande"]
+        return list(CHAMPS_REQUIS)
     manquants = []
     if demande.get("type_voyage") not in TYPES_VOYAGE:
         manquants.append("type_voyage")
@@ -59,6 +81,23 @@ def champs_manquants(demande):
     if demande.get("niveau_aventure") not in NIVEAUX_AVENTURE:
         manquants.append("niveau_aventure")
     return manquants
+
+
+def analyser_informations(demande):
+    """Split required fields into provided vs missing for the agent.
+
+    Already valid fields are listed in fournis so the agent must not ask again.
+    """
+    manquants = champs_manquants(demande if isinstance(demande, dict) else {})
+    manquants_set = set(manquants)
+    fournis = [c for c in CHAMPS_REQUIS if c not in manquants_set]
+    return {
+        "champs_requis": list(CHAMPS_REQUIS),
+        "fournis": fournis,
+        "manquants": manquants,
+        "complet": len(manquants) == 0,
+        "labels": {c: CHAMPS_REQUIS_LABELS[c] for c in CHAMPS_REQUIS},
+    }
 
 
 def recalculer_qualification(record):
