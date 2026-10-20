@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from utils import (
+    DECISION_REPLACE,
     DECISIONS_PRESTATION,
     PROP_STATUTS,
     SOURCE_LABEL,
@@ -193,8 +194,14 @@ class PropositionStore:
                        encoding="utf-8")
         tmp.replace(self.path)
 
-    def creer(self, demande_id, data, conseiller=""):
+    def creer(self, demande_id, data, conseiller="", version=1, parente_id=None):
         valide = valider_proposition(data)
+        if type(version) is not int or version < 1:
+            raise PropositionError("version doit être un entier >= 1.")
+        if parente_id is not None:
+            parente_id = str(parente_id).strip()
+            if not parente_id:
+                parente_id = None
         with self.lock:
             prop_id = "prop_" + secrets.token_hex(6)
             record = {
@@ -204,6 +211,8 @@ class PropositionStore:
                 "cree_le": utc_now_iso(),
                 "modifiee_le": utc_now_iso(),
                 "conseiller": conseiller,
+                "version": version,
+                "parente_id": parente_id,
                 "decisions": [],
                 **valide,
             }
@@ -264,11 +273,13 @@ class PropositionStore:
             self.save()
             return json.loads(json.dumps(record))
 
-    def enregistrer_decision(self, prop_id, prestation_id, choix, par, motif):
+    def enregistrer_decision(self, prop_id, prestation_id, choix, par, motif,
+                             remplacement_id=None):
         """Store keep/replace/drop for a changed line. Does not send or book.
 
         Requires a non-empty advisor name. Replaces any prior choice for the
         same service id so the next proposal version can follow the latest one.
+        replace requires remplacement_id (a service id from a server reading).
         """
         prest_id = str(prestation_id or "").strip()
         if not prest_id:
@@ -280,6 +291,12 @@ class PropositionStore:
             raise PropositionError("Le nom du conseiller est obligatoire.")
         if not isinstance(motif, str) or not motif.strip():
             raise PropositionError("motif est obligatoire.")
+        remp = str(remplacement_id or "").strip()
+        if choix == DECISION_REPLACE and not remp:
+            raise PropositionError(
+                "remplacement_id est obligatoire pour un remplacement.")
+        if choix != DECISION_REPLACE:
+            remp = None
         with self.lock:
             record = self.propositions.get(prop_id)
             if not record:
@@ -294,6 +311,7 @@ class PropositionStore:
                 "par": par.strip(),
                 "le": utc_now_iso(),
                 "motif": motif.strip(),
+                "remplacement_id": remp,
             }
             decisions = [
                 d for d in record.get("decisions") or []
@@ -306,6 +324,51 @@ class PropositionStore:
             record["modifiee_le"] = utc_now_iso()
             self.save()
             return json.loads(json.dumps(record))
+
+    def _v2_pour_parente(self, parente_id):
+        for record in self.propositions.values():
+            if record.get("parente_id") == parente_id:
+                return record
+        return None
+
+    def creer_v2_si_complet(self, prop_v1_id, recherche, conseiller=""):
+        """Create or refresh draft v2 when every changed line has a decision.
+
+        Returns the v2 record, or None if decisions are still incomplete.
+        Does not alter v1. v2 stays brouillon (not sent, not booked).
+        """
+        from versions import construire_donnees_v2, decisions_completes
+
+        with self.lock:
+            v1 = self.propositions.get(prop_v1_id)
+            if not v1:
+                return None
+            if v1.get("parente_id"):
+                raise PropositionError("Seule une proposition v1 peut engendrer une v2.")
+            if not decisions_completes(v1, recherche, v1.get("decisions")):
+                return None
+            data = construire_donnees_v2(v1, recherche, v1.get("decisions"))
+            existante = self._v2_pour_parente(prop_v1_id)
+            if existante is not None:
+                if existante.get("statut") != STATUT_BROUILLON:
+                    raise PropositionError(
+                        "La proposition v2 n'est plus un brouillon ; elle ne peut pas être régénérée.")
+                champs = valider_proposition(data)
+                existante["titre"] = champs["titre"]
+                existante["description"] = champs["description"]
+                existante["prestations"] = champs["prestations"]
+                existante["prix_total_eur"] = champs["prix_total_eur"]
+                existante["conseiller"] = conseiller or existante.get("conseiller", "")
+                existante["version"] = 2
+                existante["parente_id"] = prop_v1_id
+                existante["statut"] = STATUT_BROUILLON
+                existante["modifiee_le"] = utc_now_iso()
+                self.save()
+                return json.loads(json.dumps(existante))
+            # RLock allows re-entering creer while still holding this lock.
+            return self.creer(
+                v1["demande_id"], data, conseiller=conseiller,
+                version=2, parente_id=prop_v1_id)
 
     def supprimer(self, prop_id):
         with self.lock:
