@@ -113,45 +113,45 @@ def _normaliser_champ(key, value, contexte):
     """Validate one answer field. Raises ValidationError if the value is unusable."""
     if key == "type_voyage":
         if value not in TYPES_VOYAGE:
-            raise ValidationError(f"type_voyage doit être l'un de {', '.join(TYPES_VOYAGE)}.")
+            raise ValidationError(f"type_voyage must be one of {', '.join(TYPES_VOYAGE)}.")
         return value
     if key == "destination":
         if not isinstance(value, str) or not value.strip():
-            raise ValidationError("destination est obligatoire.")
+            raise ValidationError("destination is required.")
         return value.strip()
     if key in ("date_depart", "date_retour"):
         if not _valid_date(value):
-            raise ValidationError(f"{key} au format AAAA-MM-JJ est obligatoire.")
+            raise ValidationError(f"{key} must be YYYY-MM-DD.")
         return str(value)
     if key == "nombre_voyageurs":
         if type(value) is not int or not 1 <= value <= 20:
-            raise ValidationError("nombre_voyageurs doit être un entier de 1 à 20.")
+            raise ValidationError("nombre_voyageurs must be an integer from 1 to 20.")
         return value
     if key == "has_enfants":
         return bool(value)
     if key == "nombre_enfants":
         if type(value) is not int or value < 0:
-            raise ValidationError("nombre_enfants doit être un entier >= 0.")
+            raise ValidationError("nombre_enfants must be an integer >= 0.")
         return value
     if key == "budget_max_par_personne":
         if type(value) is not int or value <= 0 or value > 100000:
-            raise ValidationError("budget_max_par_personne doit être un entier positif.")
+            raise ValidationError("budget_max_par_personne must be a positive integer.")
         return value
     if key == "niveau_aventure":
         if value not in NIVEAUX_AVENTURE:
             raise ValidationError(
-                f"niveau_aventure doit être l'un de {', '.join(NIVEAUX_AVENTURE)}.")
+                f"niveau_aventure must be one of {', '.join(NIVEAUX_AVENTURE)}.")
         return value
     if key == "besoin_guide":
         return bool(value)
     if key == "activites":
         if not isinstance(value, list):
-            raise ValidationError("activites doit être une liste.")
+            raise ValidationError("activites must be a list.")
         return list(dict.fromkeys(
             a.strip() for a in value if isinstance(a, str) and a.strip()))
     if key in ("contraintes", "souhaits", "conseiller"):
         if not isinstance(value, str):
-            raise ValidationError(f"{key} doit être une chaîne.")
+            raise ValidationError(f"{key} must be a string.")
         return value.strip()
     return value
 
@@ -163,7 +163,7 @@ def fusionner_reponses(existant, champs):
     values raise ValidationError — nothing is applied in that case by the caller.
     """
     if not isinstance(champs, dict):
-        raise ValidationError("Réponses invalides (objet attendu).")
+        raise ValidationError("Invalid answers (object expected).")
     merged = dict(existant) if isinstance(existant, dict) else {}
     mis_a_jour = []
     for key in CHAMPS_REPONSE:
@@ -371,7 +371,7 @@ class DemandStore:
                 existant_uid = existant_uid.strip()
                 if existant_uid and existant_uid != user_id:
                     raise ValidationError(
-                        "Cette demande appartient à un autre voyageur.")
+                        "This request belongs to another traveler.")
                 avant = dict(record.get("demande") or {})
                 merged, mis_a_jour = fusionner_reponses(avant, champs)
                 if user_id:
@@ -383,7 +383,7 @@ class DemandStore:
                 if mis_a_jour:
                     now = utc_now_iso()
                     history = record.setdefault("modifications", [])
-                    auteur = user_id or "voyageur"
+                    auteur = user_id or "traveler"
                     for key in mis_a_jour:
                         history.append({
                             "champ": key,
@@ -402,7 +402,7 @@ class DemandStore:
             merged, mis_a_jour = fusionner_reponses({}, champs)
             merged["user_id"] = user_id
             if not mis_a_jour:
-                raise ValidationError("Aucune réponse exploitable à enregistrer.")
+                raise ValidationError("No usable answer to save.")
             dem_id = "dem_" + secrets.token_hex(6)
             if not champs_manquants(merged):
                 merged = valider_demande(merged)
