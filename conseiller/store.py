@@ -7,8 +7,9 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from utils import (ACTIVITES_POSSIBLES, NIVEAUX_AVENTURE, STATUTS,
-                   STATUT_A_ANALYSER, TYPES_VOYAGE)
+from utils import (ACTIVITES_POSSIBLES, NIVEAUX_AVENTURE, QUALIF_EN_COURS,
+                   QUALIF_INCOMPLET, QUALIF_PRET_PROPOSITION, QUALIF_PRET_RELECTURE,
+                   STATUTS, STATUT_A_ANALYSER, STATUT_PROPOSE, STATUT_VALIDE, TYPES_VOYAGE)
 
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
@@ -29,6 +30,65 @@ def _valid_date(value):
 
 class ValidationError(ValueError):
     pass
+
+
+def champs_manquants(demande):
+    """Champs obligatoires absents ou invalides. Une liste vide signifie que la demande est complète."""
+    if not isinstance(demande, dict):
+        return ["demande"]
+    manquants = []
+    if demande.get("type_voyage") not in TYPES_VOYAGE:
+        manquants.append("type_voyage")
+    destination = demande.get("destination")
+    if not isinstance(destination, str) or not destination.strip():
+        manquants.append("destination")
+    date_depart = demande.get("date_depart")
+    date_retour = demande.get("date_retour")
+    if not _valid_date(date_depart):
+        manquants.append("date_depart")
+    if not _valid_date(date_retour):
+        manquants.append("date_retour")
+    elif _valid_date(date_depart) and str(date_retour) < str(date_depart):
+        manquants.append("date_retour")
+    nombre = demande.get("nombre_voyageurs")
+    if type(nombre) is not int or not 1 <= nombre <= 20:
+        manquants.append("nombre_voyageurs")
+    budget = demande.get("budget_max_par_personne")
+    if type(budget) is not int or budget <= 0 or budget > 100000:
+        manquants.append("budget_max_par_personne")
+    if demande.get("niveau_aventure") not in NIVEAUX_AVENTURE:
+        manquants.append("niveau_aventure")
+    return manquants
+
+
+def recalculer_qualification(record):
+    """Pose la qualification à partir des champs et de la décision du conseiller.
+
+    L'agent ne peut pas atteindre « prête pour proposition » : seul
+    qualification_validee_par, posé par le conseiller, y mène.
+    Un renvoi manuel en incomplet est conservé tant que le conseiller ne le lève pas.
+    """
+    demande = record.get("demande") if isinstance(record.get("demande"), dict) else {}
+    manquants = champs_manquants(demande)
+    record["champs_manquants"] = manquants
+    if record.get("qualification_retenue") == QUALIF_INCOMPLET:
+        record["qualification"] = QUALIF_INCOMPLET
+        record["qualification_validee_par"] = None
+        return record
+    if manquants:
+        record["qualification"] = QUALIF_EN_COURS if record.get("messages") else QUALIF_INCOMPLET
+        record["qualification_validee_par"] = None
+        return record
+    if record.get("qualification_validee_par"):
+        record["qualification"] = QUALIF_PRET_PROPOSITION
+        return record
+    record["qualification"] = QUALIF_PRET_RELECTURE
+    return record
+
+
+def _publier(record):
+    copie = json.loads(json.dumps(record))
+    return recalculer_qualification(copie)
 
 
 def valider_demande(data):
@@ -146,19 +206,22 @@ class DemandStore:
                 "statut": STATUT_A_ANALYSER,
                 "cree_le": utc_now_iso(),
                 "demande": valide,
+                "qualification_retenue": None,
+                "qualification_validee_par": None,
             }
+            recalculer_qualification(record)
             self.demandes[dem_id] = record
             self.save()
-            return json.loads(json.dumps(record))
+            return _publier(record)
 
     def lister(self):
         with self.lock:
-            return json.loads(json.dumps(list(self.demandes.values())))
+            return [_publier(record) for record in self.demandes.values()]
 
     def obtenir(self, dem_id):
         with self.lock:
             record = self.demandes.get(dem_id)
-            return json.loads(json.dumps(record)) if record else None
+            return _publier(record) if record else None
 
     def mettre_a_jour(self, dem_id, **champs):
         with self.lock:
@@ -166,8 +229,10 @@ class DemandStore:
             if not record:
                 return None
             record.update(champs)
+            if "demande" in champs or "messages" in champs:
+                recalculer_qualification(record)
             self.save()
-            return json.loads(json.dumps(record))
+            return _publier(record)
 
 
     def ajouter_recherche(self, dem_id, recherche):
@@ -182,17 +247,66 @@ class DemandStore:
             self.save()
             return json.loads(json.dumps(entree))
 
+    def recalculer(self, dem_id):
+        """Recalcule la qualification après un changement de champs ou de messages."""
+        with self.lock:
+            record = self.demandes.get(dem_id)
+            if not record:
+                return None
+            recalculer_qualification(record)
+            self.save()
+            return _publier(record)
+
+    def definir_qualification(self, dem_id, qualification, acteur="conseiller"):
+        """Décision du conseiller : renvoyer en incomplet, ou valider pour proposition.
+
+        L'agent n'est pas un acteur autorisé. Une validation exige les champs obligatoires.
+        """
+        if acteur != "conseiller":
+            raise ValidationError(
+                "Seul le conseiller peut changer la qualification. "
+                "L'agent ne peut pas marquer une demande prête pour proposition.")
+        if qualification not in (QUALIF_INCOMPLET, QUALIF_PRET_PROPOSITION):
+            raise ValidationError(
+                "Le conseiller peut renvoyer la demande en incomplet ou la valider pour proposition.")
+        with self.lock:
+            record = self.demandes.get(dem_id)
+            if not record:
+                return None
+            if qualification == QUALIF_PRET_PROPOSITION:
+                manquants = champs_manquants(record.get("demande"))
+                if manquants:
+                    raise ValidationError(
+                        "Informations obligatoires incomplètes : " + ", ".join(manquants) + ".")
+                record["qualification_retenue"] = None
+                record["qualification_validee_par"] = "conseiller"
+                record["qualification_validee_le"] = utc_now_iso()
+            else:
+                record["qualification_retenue"] = QUALIF_INCOMPLET
+                record["qualification_validee_par"] = None
+                record["qualification_validee_le"] = None
+            recalculer_qualification(record)
+            self.save()
+            return _publier(record)
+
     def changer_statut(self, dem_id, statut):
-        """Change le statut d'une demande. Retourne None si inconnue ou refusée."""
+        """Change le statut de proposition. Retourne None si la demande est inconnue.
+
+        Proposée ou validée seulement après validation explicite du conseiller.
+        """
         if statut not in STATUTS:
             raise ValidationError(f"statut doit être l'un de {', '.join(STATUTS)}.")
         with self.lock:
             record = self.demandes.get(dem_id)
             if not record:
                 return None
+            recalculer_qualification(record)
+            if statut in (STATUT_PROPOSE, STATUT_VALIDE) and record.get("qualification") != QUALIF_PRET_PROPOSITION:
+                raise ValidationError(
+                    "La demande ne peut partir en proposition que si le conseiller l'a validée.")
             record["statut"] = statut
             self.save()
-            return json.loads(json.dumps(record))
+            return _publier(record)
 
     def definir_messages(self, dem_id, messages):
         """Remplace l'historique de conversation d'une demande (liste de messages)."""
@@ -210,8 +324,9 @@ class DemandStore:
             if not record:
                 return None
             record["messages"] = json.loads(json.dumps(messages[-60:]))
+            recalculer_qualification(record)
             self.save()
-            return json.loads(json.dumps(record))
+            return _publier(record)
 
 
 def criteres_depuis_demande(demande):

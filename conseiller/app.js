@@ -1,5 +1,6 @@
 "use strict";
 
+(() => {
 const $ = (sel) => document.querySelector(sel);
 const state = { messages: [], demandeId: null };
 
@@ -400,3 +401,4 @@ async function reprendreConversation(demId) {
 appendBubble("assistant", WELCOME);
 chargerHistorique();
 chargerCatalogue();
+})();

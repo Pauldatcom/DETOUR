@@ -107,6 +107,8 @@ class TestDemandStore(unittest.TestCase):
         record = self.store.creer(dict(VALIDE))
         self.assertTrue(record["id"].startswith("dem_"))
         self.assertEqual(record["statut"], "a_analyser")
+        self.assertEqual(record["qualification"], "pret_relecture")
+        self.assertEqual(record["champs_manquants"], [])
         self.assertIn("cree_le", record)
         fetched = self.store.obtenir(record["id"])
         assert fetched is not None
@@ -523,11 +525,24 @@ class TestAgent(unittest.TestCase):
         self.assertTrue(result["demande"]["id"].startswith("dem_"))
         self.assertIsNotNone(result["recherche"])
         self.assertEqual(result["trace"]["tool_calls"][0]["statut"], "ok")
+        self.assertEqual(result["demande"]["qualification"], "pret_relecture")
         stored = self.store.obtenir(result["demande"]["id"])
         assert stored is not None
         self.assertEqual(len(stored["recherches"]), 1)
         self.assertEqual(fake.requests[1]["body"]["messages"][-1]["role"], "tool")
         self.assertNotIn("cle-test", json.dumps(result["trace"]))
+
+    def test_agent_ne_peut_pas_valider_pour_proposition(self):
+        tentative = copy.deepcopy(TOOL_CALL_MESSAGE)
+        arguments = json.loads(tentative["tool_calls"][0]["function"]["arguments"])
+        arguments["qualification"] = "pret_proposition"
+        tentative["tool_calls"][0]["function"]["arguments"] = json.dumps(arguments)
+        agent, _ = self.make_agent([{"message": tentative}, {"message": FINAL_MESSAGE}])
+        result = agent.chat([{"role": "user", "content": "Week-end à Nantes pour 2"}])
+        self.assertEqual(result["demande"]["qualification"], "pret_relecture")
+        self.assertIn("qualification_refusee", result["trace"]["tool_calls"][0])
+        with self.assertRaises(ValidationError):
+            self.store.definir_qualification(result["demande"]["id"], "pret_proposition", acteur="agent")
 
     def test_arguments_invalides_renvoyes_au_modele(self):
         bad = copy.deepcopy(TOOL_CALL_MESSAGE)

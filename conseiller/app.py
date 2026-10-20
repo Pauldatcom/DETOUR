@@ -498,6 +498,18 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                         return self.send_json(201, {"recherche": recherche, "simulation": True})
 
                 if method == "PATCH":
+                    match = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/qualification", path)
+                    if match:
+                        admin_exige(self)
+                        data = self.read_json()
+                        record = store.definir_qualification(
+                            match.group(1), data.get("qualification"), acteur="conseiller")
+                        if record is None:
+                            raise ApiError(404, "demande_not_found", "Demande introuvable.")
+                        if users is not None:
+                            record["client"] = users.obtenir(record.get("demande", {}).get("user_id", ""))
+                        return self.send_json(200, {"demande": record, "simulation": True})
+
                     match = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/statut", path)
                     if match:
                         data = self.read_json()

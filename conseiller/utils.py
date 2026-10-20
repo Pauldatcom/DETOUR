@@ -31,6 +31,23 @@ STATUT_PROPOSE = "propose"
 STATUT_VALIDE = "valide"
 STATUT_REFUSE = "refuse"
 STATUTS = (STATUT_NOUVELLE, STATUT_A_ANALYSER, STATUT_PROPOSE, STATUT_VALIDE, STATUT_REFUSE)
+# Qualification de la demande, avant toute proposition. Distincte de STATUTS.
+QUALIF_INCOMPLET = "incomplet"
+QUALIF_EN_COURS = "en_cours"
+QUALIF_PRET_RELECTURE = "pret_relecture"
+QUALIF_PRET_PROPOSITION = "pret_proposition"
+QUALIFICATIONS = (
+    QUALIF_INCOMPLET,
+    QUALIF_EN_COURS,
+    QUALIF_PRET_RELECTURE,
+    QUALIF_PRET_PROPOSITION,
+)
+QUALIFICATION_LABELS = {
+    QUALIF_INCOMPLET: "Incomplète",
+    QUALIF_EN_COURS: "En cours",
+    QUALIF_PRET_RELECTURE: "Prête pour relecture",
+    QUALIF_PRET_PROPOSITION: "Prête pour proposition",
+}
 STATUT_LABELS = {
     STATUT_NOUVELLE: "Nouvelle",
     STATUT_A_ANALYSER: "À analyser",

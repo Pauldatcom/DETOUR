@@ -122,6 +122,13 @@ const STATUT_LABELS = {
   refuse: "Refusée",
 };
 
+const QUALIFICATION_LABELS = {
+  incomplet: "Incomplète",
+  en_cours: "En cours",
+  pret_relecture: "Prête pour relecture",
+  pret_proposition: "Prête pour proposition",
+};
+
 const TYPE_LABELS = {
   "trek-randonnee": "Trek / Randonnée",
   "lune-de-miel": "Lune de miel",
@@ -163,6 +170,9 @@ function dashRow(demande) {
   const tdCree = document.createElement("td");
   tdCree.textContent = formatDateTime(demande.cree_le);
 
+  const tdQualification = document.createElement("td");
+  tdQualification.append(blocQualification(demande));
+
   const tdStatut = document.createElement("td");
   const select = document.createElement("select");
   select.className = "statut-select";
@@ -198,8 +208,56 @@ function dashRow(demande) {
   detailButton.addEventListener("click", () => afficherDetail(demande.id));
   tdAction.append(detailButton);
 
-  tr.append(tdId, tdClient, tdVoyage, tdDates, tdBudget, tdCree, tdStatut, tdAction);
+  tr.append(tdId, tdClient, tdVoyage, tdDates, tdBudget, tdCree, tdQualification, tdStatut, tdAction);
   return tr;
+}
+
+function blocQualification(demande) {
+  const bloc = document.createElement("div");
+  bloc.className = "qualif-bloc";
+  const label = document.createElement("div");
+  label.className = "qualif-label";
+  label.textContent = QUALIFICATION_LABELS[demande.qualification] || demande.qualification || "—";
+  bloc.append(label);
+
+  const actions = document.createElement("div");
+  actions.className = "qualif-actions";
+  actions.append(
+    boutonQualification(demande, "incomplet", "Renvoyer en incomplet"),
+    boutonQualification(demande, "pret_proposition", "Valider pour proposition"),
+  );
+  bloc.append(actions);
+  return bloc;
+}
+
+function boutonQualification(demande, qualification, texte) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "secondary-button qualif-button";
+  button.textContent = texte;
+  button.disabled = demande.qualification === qualification;
+  if (qualification === "pret_proposition" && (demande.champs_manquants || []).length) {
+    button.title = "Informations obligatoires manquantes : " + demande.champs_manquants.join(", ");
+  }
+  button.addEventListener("click", () => changerQualification(demande, qualification, button));
+  return button;
+}
+
+async function changerQualification(demande, qualification, button) {
+  button.disabled = true;
+  try {
+    await apiJSON(`/api/demandes/${encodeURIComponent(demande.id)}/qualification`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ qualification }),
+    });
+    await chargerDemandes();
+    const detail = document.getElementById("detail-section");
+    if (detail && !detail.hidden) afficherDetail(demande.id);
+  } catch (err) {
+    button.disabled = false;
+    setError("demandes-error", err.message);
+  }
 }
 
 function detailChamp(label, valeur) {
@@ -228,12 +286,18 @@ async function afficherDetail(demId) {
     const info = document.createElement("div");
     info.className = "source-box";
     info.append(Object.assign(document.createElement("div"), {
-      textContent: `Demande ${record.id} — statut : ${STATUT_LABELS[record.statut] || record.statut}`,
+      textContent: `Demande ${record.id} — qualification : ${QUALIFICATION_LABELS[record.qualification] || record.qualification || "—"} — statut : ${STATUT_LABELS[record.statut] || record.statut}`,
     }));
     const client = record.client;
     info.append(Object.assign(document.createElement("div"), {
       textContent: client ? `Voyageur : ${client.nom} (${client.email})` : "Voyageur : —",
     }));
+    const manquants = record.champs_manquants || [];
+    if (manquants.length) {
+      info.append(Object.assign(document.createElement("div"), {
+        textContent: "Informations obligatoires manquantes : " + manquants.join(", "),
+      }));
+    }
     if (record.messages) {
       info.append(Object.assign(document.createElement("div"), {
         textContent: `${record.messages.length} message(s) dans la conversation.`,
