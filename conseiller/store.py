@@ -100,6 +100,82 @@ def analyser_informations(demande):
     }
 
 
+# Fields the traveler (via the agent) may set on a request.
+CHAMPS_REPONSE = (
+    "type_voyage", "destination", "date_depart", "date_retour",
+    "nombre_voyageurs", "has_enfants", "nombre_enfants",
+    "budget_max_par_personne", "niveau_aventure", "besoin_guide",
+    "activites", "contraintes", "souhaits", "conseiller",
+)
+
+
+def _normaliser_champ(key, value, contexte):
+    """Validate one answer field. Raises ValidationError if the value is unusable."""
+    if key == "type_voyage":
+        if value not in TYPES_VOYAGE:
+            raise ValidationError(f"type_voyage doit être l'un de {', '.join(TYPES_VOYAGE)}.")
+        return value
+    if key == "destination":
+        if not isinstance(value, str) or not value.strip():
+            raise ValidationError("destination est obligatoire.")
+        return value.strip()
+    if key in ("date_depart", "date_retour"):
+        if not _valid_date(value):
+            raise ValidationError(f"{key} au format AAAA-MM-JJ est obligatoire.")
+        return str(value)
+    if key == "nombre_voyageurs":
+        if type(value) is not int or not 1 <= value <= 20:
+            raise ValidationError("nombre_voyageurs doit être un entier de 1 à 20.")
+        return value
+    if key == "has_enfants":
+        return bool(value)
+    if key == "nombre_enfants":
+        if type(value) is not int or value < 0:
+            raise ValidationError("nombre_enfants doit être un entier >= 0.")
+        return value
+    if key == "budget_max_par_personne":
+        if type(value) is not int or value <= 0 or value > 100000:
+            raise ValidationError("budget_max_par_personne doit être un entier positif.")
+        return value
+    if key == "niveau_aventure":
+        if value not in NIVEAUX_AVENTURE:
+            raise ValidationError(
+                f"niveau_aventure doit être l'un de {', '.join(NIVEAUX_AVENTURE)}.")
+        return value
+    if key == "besoin_guide":
+        return bool(value)
+    if key == "activites":
+        if not isinstance(value, list):
+            raise ValidationError("activites doit être une liste.")
+        return list(dict.fromkeys(
+            a.strip() for a in value if isinstance(a, str) and a.strip()))
+    if key in ("contraintes", "souhaits", "conseiller"):
+        if not isinstance(value, str):
+            raise ValidationError(f"{key} doit être une chaîne.")
+        return value.strip()
+    return value
+
+
+def fusionner_reponses(existant, champs):
+    """Merge traveler answers into an existing demande dict.
+
+    Returns (merged, champs_mis_a_jour). Unknown keys are ignored. Invalid
+    values raise ValidationError — nothing is applied in that case by the caller.
+    """
+    if not isinstance(champs, dict):
+        raise ValidationError("Réponses invalides (objet attendu).")
+    merged = dict(existant) if isinstance(existant, dict) else {}
+    mis_a_jour = []
+    for key in CHAMPS_REPONSE:
+        if key not in champs or champs[key] is None:
+            continue
+        nouveau = _normaliser_champ(key, champs[key], merged)
+        if merged.get(key) != nouveau:
+            mis_a_jour.append(key)
+        merged[key] = nouveau
+    return merged, mis_a_jour
+
+
 def recalculer_qualification(record):
     """Pose la qualification à partir des champs et de la décision du conseiller.
 
@@ -272,6 +348,58 @@ class DemandStore:
                 recalculer_qualification(record)
             self.save()
             return _publier(record)
+
+    def enregistrer_reponses(self, dem_id, champs, user_id=""):
+        """Save traveler answers on an existing request, or create one.
+
+        Merges only the provided fields; other values are preserved. When the
+        merged demande is complete it is fully validated. Returns
+        (record, champs_mis_a_jour). record is None if dem_id was set but unknown.
+        """
+        if not isinstance(user_id, str):
+            user_id = ""
+        user_id = user_id.strip()
+        with self.lock:
+            if dem_id:
+                record = self.demandes.get(dem_id)
+                if not record:
+                    return None, []
+                existant_uid = (record.get("demande") or {}).get("user_id", "")
+                if existant_uid and user_id and existant_uid != user_id:
+                    raise ValidationError(
+                        "Cette demande appartient à un autre voyageur.")
+                avant = record.get("demande") or {}
+                merged, mis_a_jour = fusionner_reponses(avant, champs)
+                if user_id:
+                    merged["user_id"] = user_id
+                elif "user_id" not in merged:
+                    merged["user_id"] = existant_uid or ""
+                if not champs_manquants(merged):
+                    merged = valider_demande(merged)
+                record["demande"] = merged
+                recalculer_qualification(record)
+                self.save()
+                return _publier(record), mis_a_jour
+
+            merged, mis_a_jour = fusionner_reponses({}, champs)
+            merged["user_id"] = user_id
+            if not mis_a_jour:
+                raise ValidationError("Aucune réponse exploitable à enregistrer.")
+            dem_id = "dem_" + secrets.token_hex(6)
+            if not champs_manquants(merged):
+                merged = valider_demande(merged)
+            record = {
+                "id": dem_id,
+                "statut": STATUT_A_ANALYSER,
+                "cree_le": utc_now_iso(),
+                "demande": merged,
+                "qualification_retenue": None,
+                "qualification_validee_par": None,
+            }
+            recalculer_qualification(record)
+            self.demandes[dem_id] = record
+            self.save()
+            return _publier(record), mis_a_jour
 
     def corriger(self, dem_id, champs, auteur):
         """Let the advisor correct fields of a request. Every change is recorded.
