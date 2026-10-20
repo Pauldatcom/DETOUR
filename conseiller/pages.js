@@ -274,6 +274,23 @@ function detailChamp(label, valeur) {
   return div;
 }
 
+/** Human-readable delta between proposal v1 and a newer server reading. */
+function texteChangementLecture(c) {
+  if (c.inchange) {
+    return `${c.nom} (${c.id}) — prix et disponibilité inchangés (${c.prix_apres} €/pers, ${c.disponible_apres ? "disponible" : "indisponible"})`;
+  }
+  const parts = [`${c.nom} (${c.id})`];
+  if (c.prix_change) {
+    parts.push(`prix ${c.prix_avant} € → ${c.prix_apres} €`);
+  }
+  if (c.disponibilite_change) {
+    parts.push(c.disponible_apres ? "devenu disponible" : "indisponible");
+  } else if (!c.disponible_apres) {
+    parts.push("indisponible");
+  }
+  return parts.join(" — ");
+}
+
 /** Render stored proposals: verified lines show price, source and time; others stay missing. */
 async function afficherPropositionsDemande(content, demId) {
   try {
@@ -311,6 +328,20 @@ async function afficherPropositionsDemande(content, demId) {
         liste.append(li);
       }
       bloc.append(liste);
+      // Newer reading vs v1: previous/new price, unavailable, or unchanged.
+      const changements = prop.changements || [];
+      if (changements.length) {
+        const sous = document.createElement("ul");
+        sous.className = "detail-liste";
+        for (const c of changements) {
+          const li = document.createElement("li");
+          li.textContent = texteChangementLecture(c);
+          sous.append(li);
+        }
+        bloc.append(Object.assign(document.createElement("div"), {
+          textContent: "Nouvelle lecture :",
+        }), sous);
+      }
       content.append(bloc);
     }
   } catch (err) {
