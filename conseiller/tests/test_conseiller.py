@@ -23,7 +23,7 @@ from store import DemandStore, ValidationError, criteres_depuis_demande, valider
 from app import load_env_file, make_handler
 from agent import Agent, OpenRouterError
 from fournisseur import SupplierClient, SupplierError
-from propositions import PropositionStore, PropositionError
+from propositions import PropositionStore, PropositionError, aligner_sur_serveur
 
 
 VALIDE = {
@@ -815,6 +815,28 @@ class TestPropositionGeneration(unittest.TestCase):
         result = agent.generer_proposition(demande, recherche)
         self.assertEqual(result["titre"], "Généré")
         self.assertIsInstance(result["prestations"], list)
+        
+
+
+class TestAlignerSurServeur(unittest.TestCase):
+    """Le prix d'une proposition vient toujours du serveur, jamais du modèle."""
+    RESULTATS = [{"id": "train-lyon-01", "nom": "Train vers Lyon",
+                  "type": "transport", "prix_unitaire_eur": 62}]
+
+    def test_prix_du_serveur_remplace_celui_du_modele(self):
+        data = {"titre": "Lyon", "prestations": [
+            {"id": "train-lyon-01", "nom": "Train", "type": "transport",
+             "prix_unitaire_eur": 26, "quantite": 2}]}
+        prestation = aligner_sur_serveur(data, self.RESULTATS)["prestations"][0]
+        self.assertEqual(prestation["prix_unitaire_eur"], 62)
+        self.assertEqual(prestation["nom"], "Train vers Lyon")
+        self.assertEqual(prestation["quantite"], 2)
+
+    def test_prestation_inconnue_du_serveur_refusee(self):
+        data = {"titre": "Lyon", "prestations": [
+            {"id": "bateau-lyon-99", "nom": "Croisière", "prix_unitaire_eur": 40}]}
+        with self.assertRaises(PropositionError):
+            aligner_sur_serveur(data, self.RESULTATS)
 
 
 if __name__ == "__main__":

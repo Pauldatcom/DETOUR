@@ -9,6 +9,7 @@ import urllib.request
 from pathlib import Path
 
 from fournisseur import SupplierError
+from propositions import PropositionError, aligner_sur_serveur
 from store import ValidationError, criteres_depuis_demande
 from utils import (DEFAULT_MODEL, MAX_MESSAGES, MAX_TOOL_ITERATIONS,
                    OPENROUTER_URL, TOOL_NAME)
@@ -214,7 +215,10 @@ class Agent:
             raise OpenRouterError("Réponse du modèle illisible (JSON attendu).") from err
         if not isinstance(prop_data, dict):
             raise OpenRouterError("Réponse du modèle invalide (objet attendu).")
-        return prop_data
+        try:
+            return aligner_sur_serveur(prop_data, resultats)
+        except PropositionError as err:
+            raise OpenRouterError(f"Proposition refusée : {err}") from err
 
     def _call_model(self, conversation, with_tools=True):
         payload = {"model": self.model, "messages": conversation}

@@ -65,6 +65,34 @@ def valider_proposition(data):
     }
 
 
+def aligner_sur_serveur(data, resultats):
+    """Reprend nom, type et prix de chaque prestation depuis les résultats du serveur.
+
+    Le modèle peut se tromper ou inventer : seul le serveur fait foi.
+    Une prestation absente des résultats du serveur est refusée.
+    """
+    if not isinstance(data, dict):
+        raise PropositionError("Proposition invalide (objet attendu).")
+    par_id = {r["id"]: r for r in resultats or []
+              if isinstance(r, dict) and r.get("id")}
+    prestations = []
+    for p in data.get("prestations", []):
+        if not isinstance(p, dict):
+            raise PropositionError("Prestation invalide (objet attendu).")
+        source = par_id.get(p.get("id"))
+        if source is None:
+            raise PropositionError(
+                f"Prestation inconnue du serveur : {p.get('id')}. Aucun prix inventé n'est accepté.")
+        prestations.append({
+            "id": source["id"],
+            "nom": source.get("nom", ""),
+            "type": source.get("type", ""),
+            "prix_unitaire_eur": source["prix_unitaire_eur"],
+            "quantite": p.get("quantite", 1),
+        })
+    return {**data, "prestations": prestations}
+
+
 class PropositionStore:
     def __init__(self, path=None):
         self.path = Path(path) if path else None
