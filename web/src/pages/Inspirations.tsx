@@ -2,15 +2,17 @@ import { useState } from "react";
 import { PublicNav } from "../components/landing/PublicNav";
 import { Footer } from "../components/landing/Footer";
 import { DestinationCard } from "../components/landing/DestinationCard";
+import { ChatWidget } from "../components/landing/ChatWidget";
 import { INSPIRATIONS } from "../data/detourContent";
 import type { Destination } from "../data/detourContent";
 
 interface InspirationsPageProps {
   onDecrir: () => void;
+  isLoggedIn: boolean;
 }
 
 /** Page Inspirations — toutes les destinations, filtre par ambiance. */
-export function InspirationsPage({ onDecrir }: InspirationsPageProps) {
+export function InspirationsPage({ onDecrir, isLoggedIn }: InspirationsPageProps) {
   const ambiances = Array.from(
     new Set(INSPIRATIONS.destinations.map((d) => d.ambiance)),
   );
@@ -65,6 +67,7 @@ export function InspirationsPage({ onDecrir }: InspirationsPageProps) {
         </div>
       </main>
       <Footer />
+      <ChatWidget isLoggedIn={isLoggedIn} />
     </div>
   );
 }

@@ -45,7 +45,7 @@ export default function App() {
       <Route path="/accueil" element={<Accueil isLoggedIn={connecte} />} />
       <Route
         path="/inspirations"
-        element={<InspirationsPage onDecrir={() => {}} />}
+        element={<InspirationsPage onDecrir={() => {}} isLoggedIn={connecte} />}
       />
       <Route
         path="/conseillers"

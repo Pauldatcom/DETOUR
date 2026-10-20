@@ -6,6 +6,7 @@ import { HowItWorks } from "../components/landing/HowItWorks";
 import { AdvisorAvailability } from "../components/landing/AdvisorAvailability";
 import { Footer } from "../components/landing/Footer";
 import { TravelRequestForm } from "../components/landing/TravelRequestForm";
+import { ChatWidget } from "../components/landing/ChatWidget";
 
 interface AccueilProps {
   isLoggedIn: boolean;
@@ -32,6 +33,8 @@ export function Accueil({ isLoggedIn }: AccueilProps) {
           onClose={() => setFormOuvert(false)}
         />
       )}
+
+      <ChatWidget isLoggedIn={isLoggedIn} />
     </div>
   );
 }
