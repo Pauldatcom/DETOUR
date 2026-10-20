@@ -1,0 +1,59 @@
+services:
+  grafana:
+    image: grafana/grafana:latest
+    container_name: detour-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+      - loki
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: detour-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  loki:
+    image: grafana/loki:latest
+    container_name: detour-loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml
+      - loki-data:/loki
+    command: -config.file=/etc/loki/loki-config.yml
+
+  alloy:
+    image: grafana/alloy:latest
+    container_name: detour-alloy
+    profiles: ["cloud"]
+    volumes:
+      - ./alloy/alloy.config:/etc/alloy/alloy.config
+    environment:
+      - GRAFANA_CLOUD_URL=${GRAFANA_CLOUD_URL:-}
+      - GRAFANA_CLOUD_TOKEN=${GRAFANA_CLOUD_TOKEN:-}
+      - GRAFANA_CLOUD_USER=${GRAFANA_CLOUD_USER:-}
+    command:
+      - run
+      - /etc/alloy/alloy.config
+      - --server.http.listen-addr=0.0.0.0:12345
+
+volumes:
+  grafana-data:
+  prometheus-data:
+  loki-data:
