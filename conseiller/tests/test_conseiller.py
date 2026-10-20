@@ -838,7 +838,7 @@ class TestAlignerSurServeur(unittest.TestCase):
             {"id": "bateau-lyon-99", "nom": "Croisière", "prix_unitaire_eur": 40}]}
         with self.assertRaises(PropositionError):
             aligner_sur_serveur(data, self.RESULTATS)
-            
+
 
 class TestCorrigerDemande(unittest.TestCase):
     """The advisor can correct a request; every change is recorded."""
@@ -886,6 +886,44 @@ class TestCorrigerDemande(unittest.TestCase):
         self.assertIsNone(self.store.corriger("dem_unknown", {"destination": "Lyon"}, "Narimen"))
 
 
+class TestCorrectionRoute(unittest.TestCase):
+    """PATCH /api/demandes/<id>/correction updates the request through HTTP."""
+
+    def setUp(self):
+        self.store = DemandStore(None)
+        server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(self.store))
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(lambda: (server.shutdown(), server.server_close()))
+        self.base = f"http://127.0.0.1:{server.server_port}"
+        self.dem_id = self.store.creer(dict(VALIDE))["id"]
+
+    def patch(self, path, payload):
+        req = urllib.request.Request(
+            self.base + path, data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"}, method="PATCH")
+        try:
+            with urllib.request.urlopen(req) as res:
+                return res.status, json.loads(res.read())
+        except urllib.error.HTTPError as err:
+            return err.code, json.loads(err.read())
+
+    def test_correction_route_updates_request(self):
+        status, data = self.patch(f"/api/demandes/{self.dem_id}/correction",
+                                  {"champs": {"budget_max_par_personne": 600}})
+        self.assertEqual(status, 200)
+        self.assertEqual(data["demande"]["demande"]["budget_max_par_personne"], 600)
+        self.assertEqual(len(data["demande"]["modifications"]), 1)
+
+    def test_invalid_value_returns_400(self):
+        status, data = self.patch(f"/api/demandes/{self.dem_id}/correction",
+                                  {"champs": {"budget_max_par_personne": -5}})
+        self.assertEqual(status, 400)
+        self.assertEqual(data["erreur"]["code"], "validation_error")
+
+    def test_unknown_request_returns_404(self):
+        status, _ = self.patch("/api/demandes/dem_abc123/correction",
+                               {"champs": {"destination": "Lyon"}})
+        self.assertEqual(status, 404)
 
 
 if __name__ == "__main__":

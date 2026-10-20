@@ -510,6 +510,19 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                             record["client"] = users.obtenir(record.get("demande", {}).get("user_id", ""))
                         return self.send_json(200, {"demande": record, "simulation": True})
 
+                    match = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/correction", path)
+                    if match:
+                        # Only a logged-in advisor can correct a request; the agent cannot.
+                        session = admin_exige(self)
+                        data = self.read_json()
+                        author = (session.get("nom") if isinstance(session, dict) else "") or "conseiller"
+                        record = store.corriger(match.group(1), data.get("champs"), author)
+                        if record is None:
+                            raise ApiError(404, "demande_not_found", "Request not found.")
+                        if users is not None:
+                            record["client"] = users.obtenir(record.get("demande", {}).get("user_id", ""))
+                        return self.send_json(200, {"demande": record, "simulation": True})
+
                     match = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/statut", path)
                     if match:
                         data = self.read_json()
