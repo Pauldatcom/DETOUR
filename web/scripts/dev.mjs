@@ -38,7 +38,10 @@ const SERVICES = [
 
 function killPort(port) {
   const res = spawnSync("lsof", ["-t", "-i", `tcp:${port}`], { encoding: "utf8" });
-  const pids = (res.stdout || "").split("\n").map((s) => s.trim()).filter(Boolean);
+  const pids = (res.stdout || "")
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
   for (const pid of pids) {
     if (pid === String(process.pid)) continue;
     spawnSync("kill", ["-9", pid]);

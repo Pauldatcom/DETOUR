@@ -52,7 +52,7 @@ export function Login({ onSession, googleOauth }: LoginProps) {
           </Link>
           <Link
             to="/accueil"
-            className="rounded-full border border-[#d5e0ee] px-4 py-1.5 text-sm font-semibold text-[#0b2447] outline-none transition hover:border-[#38bdb8] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+            className="rounded-full border border-[#d5e0ee] px-4 py-1.5 text-sm font-semibold text-[#0b2447] transition outline-none hover:border-[#38bdb8] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
           >
             ← Retour à l'accueil
           </Link>
@@ -68,15 +68,17 @@ export function Login({ onSession, googleOauth }: LoginProps) {
 
           {/* Onglets */}
           <div className="mt-6 flex gap-1 rounded-xl border border-[#e8eef6] bg-[#f7fafd] p-1">
-            {([
-              ["login", "Connexion"],
-              ["register", "Inscription"],
-              ["conseiller", "Conseiller"],
-            ] as const).map(([t, label]) => (
+            {(
+              [
+                ["login", "Connexion"],
+                ["register", "Inscription"],
+                ["conseiller", "Conseiller"],
+              ] as const
+            ).map(([t, label]) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
-                className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold outline-none transition ${
+                className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition outline-none ${
                   tab === t
                     ? "bg-[#0b2447] text-white shadow"
                     : "text-[#4b6480] hover:text-[#0b2447]"
@@ -90,13 +92,11 @@ export function Login({ onSession, googleOauth }: LoginProps) {
           <form onSubmit={submit} className="mt-6 space-y-4">
             {tab === "register" && (
               <div>
-                <label className="mb-1 block text-sm font-medium text-[#0b2447]">
-                  Nom
-                </label>
+                <label className="mb-1 block text-sm font-medium text-[#0b2447]">Nom</label>
                 <input
                   value={nom}
                   onChange={(e) => setNom(e.target.value)}
-                  className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm outline-none transition focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+                  className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm transition outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
                   required
                 />
               </div>
@@ -105,14 +105,12 @@ export function Login({ onSession, googleOauth }: LoginProps) {
             {tab !== "conseiller" ? (
               <>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-[#0b2447]">
-                    E-mail
-                  </label>
+                  <label className="mb-1 block text-sm font-medium text-[#0b2447]">E-mail</label>
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm outline-none transition focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+                    className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm transition outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
                     required
                   />
                 </div>
@@ -124,7 +122,7 @@ export function Login({ onSession, googleOauth }: LoginProps) {
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm outline-none transition focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+                    className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm transition outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
                     required
                     minLength={6}
                   />
@@ -139,7 +137,7 @@ export function Login({ onSession, googleOauth }: LoginProps) {
                   type="password"
                   value={cle}
                   onChange={(e) => setCle(e.target.value)}
-                  className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm outline-none transition focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+                  className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm transition outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
                   required
                 />
               </div>
@@ -154,7 +152,7 @@ export function Login({ onSession, googleOauth }: LoginProps) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-full bg-[#0b2447] px-6 py-3 text-base font-semibold text-white outline-none transition hover:bg-[#12335e] focus-visible:ring-2 focus-visible:ring-[#38bdb8] focus-visible:ring-offset-2 disabled:opacity-60"
+              className="w-full rounded-full bg-[#0b2447] px-6 py-3 font-semibold text-base text-white transition outline-none hover:bg-[#12335e] focus-visible:ring-2 focus-visible:ring-[#38bdb8] focus-visible:ring-offset-2 disabled:opacity-60"
             >
               {loading
                 ? "…"
@@ -175,7 +173,7 @@ export function Login({ onSession, googleOauth }: LoginProps) {
               </div>
               <button
                 onClick={() => api.googleAuth()}
-                className="w-full rounded-full border border-[#d5e0ee] px-4 py-2.5 text-sm font-medium text-[#0b2447] outline-none transition hover:bg-[#f2f7fc] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+                className="w-full rounded-full border border-[#d5e0ee] px-4 py-2.5 text-sm font-medium text-[#0b2447] transition outline-none hover:bg-[#f2f7fc] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
               >
                 Continuer avec Google
               </button>
@@ -183,8 +181,8 @@ export function Login({ onSession, googleOauth }: LoginProps) {
           )}
 
           <p className="mt-6 rounded-xl bg-[#f0eefe] px-4 py-3 text-xs text-[#6b3e9e]">
-            Projet fictif — aucune réservation réelle. Les comptes servent à
-            accéder au chatbot et à vos propositions.
+            Projet fictif — aucune réservation réelle. Les comptes servent à accéder au chatbot et à
+            vos propositions.
           </p>
         </div>
       </div>

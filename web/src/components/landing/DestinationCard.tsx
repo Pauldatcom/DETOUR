@@ -22,18 +22,20 @@ export function DestinationCard({ destination, onDecouvrir }: DestinationCardPro
         role="img"
         aria-label={destination.alt}
         className="relative aspect-[4/3] w-full"
-        style={{ background: GRADIENTS[destination.id] ?? "linear-gradient(150deg, #8db8d8, #0b2447)" }}
+        style={{
+          background: GRADIENTS[destination.id] ?? "linear-gradient(150deg, #8db8d8, #0b2447)",
+        }}
       >
-        <span className="absolute left-3 top-3 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-[#0b2447]">
+        <span className="absolute top-3 left-3 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-[#0b2447]">
           {destination.region}
         </span>
-        <span className="absolute bottom-3 right-3 rounded-full bg-black/40 px-3 py-1 text-xs font-medium text-white">
+        <span className="absolute right-3 bottom-3 rounded-full bg-black/40 px-3 py-1 text-xs font-medium text-white">
           Visuel fictif
         </span>
       </div>
       <div className="flex flex-1 flex-col p-5">
         <h3 className="text-lg font-bold text-[#0b2447]">{destination.titre}</h3>
-        <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-[#38bdb8]">
+        <p className="mt-1 text-xs font-semibold tracking-wide text-[#38bdb8] uppercase">
           {destination.ambiance}
         </p>
         <p className="mt-3 flex-1 text-sm leading-relaxed text-[#4b6480]">
@@ -43,7 +45,7 @@ export function DestinationCard({ destination, onDecouvrir }: DestinationCardPro
           <span className="text-sm font-semibold text-[#0b2447]">{destination.prixIndicatif}</span>
           <button
             onClick={() => onDecouvrir(destination)}
-            className="rounded-full bg-[#0b2447] px-4 py-2 text-sm font-semibold text-white outline-none transition hover:bg-[#12335e] focus-visible:ring-2 focus-visible:ring-[#38bdb8] focus-visible:ring-offset-2"
+            className="rounded-full bg-[#0b2447] px-4 py-2 text-sm font-semibold text-white transition outline-none hover:bg-[#12335e] focus-visible:ring-2 focus-visible:ring-[#38bdb8] focus-visible:ring-offset-2"
             aria-label={`Découvrir l'inspiration ${destination.titre}`}
           >
             Découvrir

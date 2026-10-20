@@ -89,11 +89,27 @@ observability/    Grafana + Prometheus + Loki (+ Alloy for Grafana Cloud)
 ## Tests
 
 ```bash
-python3 -m unittest discover -s server/tests -v
-python3 -m unittest discover -s conseiller/tests -v    # 85 tests
+python3 -m unittest discover -s server/tests -v          # 17 tests
+python3 -m unittest discover -s conseiller/tests -v      # 103 tests
 cd web && pnpm tsc --noEmit                              # TS typecheck
 cd web && pnpm build                                     # build (fails on TS errors)
+cd web && pnpm lint                                      # ESLint
+cd web && pnpm format:check                              # Prettier
 ```
+
+## Continuous integration
+
+`.github/workflows/test.yml` runs on every pull request:
+
+| Job | What it checks |
+|---|---|
+| `Tests (Python 3.11 / 3.12 / 3.13)` | the two `unittest` suites, standard library only |
+| `Lint` | Prettier formatting, ESLint, TypeScript typecheck |
+| `Build` | the React production build |
+| `Security Audit` | `pnpm audit --audit-level=high`, never blocking |
+
+The workflow is a required status check on `main`: a pull request cannot be
+merged while a job fails.
 
 ## Contributing
 

@@ -6,7 +6,7 @@ export function HowItWorks() {
     <section id="comment-ca-marche" className="scroll-mt-20 bg-white py-16 lg:py-24">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="max-w-2xl">
-          <p className="mb-2 text-sm font-semibold uppercase tracking-widest text-[#38bdb8]">
+          <p className="mb-2 text-sm font-semibold tracking-widest text-[#38bdb8] uppercase">
             {COMMENT_CA_MARCHE.surtitre}
           </p>
           <h2 className="text-3xl font-bold text-[#0b2447] sm:text-4xl">

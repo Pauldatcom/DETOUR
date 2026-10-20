@@ -13,9 +13,7 @@ interface InspirationsPageProps {
 
 /** Page Inspirations — toutes les destinations, filtre par ambiance. */
 export function InspirationsPage({ onDecrir, isLoggedIn }: InspirationsPageProps) {
-  const ambiances = Array.from(
-    new Set(INSPIRATIONS.destinations.map((d) => d.ambiance)),
-  );
+  const ambiances = Array.from(new Set(INSPIRATIONS.destinations.map((d) => d.ambiance)));
   const [filtre, setFiltre] = useState<string | null>(null);
 
   const destinations = filtre
@@ -27,7 +25,7 @@ export function InspirationsPage({ onDecrir, isLoggedIn }: InspirationsPageProps
       <PublicNav />
       <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:py-20">
         <div className="max-w-2xl">
-          <p className="mb-2 text-sm font-semibold uppercase tracking-widest text-[#38bdb8]">
+          <p className="mb-2 text-sm font-semibold tracking-widest text-[#38bdb8] uppercase">
             {INSPIRATIONS.surtitre}
           </p>
           <h1 className="text-3xl font-bold sm:text-4xl">{INSPIRATIONS.titre}</h1>
@@ -37,7 +35,7 @@ export function InspirationsPage({ onDecrir, isLoggedIn }: InspirationsPageProps
         <div className="mt-8 flex flex-wrap gap-2">
           <button
             onClick={() => setFiltre(null)}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium outline-none transition ${
+            className={`rounded-full px-4 py-1.5 text-sm font-medium transition outline-none ${
               filtre === null
                 ? "bg-[#0b2447] text-white"
                 : "border border-[#d5e0ee] text-[#4b6480] hover:bg-[#f2f7fc]"
@@ -49,7 +47,7 @@ export function InspirationsPage({ onDecrir, isLoggedIn }: InspirationsPageProps
             <button
               key={a}
               onClick={() => setFiltre(a)}
-              className={`rounded-full px-4 py-1.5 text-sm font-medium outline-none transition ${
+              className={`rounded-full px-4 py-1.5 text-sm font-medium transition outline-none ${
                 filtre === a
                   ? "bg-[#0b2447] text-white"
                   : "border border-[#d5e0ee] text-[#4b6480] hover:bg-[#f2f7fc]"
