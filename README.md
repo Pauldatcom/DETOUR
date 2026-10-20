@@ -1,89 +1,89 @@
-# DÉTOUR — Agence de voyages insolites
+# DÉTOUR — Unusual travel agency
 
-Projet pédagogique : application conseiller + voyageur pour une agence de
-voyages fictive. Backend Python stdlib (sans dépendances), front React/Vite,
-observabilité Grafana.
+Educational project: advisor + traveler application for a fictional travel
+agency. Python stdlib backend (no dependencies), React/Vite front end,
+Grafana observability.
 
-## Démarrage rapide
+## Quick start
 
 ```bash
-# 1. Backend Python (supplier + portail)
-python3 server/app.py --demo        # :8765 — API prestations fictives
-python3 conseiller/app.py           # :8766 — portail conseiller/voyageur
+# 1. Python backend (supplier + portal)
+python3 server/app.py --demo        # :8765 — fictional services API
+python3 conseiller/app.py           # :8766 — advisor/traveler portal
 
-# 2. Front React (dev)
+# 2. React front (dev)
 cd web
 pnpm install
 pnpm dev                             # :5173 (proxy → :8766)
 
-# 3. Observabilité (optionnel)
+# 3. Observability (optional)
 cd observability
-cp .env.example .env                 # renseigner GRAFANA_CLOUD_* si push Cloud
+cp .env.example .env                 # set GRAFANA_CLOUD_* to push to Cloud
 docker compose up -d                 # Grafana :3000, Prometheus :9090, Loki :3100
 ```
 
-Ouvrir `http://localhost:5173` en dev, `http://127.0.0.1:8766` en prod
-(une fois `pnpm build` exécuté dans `web/`).
+Open `http://localhost:5173` in dev, `http://127.0.0.1:8766` in prod
+(once `pnpm build` has run in `web/`).
 
 ## Configuration
 
-Copiez `.env.example` en `.env` à la racine :
+Copy `.env.example` to `.env` at the repository root:
 
-| Variable | Rôle |
+| Variable | Purpose |
 |---|---|
-| `OPENROUTER_API_KEY` | Clé OpenRouter pour l'agent conversationnel |
-| `OPENROUTER_MODEL` | Modèle (défaut : `openai/gpt-4o-mini`) |
-| `TRAVEL_TEAM_KEY` | Clé d'équipe pour le supplier (démo : `demo-key`) |
-| `TRAVEL_API_URL` | URL du supplier (défaut : `http://127.0.0.1:8765`) |
-| `GOOGLE_CLIENT_ID` | OAuth Google (optionnel) |
-| `GOOGLE_CLIENT_SECRET` | OAuth Google (optionnel) |
+| `OPENROUTER_API_KEY` | OpenRouter key for the conversational agent |
+| `OPENROUTER_MODEL` | Model (default: `openai/gpt-4o-mini`) |
+| `TRAVEL_TEAM_KEY` | Team key for the supplier (demo: `demo-key`) |
+| `TRAVEL_API_URL` | Supplier URL (default: `http://127.0.0.1:8765`) |
+| `GOOGLE_CLIENT_ID` | Google OAuth (optional) |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth (optional) |
 | `GOOGLE_REDIRECT_URI` | `http://localhost:8766/api/auth/google/callback` |
-| `METRICS_TOKEN` | Token d'accès `/metrics` (optionnel) |
+| `METRICS_TOKEN` | Access token for `/metrics` (optional) |
 
 ## Architecture
 
 ```
-server/          Supplier API (catalogue, recherche, dashboard) — :8765
-conseiller/       Portail (auth, chat, demandes, propositions, OAuth, /metrics) — :8766
-  app.py          Serveur HTTP stdlib, routes API, sert web/dist en prod
-  agent.py        Agent OpenRouter (tool-calling, génération de propositions)
-  propositions.py Store JSON des propositions (CRUD, statuts)
-  users.py         Comptes voyageurs (PBKDF2) + Google OAuth
-  store.py         Store JSON des demandes
-  fournisseur.py   Client du supplier API
-web/              Front React (Vite + TS + Tailwind v4 + RR v7 + Recharts)
+server/          Supplier API (catalogue, search, dashboard) — :8765
+conseiller/       Portal (auth, chat, demandes, propositions, OAuth, /metrics) — :8766
+  app.py          Stdlib HTTP server, API routes, serves web/dist in prod
+  agent.py        OpenRouter agent (tool-calling, proposition generation)
+  propositions.py JSON store for propositions (CRUD, statuses)
+  users.py         Traveler accounts (PBKDF2) + Google OAuth
+  store.py         JSON store for demandes
+  fournisseur.py   Supplier API client
+web/              React front (Vite + TS + Tailwind v4 + RR v7 + Recharts)
   src/pages/       Login, Dashboard, Demandes, Propositions, MesPropositions
   src/components/  Header, Sidebar, StatsCard, DataTable, PropositionCard…
-observability/    Grafana + Prometheus + Loki (+ Alloy pour Grafana Cloud)
+observability/    Grafana + Prometheus + Loki (+ Alloy for Grafana Cloud)
 ```
 
-## Routes API
+## API routes
 
-| Route | Méthode | Accès | Description |
+| Route | Method | Access | Description |
 |---|---|---|---|
 | `/api/config` | GET | public | Feature flags |
-| `/api/session` | GET | public | Session courante |
-| `/api/login` | POST | public | Connexion voyageur |
-| `/api/register` | POST | public | Inscription voyageur |
-| `/api/login-conseiller` | POST | public | Connexion conseiller (clé) |
-| `/api/auth/google` | GET | public | OAuth Google (PKCE) |
-| `/api/auth/google/callback` | GET | public | Callback OAuth |
-| `/api/demandes` | GET | conseiller | Liste demandes |
-| `/api/demandes` | POST | client | Créer demande |
-| `/api/demandes/{id}` | GET | conseiller/propriétaire | Détail |
-| `/api/demandes/{id}/recherche` | POST | conseiller/propriétaire | Recherche supplier |
-| `/api/demandes/{id}/statut` | PATCH | conseiller | Changer statut |
-| `/api/demandes/{id}/propositions` | POST | conseiller | Créer proposition |
-| `/api/demandes/{id}/propositions/generer` | POST | conseiller | Générer via IA |
-| `/api/propositions` | GET | conseiller | Liste propositions |
-| `/api/propositions/{id}` | GET | conseiller/propriétaire | Détail |
-| `/api/propositions/{id}` | PATCH | conseiller | Modifier |
-| `/api/propositions/{id}/statut` | PATCH | conseiller | Statut |
-| `/api/mes-demandes` | GET | client | Mes demandes |
-| `/api/mes-propositions` | GET | client | Mes propositions |
-| `/api/stats` | GET | conseiller | Statistiques |
-| `/api/catalogue` | GET | client | Catalogue supplier |
-| `/api/chat` | POST | client | Chat agent |
+| `/api/session` | GET | public | Current session |
+| `/api/login` | POST | public | Traveler login |
+| `/api/register` | POST | public | Traveler registration |
+| `/api/login-conseiller` | POST | public | Advisor login (team key) |
+| `/api/auth/google` | GET | public | Google OAuth (PKCE) |
+| `/api/auth/google/callback` | GET | public | OAuth callback |
+| `/api/demandes` | GET | advisor | List demandes |
+| `/api/demandes` | POST | client | Create demande |
+| `/api/demandes/{id}` | GET | advisor/owner | Detail |
+| `/api/demandes/{id}/recherche` | POST | advisor/owner | Supplier search |
+| `/api/demandes/{id}/statut` | PATCH | advisor | Change status |
+| `/api/demandes/{id}/propositions` | POST | advisor | Create proposition |
+| `/api/demandes/{id}/propositions/generer` | POST | advisor | Generate via AI |
+| `/api/propositions` | GET | advisor | List propositions |
+| `/api/propositions/{id}` | GET | advisor/owner | Detail |
+| `/api/propositions/{id}` | PATCH | advisor | Update |
+| `/api/propositions/{id}/statut` | PATCH | advisor | Status |
+| `/api/mes-demandes` | GET | client | My demandes |
+| `/api/mes-propositions` | GET | client | My propositions |
+| `/api/stats` | GET | advisor | Statistics |
+| `/api/catalogue` | GET | client | Supplier catalogue |
+| `/api/chat` | POST | client | Agent chat |
 | `/metrics` | GET | public/token | Prometheus |
 
 ## Tests
@@ -91,11 +91,11 @@ observability/    Grafana + Prometheus + Loki (+ Alloy pour Grafana Cloud)
 ```bash
 python3 -m unittest discover -s server/tests -v
 python3 -m unittest discover -s conseiller/tests -v    # 85 tests
-cd web && pnpm tsc --noEmit                              # typecheck TS
-cd web && pnpm build                                     # build (échec si erreur TS)
+cd web && pnpm tsc --noEmit                              # TS typecheck
+cd web && pnpm build                                     # build (fails on TS errors)
 ```
 
-## Contribution
+## Contributing
 
-Voir [CONTRIBUTING.md](CONTRIBUTING.md) et [AGENT.md](AGENT.md).
-Branches : `<type>/<issue>-<short>`. Commits : `type(scope): summary`.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENT.md](AGENT.md).
+Branches: `<type>/<issue>-<short>`. Commits: `type(scope): summary`.
