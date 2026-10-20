@@ -6,21 +6,33 @@ export function useSession() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (): Promise<Session> => {
     try {
-      const s = await api.session();
-      setSession(s);
+      return await api.session();
     } catch {
-      setSession({ connecte: false });
-    } finally {
-      setLoading(false);
+      return { connecte: false };
     }
   }, []);
 
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    const s = await load();
+    setSession(s);
+    setLoading(false);
+  }, [load]);
+
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    let cancelled = false;
+    void (async () => {
+      const s = await load();
+      if (cancelled) return;
+      setSession(s);
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [load]);
 
   return { session, loading, refresh, setSession };
 }

@@ -25,9 +25,7 @@ export function ChatWidget({ isLoggedIn }: ChatWidgetProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const pathname = window.location.pathname;
-  if (pathname === "/login" || pathname === "/mes-propositions") {
-    return null;
-  }
+  const hidden = pathname === "/login" || pathname === "/mes-propositions";
 
   useEffect(() => {
     if (open && scrollRef.current) {
@@ -45,10 +43,7 @@ export function ChatWidget({ isLoggedIn }: ChatWidgetProps) {
       return;
     }
 
-    const newMessages: ChatMessage[] = [
-      ...messages,
-      { role: "user", content: text },
-    ];
+    const newMessages: ChatMessage[] = [...messages, { role: "user", content: text }];
     setMessages(newMessages);
     setInput("");
     setLoading(true);
@@ -56,10 +51,7 @@ export function ChatWidget({ isLoggedIn }: ChatWidgetProps) {
 
     try {
       const result = await api.chat(newMessages);
-      setMessages([
-        ...newMessages,
-        { role: "assistant", content: result.reply || "…" },
-      ]);
+      setMessages([...newMessages, { role: "assistant", content: result.reply || "…" }]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur");
       setMessages([
@@ -71,21 +63,37 @@ export function ChatWidget({ isLoggedIn }: ChatWidgetProps) {
     }
   }
 
+  if (hidden) return null;
+
   return (
     <>
       {/* Bubble */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-6 left-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#0b2447] text-white shadow-lg outline-none transition hover:bg-[#12335e] focus-visible:ring-2 focus-visible:ring-[#38bdb8] focus-visible:ring-offset-2"
+        className="fixed bottom-6 left-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#0b2447] text-white shadow-lg transition outline-none hover:bg-[#12335e] focus-visible:ring-2 focus-visible:ring-[#38bdb8] focus-visible:ring-offset-2"
         aria-label={open ? "Fermer le chat" : "Ouvrir le chat"}
         aria-expanded={open}
       >
         {open ? (
-          <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
+          <svg
+            className="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            aria-hidden="true"
+          >
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
           </svg>
         ) : (
-          <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
+          <svg
+            className="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            aria-hidden="true"
+          >
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -113,7 +121,9 @@ export function ChatWidget({ isLoggedIn }: ChatWidgetProps) {
               </span>
               <div>
                 <p className="text-sm font-semibold">Assistant DÉTOUR</p>
-                <p className="text-[10px] text-[#7fd9d5]">Exemple fictif — conseiller sous 24-48 h</p>
+                <p className="text-[10px] text-[#7fd9d5]">
+                  Exemple fictif — conseiller sous 24-48 h
+                </p>
               </div>
             </div>
             <button
@@ -121,7 +131,14 @@ export function ChatWidget({ isLoggedIn }: ChatWidgetProps) {
               className="rounded-lg p-1 text-white/70 outline-none hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
               aria-label="Fermer"
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+                aria-hidden="true"
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
               </svg>
             </button>
@@ -131,7 +148,8 @@ export function ChatWidget({ isLoggedIn }: ChatWidgetProps) {
           <div ref={scrollRef} className="flex-1 overflow-y-auto bg-[#f7fafd] px-4 py-3">
             {messages.length === 0 && !isLoggedIn && (
               <div className="rounded-xl bg-[#f0eefe] px-4 py-3 text-sm text-[#6b3e9e]">
-                Connectez-vous pour discuter avec l'assistant. Un conseiller vous répond sous 24 à 48 h ouvrées.
+                Connectez-vous pour discuter avec l'assistant. Un conseiller vous répond sous 24 à
+                48 h ouvrées.
               </div>
             )}
             {messages.length === 0 && isLoggedIn && (
@@ -148,7 +166,7 @@ export function ChatWidget({ isLoggedIn }: ChatWidgetProps) {
                   className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm ${
                     m.role === "user"
                       ? "bg-[#0b2447] text-white"
-                      : "bg-white text-[#0b2447] border border-[#e8eef6]"
+                      : "border border-[#e8eef6] bg-white text-[#0b2447]"
                   }`}
                 >
                   {m.content}
@@ -157,13 +175,15 @@ export function ChatWidget({ isLoggedIn }: ChatWidgetProps) {
             ))}
             {loading && (
               <div className="mb-3 flex justify-start">
-                <div className="rounded-2xl bg-white px-3.5 py-2 text-sm text-[#8ba8c4] border border-[#e8eef6]">
+                <div className="rounded-2xl border border-[#e8eef6] bg-white px-3.5 py-2 text-sm text-[#8ba8c4]">
                   …
                 </div>
               </div>
             )}
             {error && (
-              <p role="alert" className="mt-2 text-xs text-[#b91c1c]">{error}</p>
+              <p role="alert" className="mt-2 text-xs text-[#b91c1c]">
+                {error}
+              </p>
             )}
           </div>
 
@@ -182,10 +202,17 @@ export function ChatWidget({ isLoggedIn }: ChatWidgetProps) {
             <button
               type="submit"
               disabled={loading || !input.trim()}
-              className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-full bg-[#0b2447] text-white outline-none transition hover:bg-[#12335e] disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+              className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-full bg-[#0b2447] text-white transition outline-none hover:bg-[#12335e] focus-visible:ring-2 focus-visible:ring-[#38bdb8] disabled:opacity-50"
               aria-label="Envoyer"
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                aria-hidden="true"
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3 3l18 9-18 9 3-9Z" />
               </svg>
             </button>
