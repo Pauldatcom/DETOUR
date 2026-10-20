@@ -361,15 +361,22 @@ class TestDecisionPrestation(unittest.TestCase):
     def test_replace_stocke_nom_heure_et_motif(self):
         record = self.props.enregistrer_decision(
             self.prop["id"], "train-nantes-01", "replace", "Nora",
-            "budget no longer holds")
+            "budget no longer holds", remplacement_id="train-nantes-02")
         self.assertEqual(len(record["decisions"]), 1)
         d = record["decisions"][0]
         self.assertEqual(d["choix"], "replace")
         self.assertEqual(d["par"], "Nora")
         self.assertEqual(d["motif"], "budget no longer holds")
         self.assertEqual(d["prestation_id"], "train-nantes-01")
+        self.assertEqual(d["remplacement_id"], "train-nantes-02")
         self.assertTrue(d["le"])
         self.assertEqual(record["statut"], "brouillon")
+
+    def test_replace_sans_remplacement_id_refuse(self):
+        with self.assertRaises(PropositionError):
+            self.props.enregistrer_decision(
+                self.prop["id"], "train-nantes-01", "replace", "Nora",
+                "budget no longer holds")
 
     def test_sans_nom_conseiller_refuse(self):
         with self.assertRaises(PropositionError):
@@ -415,6 +422,7 @@ class TestDecisionPrestation(unittest.TestCase):
             "prestation_id": "train-nantes-01",
             "choix": "replace",
             "motif": "budget no longer holds",
+            "remplacement_id": "train-nantes-02",
         })
         self.assertEqual(status, 200)
         self.assertEqual(data["proposition"]["decisions"][0]["choix"], "replace")
@@ -423,4 +431,61 @@ class TestDecisionPrestation(unittest.TestCase):
         self.assertEqual(supplier.option_calls, 0)
         self.assertEqual(supplier.calls, [])  # no supplier call at all
 
+
+class TestPropositionV2(unittest.TestCase):
+    """Completed decisions create draft v2; v1 stays readable with original prices."""
+
+    def test_replace_cree_v2_depuis_lecture_serveur(self):
+        props = PropositionStore(None)
+        v1 = props.creer("dem_abc", dict(PROPOSITION_VALIDE))
+        self.assertEqual(v1["version"], 1)
+        # Only the train changed → one decision completes the set.
+        props.enregistrer_decision(
+            v1["id"], "train-nantes-01", "replace", "Nora",
+            "budget no longer holds", remplacement_id="train-nantes-02")
+        recherche = {
+            "source_label": "Serveur fictif DÉTOUR",
+            "consulte_le": "2026-10-20T11:05:00+00:00",
+            "resultats": [
+                {"id": "train-nantes-01", "nom": "Train Nantes", "type": "transport",
+                 "prix_unitaire_eur": 62, "disponible": True},
+                {"id": "train-nantes-02", "nom": "Train Nantes alt", "type": "transport",
+                 "prix_unitaire_eur": 40, "disponible": True},
+                {"id": "hotel-nantes-01", "nom": "Hôtel Nantes", "type": "hébergement",
+                 "prix_unitaire_eur": 120, "disponible": True},
+            ],
+        }
+        v2 = props.creer_v2_si_complet(v1["id"], recherche, conseiller="Nora")
+        self.assertIsNotNone(v2)
+        self.assertEqual(v2["version"], 2)
+        self.assertEqual(v2["parente_id"], v1["id"])
+        self.assertEqual(v2["demande_id"], "dem_abc")
+        self.assertEqual(v2["statut"], "brouillon")
+        self.assertNotEqual(v2["statut"], "envoyee")
+        ids = {p["id"] for p in v2["prestations"]}
+        self.assertIn("train-nantes-02", ids)
+        self.assertNotIn("train-nantes-01", ids)
+        remp = next(p for p in v2["prestations"] if p["id"] == "train-nantes-02")
+        self.assertEqual(remp["prix_unitaire_eur"], 40)
+        self.assertEqual(remp["source"], "Serveur fictif DÉTOUR")
+        self.assertEqual(remp["consulte_le"], "2026-10-20T11:05:00+00:00")
+        # v1 untouched
+        v1_relue = props.obtenir(v1["id"])
+        self.assertEqual(v1_relue["prestations"][0]["id"], "train-nantes-01")
+        self.assertEqual(v1_relue["prestations"][0]["prix_unitaire_eur"], 48)
+
+    def test_incomplet_ne_cree_pas_v2(self):
+        props = PropositionStore(None)
+        v1 = props.creer("dem_abc", dict(PROPOSITION_VALIDE))
+        recherche = {
+            "consulte_le": "2026-10-20T11:05:00+00:00",
+            "resultats": [
+                {"id": "train-nantes-01", "prix_unitaire_eur": 62, "disponible": True},
+                {"id": "hotel-nantes-01", "prix_unitaire_eur": 150, "disponible": True},
+            ],
+        }
+        # Hotel also changed but no decision yet.
+        props.enregistrer_decision(
+            v1["id"], "train-nantes-01", "keep", "Nora", "ok")
+        self.assertIsNone(props.creer_v2_si_complet(v1["id"], recherche, "Nora"))
 
