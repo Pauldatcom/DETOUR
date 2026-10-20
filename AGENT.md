@@ -43,11 +43,24 @@ python3 scripts/serve.py            # slides on http://127.0.0.1:8000
 Tests:
 
 ```
-python3 -m unittest discover -s server/tests -v
-python3 -m unittest discover -s conseiller/tests -v
+python3 -m unittest discover -s server/tests -v          # 17 tests
+python3 -m unittest discover -s conseiller/tests -v      # 103 tests
 cd web && pnpm tsc --noEmit          # TypeScript typecheck
 cd web && pnpm build                 # Vite build (fails on type errors)
+cd web && pnpm lint                  # ESLint
+cd web && pnpm format:check          # Prettier check
 ```
+
+Lint and format the front (both write in place):
+
+```
+cd web && pnpm lint:fix
+cd web && pnpm format
+```
+
+Continuous integration: `.github/workflows/test.yml` runs on every pull
+request (tests on Python 3.11/3.12/3.13, lint, build). The workflow is a
+required status check on `main`.
 
 The supplier server must run before the client application can search
 prestations.
