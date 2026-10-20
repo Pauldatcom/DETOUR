@@ -1,27 +1,101 @@
-# DÉTOUR : Gestion de projet / Conception & Agentique IA
+# DÉTOUR — Agence de voyages insolites
 
-Supports WEB3 pour les sept séquences du projet d'agence de voyages fictive.
+Projet pédagogique : application conseiller + voyageur pour une agence de
+voyages fictive. Backend Python stdlib (sans dépendances), front React/Vite,
+observabilité Grafana.
 
-- [Syllabus](SYLLABUS.md)
-- [Slides : conception, fondations IA, actions IA](slides/index.html)
-- [Brief client](output/pdf/brief-client.pdf), [brief agent](output/pdf/brief-agent.pdf) et [brief option](output/pdf/brief-option.pdf)
-- [Brief évaluation](output/pdf/brief-evaluation.pdf), [brief conception](output/pdf/brief-conception.pdf), [brief changement](output/pdf/brief-changement.pdf) et [brief livraison](output/pdf/brief-livraison.pdf)
-- [Mission de conception](content/j1/DOSSIER_ETUDIANT.md) et [modèles](content/j1/MODELES.md)
-- [Fondations IA](content/j2/exercices-etudiants.md), [squelette d'agent](content/j2/starter-agent.mjs), [démonstration serveur](content/j2/DEMO_SERVEUR.md) et [trace de rejeu](content/j2/TRACE_REJEU_ETUDIANT.md)
-- [Veille sur les clients, modèles et coûts](content/j2/VEILLE_OUTILS_MODELES.md)
-- [Actions IA](content/j3/DOSSIER_ETUDIANT.md), [démonstration serveur](content/j3/DEMO_SERVEUR.md) et [trace de rejeu](content/j3/TRACE_REJEU_ETUDIANT.md)
-- [Architecture de l'agent : cours écrit](content/j3/NOTIONS.md) et [cartes d'application](content/j3/DEMO_ARCHITECTURE.md)
-- [Évaluer l'agent](content/j4/DOSSIER_ETUDIANT.md) et [cours écrit](content/j4/NOTIONS.md)
-- [Revue de conception en FOAD](content/j5/DOSSIER_ETUDIANT.md) et [cours écrit](content/j5/NOTIONS.md)
-- [Négocier un changement](content/j6/DOSSIER_ETUDIANT.md) et [cours écrit](content/j6/NOTIONS.md)
-- [Recette et livraison](content/j7/DOSSIER_ETUDIANT.md) et [cours écrit](content/j7/NOTIONS.md)
-- [Charte IA de l'année](output/pdf/charte-ia-web3.pdf) et [version Markdown](content/charte-ia.md)
-- [Simulateur de voyage et API de prestations fictives](server/README.md)
-- [Parcours client avec assistant conversationnel](conseiller/app.py)
+## Démarrage rapide
 
-Lancer les slides avec `python3 scripts/serve.py`, puis ouvrir `http://127.0.0.1:8000/`.
-Lancer le simulateur dans un autre terminal avec `python3 server/app.py --demo`, puis ouvrir `http://127.0.0.1:8765/dashboard`.
-Lancer le parcours client avec `python3 conseiller/app.py` (le simulateur doit tourner), puis ouvrir `http://127.0.0.1:8766/` : sans session, la page renvoie au portail. Les voyageurs créent un compte (e-mail + mot de passe) sur `/login` ; leurs demandes et conversations sont liées au compte et reprises à la reconnexion. L'espace conseiller s'ouvre sur `/login` avec la clé d'équipe `TRAVEL_TEAM_KEY` : tableau de bord des demandes, suivi des statuts (`a_analyser`, `propose`, `valide`, `refuse`) et détail des prestations vérifiées. Copiez `.env.example` en `.env` et renseignez `OPENROUTER_API_KEY` pour activer le chat ; le modèle se règle via `OPENROUTER_MODEL` (défaut : un modèle compatible tool-calling, voir [les modèles OpenRouter](https://openrouter.ai/models)). Les mots de passe sont hachés (PBKDF2), les clés restent côté serveur, hors du dépôt, du navigateur et des traces.
-Tester le parcours avec `python3 -m unittest discover -s conseiller/tests -v`, et la recherche du simulateur avec `python3 -m unittest discover -s server/tests -v`.
+```bash
+# 1. Backend Python (supplier + portail)
+python3 server/app.py --demo        # :8765 — API prestations fictives
+python3 conseiller/app.py           # :8766 — portail conseiller/voyageur
 
-Pour les TP d'agentique avec le squelette Node.js, il faut Node.js 20+, une clé OpenRouter, un modèle gratuit compatible avec les appels d'outils et la clé d'équipe transmise par le formateur. Gardez les clés hors du dépôt et de la page web.
+# 2. Front React (dev)
+cd web
+pnpm install
+pnpm dev                             # :5173 (proxy → :8766)
+
+# 3. Observabilité (optionnel)
+cd observability
+cp .env.example .env                 # renseigner GRAFANA_CLOUD_* si push Cloud
+docker compose up -d                 # Grafana :3000, Prometheus :9090, Loki :3100
+```
+
+Ouvrir `http://localhost:5173` en dev, `http://127.0.0.1:8766` en prod
+(une fois `pnpm build` exécuté dans `web/`).
+
+## Configuration
+
+Copiez `.env.example` en `.env` à la racine :
+
+| Variable | Rôle |
+|---|---|
+| `OPENROUTER_API_KEY` | Clé OpenRouter pour l'agent conversationnel |
+| `OPENROUTER_MODEL` | Modèle (défaut : `openai/gpt-4o-mini`) |
+| `TRAVEL_TEAM_KEY` | Clé d'équipe pour le supplier (démo : `demo-key`) |
+| `TRAVEL_API_URL` | URL du supplier (défaut : `http://127.0.0.1:8765`) |
+| `GOOGLE_CLIENT_ID` | OAuth Google (optionnel) |
+| `GOOGLE_CLIENT_SECRET` | OAuth Google (optionnel) |
+| `GOOGLE_REDIRECT_URI` | `http://localhost:8766/api/auth/google/callback` |
+| `METRICS_TOKEN` | Token d'accès `/metrics` (optionnel) |
+
+## Architecture
+
+```
+server/          Supplier API (catalogue, recherche, dashboard) — :8765
+conseiller/       Portail (auth, chat, demandes, propositions, OAuth, /metrics) — :8766
+  app.py          Serveur HTTP stdlib, routes API, sert web/dist en prod
+  agent.py        Agent OpenRouter (tool-calling, génération de propositions)
+  propositions.py Store JSON des propositions (CRUD, statuts)
+  users.py         Comptes voyageurs (PBKDF2) + Google OAuth
+  store.py         Store JSON des demandes
+  fournisseur.py   Client du supplier API
+web/              Front React (Vite + TS + Tailwind v4 + RR v7 + Recharts)
+  src/pages/       Login, Dashboard, Demandes, Propositions, MesPropositions
+  src/components/  Header, Sidebar, StatsCard, DataTable, PropositionCard…
+observability/    Grafana + Prometheus + Loki (+ Alloy pour Grafana Cloud)
+```
+
+## Routes API
+
+| Route | Méthode | Accès | Description |
+|---|---|---|---|
+| `/api/config` | GET | public | Feature flags |
+| `/api/session` | GET | public | Session courante |
+| `/api/login` | POST | public | Connexion voyageur |
+| `/api/register` | POST | public | Inscription voyageur |
+| `/api/login-conseiller` | POST | public | Connexion conseiller (clé) |
+| `/api/auth/google` | GET | public | OAuth Google (PKCE) |
+| `/api/auth/google/callback` | GET | public | Callback OAuth |
+| `/api/demandes` | GET | conseiller | Liste demandes |
+| `/api/demandes` | POST | client | Créer demande |
+| `/api/demandes/{id}` | GET | conseiller/propriétaire | Détail |
+| `/api/demandes/{id}/recherche` | POST | conseiller/propriétaire | Recherche supplier |
+| `/api/demandes/{id}/statut` | PATCH | conseiller | Changer statut |
+| `/api/demandes/{id}/propositions` | POST | conseiller | Créer proposition |
+| `/api/demandes/{id}/propositions/generer` | POST | conseiller | Générer via IA |
+| `/api/propositions` | GET | conseiller | Liste propositions |
+| `/api/propositions/{id}` | GET | conseiller/propriétaire | Détail |
+| `/api/propositions/{id}` | PATCH | conseiller | Modifier |
+| `/api/propositions/{id}/statut` | PATCH | conseiller | Statut |
+| `/api/mes-demandes` | GET | client | Mes demandes |
+| `/api/mes-propositions` | GET | client | Mes propositions |
+| `/api/stats` | GET | conseiller | Statistiques |
+| `/api/catalogue` | GET | client | Catalogue supplier |
+| `/api/chat` | POST | client | Chat agent |
+| `/metrics` | GET | public/token | Prometheus |
+
+## Tests
+
+```bash
+python3 -m unittest discover -s server/tests -v
+python3 -m unittest discover -s conseiller/tests -v    # 85 tests
+cd web && pnpm tsc --noEmit                              # typecheck TS
+cd web && pnpm build                                     # build (échec si erreur TS)
+```
+
+## Contribution
+
+Voir [CONTRIBUTING.md](CONTRIBUTING.md) et [AGENT.md](AGENT.md).
+Branches : `<type>/<issue>-<short>`. Commits : `type(scope): summary`.
