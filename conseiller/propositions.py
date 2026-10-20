@@ -6,7 +6,12 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from utils import PROP_STATUTS, SOURCE_LABEL, STATUT_BROUILLON
+from utils import (
+    DECISIONS_PRESTATION,
+    PROP_STATUTS,
+    SOURCE_LABEL,
+    STATUT_BROUILLON,
+)
 
 # Provenance of a line in a proposition. Only "verifie" may show a price.
 VERIFICATION_VERIFIE = "verifie"
@@ -291,6 +296,7 @@ class PropositionStore:
                 "cree_le": utc_now_iso(),
                 "modifiee_le": utc_now_iso(),
                 "conseiller": conseiller,
+                "decisions": [],
                 **valide,
             }
             self.propositions[prop_id] = record
@@ -346,6 +352,49 @@ class PropositionStore:
             if not record:
                 return None
             record["statut"] = statut
+            record["modifiee_le"] = utc_now_iso()
+            self.save()
+            return json.loads(json.dumps(record))
+
+    def enregistrer_decision(self, prop_id, prestation_id, choix, par, motif):
+        """Store keep/replace/drop for a changed line. Does not send or book.
+
+        Requires a non-empty advisor name. Replaces any prior choice for the
+        same service id so the next proposal version can follow the latest one.
+        """
+        prest_id = str(prestation_id or "").strip()
+        if not prest_id:
+            raise PropositionError("prestation_id est obligatoire.")
+        if choix not in DECISIONS_PRESTATION:
+            raise PropositionError(
+                f"choix doit être l'un de {', '.join(DECISIONS_PRESTATION)}.")
+        if not isinstance(par, str) or not par.strip():
+            raise PropositionError("Le nom du conseiller est obligatoire.")
+        if not isinstance(motif, str) or not motif.strip():
+            raise PropositionError("motif est obligatoire.")
+        with self.lock:
+            record = self.propositions.get(prop_id)
+            if not record:
+                return None
+            ids = {p.get("id") for p in record.get("prestations") or []}
+            if prest_id not in ids:
+                raise PropositionError(f"Prestation inconnue dans la proposition : {prest_id}.")
+            statut_avant = record.get("statut")
+            entree = {
+                "prestation_id": prest_id,
+                "choix": choix,
+                "par": par.strip(),
+                "le": utc_now_iso(),
+                "motif": motif.strip(),
+            }
+            decisions = [
+                d for d in record.get("decisions") or []
+                if isinstance(d, dict) and d.get("prestation_id") != prest_id
+            ]
+            decisions.append(entree)
+            record["decisions"] = decisions
+            # Never send to the customer and never change send/book status here.
+            record["statut"] = statut_avant
             record["modifiee_le"] = utc_now_iso()
             self.save()
             return json.loads(json.dumps(record))
