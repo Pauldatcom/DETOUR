@@ -1,4 +1,4 @@
-"""Persistance JSON des propositions de voyage DÉTOUR."""
+"""JSON persistence for DÉTOUR travel propositions."""
 
 import json
 import re

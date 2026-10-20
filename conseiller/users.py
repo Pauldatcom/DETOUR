@@ -104,15 +104,15 @@ class UserStore:
                          if u.get("email", "").lower() == email), None)
 
     def trouver_par_google_sub(self, google_sub):
-        """Retourne le compte lié à ce Google sub, sinon None."""
+        """Return the account linked to this Google sub, else None."""
         with self.lock:
             return next((u for u in self.users.values()
                          if u.get("google_sub") == google_sub), None)
 
     def creer_ou_lier_google(self, email, nom, google_sub):
-        """Crée un compte voyageur lié à Google ou lie un compte existant.
+        """Create a traveler account linked to Google, or link an existing one.
 
-        Si l'e-mail existe déjà, le google_sub est ajouté au compte existant.
+        If the e-mail already exists, the google_sub is added to that account.
         """
         email = (email or "").strip().lower()
         if not EMAIL_RE.fullmatch(email):

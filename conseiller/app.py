@@ -295,7 +295,7 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                     if session:
                         return self.send_json(200, {"connecte": True, "role": session["role"],
                                                     "nom": session.get("nom", "")})
-                    if users is None:  # mode tests/dev : accès sans compte
+                    if users is None:  # tests/dev mode: access without account
                         return self.send_json(200, {"connecte": True, "role": "client", "nom": ""})
                     return self.send_json(200, {"connecte": False})
 

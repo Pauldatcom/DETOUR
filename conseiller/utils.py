@@ -48,7 +48,7 @@ USER_ID_PREFIX = "usr_"
 SESSION_COOKIE = "detour_portail"
 SESSION_MAX = 60_000
 
-# Statuts d'une proposition.
+# Proposition statuses.
 STATUT_BROUILLON = "brouillon"
 STATUT_ENVOYEE = "envoyee"
 STATUT_VALIDEE = "validee"
@@ -65,6 +65,3 @@ PROP_STATUT_LABELS = {
 GOOGLE_OAUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
-
-# Métriques Prometheus (token optionnel).
-METRICS_TOKEN = ""

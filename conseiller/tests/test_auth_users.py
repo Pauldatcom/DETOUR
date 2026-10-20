@@ -3,6 +3,8 @@
 
 import http.cookiejar
 import json
+import secrets
+import shutil
 import tempfile
 import threading
 import unittest
@@ -187,16 +189,15 @@ class ClientHTTP:
 class TestPortailAuth(unittest.TestCase):
     """Portail complet : pages, connexion voyageur/conseiller, statuts, historique."""
 
-    TEAM_KEY = "cle-equipe-test"
-
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp()
+        cls.team_key = "cle-" + secrets.token_urlsafe(12)
         cls.store = DemandStore(Path(cls.tmp) / "demandes.json")
         cls.users = UserStore(Path(cls.tmp) / "users.json")
         cls.agent = FakeAgent()
         handler = make_handler(cls.store, None, cls.agent,
-                                users=cls.users, team_key=cls.TEAM_KEY)
+                                users=cls.users, team_key=cls.team_key)
         cls.server, cls.base = demarrer(handler)
 
     @classmethod
@@ -259,9 +260,9 @@ class TestPortailAuth(unittest.TestCase):
         # 7. Mauvaise clé conseiller refusée ; la bonne ouvre le tableau de bord.
         status, data, _ = anonyme.post("/api/login-conseiller", {"cle": "mauvaise-cle"})
         self.assertEqual(status, 401)
-        self.assertNotIn(self.TEAM_KEY, json.dumps(data))
+        self.assertNotIn(self.team_key, json.dumps(data))
         conseiller = ClientHTTP(self.base)
-        status, data, _ = conseiller.post("/api/login-conseiller", {"cle": self.TEAM_KEY})
+        status, data, _ = conseiller.post("/api/login-conseiller", {"cle": self.team_key})
         self.assertEqual(status, 200)
         status, corps, url = conseiller.get("/conseiller")
         self.assertIn("conseiller", url)
@@ -374,19 +375,18 @@ class FakeAgentWithGeneration(FakeAgent):
 
 
 class TestPropositionRoutes(unittest.TestCase):
-    """Routes propositions : CRUD conseiller, mes-propositions voyageur, stats, génération."""
-
-    TEAM_KEY = "cle-prop-test"
+    """Proposition routes: advisor CRUD, traveler mes-propositions, stats, generation."""
 
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp()
+        cls.team_key = "cle-" + secrets.token_urlsafe(12)
         cls.store = DemandStore(Path(cls.tmp) / "demandes.json")
         cls.props = PropositionStore(Path(cls.tmp) / "propositions.json")
         cls.users = UserStore(Path(cls.tmp) / "users.json")
         cls.agent = FakeAgentWithGeneration()
         handler = make_handler(cls.store, FakeSupplier(), cls.agent,
-                                users=cls.users, team_key=cls.TEAM_KEY,
+                                users=cls.users, team_key=cls.team_key,
                                 propositions=cls.props)
         cls.server, cls.base = demarrer(handler)
 
@@ -398,7 +398,7 @@ class TestPropositionRoutes(unittest.TestCase):
     def test_creer_proposition_conseiller(self):
         dem_id = self.store.creer(dict(VALIDE))["id"]
         client = ClientHTTP(self.base)
-        client.post("/api/login-conseiller", {"cle": self.TEAM_KEY})
+        client.post("/api/login-conseiller", {"cle": self.team_key})
         status, data, _ = client.post(f"/api/demandes/{dem_id}/propositions",
                                        dict(PROPOSITION_VALIDE))
         self.assertEqual(status, 201)
@@ -417,7 +417,7 @@ class TestPropositionRoutes(unittest.TestCase):
     def test_lister_et_obtenir_proposition(self):
         dem_id = self.store.creer(dict(VALIDE))["id"]
         client = ClientHTTP(self.base)
-        client.post("/api/login-conseiller", {"cle": self.TEAM_KEY})
+        client.post("/api/login-conseiller", {"cle": self.team_key})
         _, data, _ = client.post(f"/api/demandes/{dem_id}/propositions", dict(PROPOSITION_VALIDE))
         prop_id = data["proposition"]["id"]
         status, data, _ = client.get("/api/propositions")
@@ -429,14 +429,14 @@ class TestPropositionRoutes(unittest.TestCase):
 
     def test_proposition_inexistante_404(self):
         client = ClientHTTP(self.base)
-        client.post("/api/login-conseiller", {"cle": self.TEAM_KEY})
+        client.post("/api/login-conseiller", {"cle": self.team_key})
         status, _, _ = client.get("/api/propositions/prop_inconnu")
         self.assertEqual(status, 404)
 
     def test_patch_proposition(self):
         dem_id = self.store.creer(dict(VALIDE))["id"]
         client = ClientHTTP(self.base)
-        client.post("/api/login-conseiller", {"cle": self.TEAM_KEY})
+        client.post("/api/login-conseiller", {"cle": self.team_key})
         _, data, _ = client.post(f"/api/demandes/{dem_id}/propositions", dict(PROPOSITION_VALIDE))
         prop_id = data["proposition"]["id"]
         status, data, _ = client.patch(f"/api/propositions/{prop_id}",
@@ -448,7 +448,7 @@ class TestPropositionRoutes(unittest.TestCase):
     def test_changer_statut_proposition(self):
         dem_id = self.store.creer(dict(VALIDE))["id"]
         client = ClientHTTP(self.base)
-        client.post("/api/login-conseiller", {"cle": self.TEAM_KEY})
+        client.post("/api/login-conseiller", {"cle": self.team_key})
         _, data, _ = client.post(f"/api/demandes/{dem_id}/propositions", dict(PROPOSITION_VALIDE))
         prop_id = data["proposition"]["id"]
         status, data, _ = client.patch(f"/api/propositions/{prop_id}/statut", {"statut": "envoyee"})
@@ -460,14 +460,14 @@ class TestPropositionRoutes(unittest.TestCase):
     def test_generer_proposition(self):
         dem_id = self.store.creer(dict(VALIDE))["id"]
         client = ClientHTTP(self.base)
-        client.post("/api/login-conseiller", {"cle": self.TEAM_KEY})
+        client.post("/api/login-conseiller", {"cle": self.team_key})
         status, data, _ = client.post(f"/api/demandes/{dem_id}/propositions/generer", {})
         self.assertEqual(status, 201)
         self.assertEqual(data["proposition"]["titre"], "Généré")
 
     def test_stats_conseiller(self):
         client = ClientHTTP(self.base)
-        client.post("/api/login-conseiller", {"cle": self.TEAM_KEY})
+        client.post("/api/login-conseiller", {"cle": self.team_key})
         status, data, _ = client.get("/api/stats")
         self.assertEqual(status, 200)
         self.assertIn("demandes_total", data)
@@ -493,28 +493,27 @@ class TestPropositionRoutes(unittest.TestCase):
 
 
 class TestGoogleOAuthUsers(unittest.TestCase):
-    def test_creer_ou_lier_google_cree_puis_retrouve(self):
+    def setUp(self):
         tmp = tempfile.mkdtemp()
-        users = UserStore(Path(tmp) / "users.json")
-        compte = users.creer_ou_lier_google("google@exemple.fr", "Google User", "sub123")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        self.users = UserStore(Path(tmp) / "users.json")
+
+    def test_creer_ou_lier_google_cree_puis_retrouve(self):
+        compte = self.users.creer_ou_lier_google("google@exemple.fr", "Google User", "sub123")
         self.assertTrue(compte["id"].startswith("usr_"))
         self.assertEqual(compte["email"], "google@exemple.fr")
-        retrouve = users.trouver_par_google_sub("sub123")
+        retrouve = self.users.trouver_par_google_sub("sub123")
         assert retrouve is not None
         self.assertEqual(retrouve["id"], compte["id"])
 
     def test_creer_ou_lier_google_email_existant(self):
-        tmp = tempfile.mkdtemp()
-        users = UserStore(Path(tmp) / "users.json")
-        users.creer("exist@exemple.fr", "Exist", "motdepasse")
-        compte = users.creer_ou_lier_google("exist@exemple.fr", "Exist", "sub456")
+        self.users.creer("exist@exemple.fr", "Exist", "motdepasse")
+        compte = self.users.creer_ou_lier_google("exist@exemple.fr", "Exist", "sub456")
         self.assertEqual(compte["email"], "exist@exemple.fr")
 
     def test_creer_ou_lier_google_sub_manquant(self):
-        tmp = tempfile.mkdtemp()
-        users = UserStore(Path(tmp) / "users.json")
         with self.assertRaises(UserError):
-            users.creer_ou_lier_google("x@exemple.fr", "X", "")
+            self.users.creer_ou_lier_google("x@exemple.fr", "X", "")
 
 
 if __name__ == "__main__":

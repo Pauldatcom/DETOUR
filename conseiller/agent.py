@@ -180,7 +180,7 @@ class Agent:
                 "demande": demande, "recherche": recherche, "trace": trace}
 
     def generer_proposition(self, demande_record, recherche):
-        """Génère une proposition structurée via OpenRouter (sans outil)."""
+        """Generate a structured proposition via OpenRouter (no tools)."""
         if not self._api_key:
             raise OpenRouterError("Clé OpenRouter absente : définir OPENROUTER_API_KEY.", 503)
         d = demande_record.get("demande", demande_record)

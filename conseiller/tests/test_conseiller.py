@@ -787,7 +787,7 @@ class FakeAgentWithGeneration(FakeAgent):
 
 
 class TestPropositionGeneration(unittest.TestCase):
-    """Test de la génération de proposition via l'agent (sans vrai OpenRouter)."""
+    """Test proposition generation through the agent (no real OpenRouter call)."""
 
     def test_generer_proposition_retourne_json(self):
         agent = FakeAgentWithGeneration()
