@@ -47,3 +47,21 @@ USER_ID_PREFIX = "usr_"
 # Sessions du portail (en mémoire serveur).
 SESSION_COOKIE = "detour_portail"
 SESSION_MAX = 60_000
+
+# Proposition statuses.
+STATUT_BROUILLON = "brouillon"
+STATUT_ENVOYEE = "envoyee"
+STATUT_VALIDEE = "validee"
+STATUT_REFUSEE = "refusee"
+PROP_STATUTS = (STATUT_BROUILLON, STATUT_ENVOYEE, STATUT_VALIDEE, STATUT_REFUSEE)
+PROP_STATUT_LABELS = {
+    STATUT_BROUILLON: "Brouillon",
+    STATUT_ENVOYEE: "Envoyée",
+    STATUT_VALIDEE: "Validée",
+    STATUT_REFUSEE: "Refusée",
+}
+
+# Google OAuth (Authorization Code + PKCE).
+GOOGLE_OAUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"

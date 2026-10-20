@@ -97,6 +97,52 @@ class UserStore:
             return {"id": compte["id"], "email": compte["email"], "nom": compte["nom"]}
         return None
 
+    def _trouver_par_email(self, email):
+        email = (email or "").strip().lower()
+        with self.lock:
+            return next((u for u in self.users.values()
+                         if u.get("email", "").lower() == email), None)
+
+    def trouver_par_google_sub(self, google_sub):
+        """Return the account linked to this Google sub, else None."""
+        with self.lock:
+            return next((u for u in self.users.values()
+                         if u.get("google_sub") == google_sub), None)
+
+    def creer_ou_lier_google(self, email, nom, google_sub):
+        """Create a traveler account linked to Google, or link an existing one.
+
+        If the e-mail already exists, the google_sub is added to that account.
+        """
+        email = (email or "").strip().lower()
+        if not EMAIL_RE.fullmatch(email):
+            raise UserError("Adresse e-mail Google invalide.", 400, "email_invalide")
+        if not isinstance(google_sub, str) or not google_sub.strip():
+            raise UserError("google_sub requis.", 400, "google_sub_requis")
+        nom = (nom or "").strip() or email.split("@", 1)[0]
+        with self.lock:
+            existant = self._trouver_par_email(email)
+            if existant:
+                existant["google_sub"] = google_sub
+                self.save()
+                return {"id": existant["id"], "email": existant["email"],
+                        "nom": existant["nom"]}
+            deja_lier = self.trouver_par_google_sub(google_sub)
+            if deja_lier:
+                return {"id": deja_lier["id"], "email": deja_lier["email"],
+                        "nom": deja_lier["nom"]}
+            user_id = USER_ID_PREFIX + secrets.token_hex(6)
+            self.users[user_id] = {
+                "id": user_id,
+                "email": email,
+                "nom": nom,
+                "google_sub": google_sub,
+                "sel": "",
+                "hash": "",
+            }
+            self.save()
+            return {"id": user_id, "email": email, "nom": nom}
+
     def obtenir(self, user_id):
         with self.lock:
             compte = self.users.get(user_id)
