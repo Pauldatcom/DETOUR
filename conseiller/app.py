@@ -21,44 +21,19 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 from agent import Agent, DEFAULT_MODEL, OpenRouterError
 from fournisseur import DEFAULT_URL, SupplierClient, SupplierError
-from propositions import (
-    PropositionError,
-    PropositionStore,
-    a_des_ecarts,
-    comparer_proposition,
-    lecture_plus_recente_que_proposition,
+from lecture import (
+    enrichir_propositions,
+    marquer_a_revoir_si_ecart,
     proposition_avec_changements,
 )
+from propositions import PropositionError, PropositionStore
 from store import DemandStore, ValidationError, criteres_depuis_demande
 from users import UserStore, UserError
 from utils import (GOOGLE_OAUTH_URL, GOOGLE_TOKEN_URL, GOOGLE_USERINFO_URL,
-                   PROP_STATUTS, SESSION_COOKIE, SESSION_MAX, STATUT_A_REVOIR)
+                   PROP_STATUTS, SESSION_COOKIE, SESSION_MAX)
 
 ROOT = Path(__file__).resolve().parent
 WEB_ROOT = ROOT.parent / "web" / "dist"
-
-
-def _enrichir_propositions(props, demand_store):
-    """Attach price/availability deltas from the latest search; v1 lines stay intact."""
-    enrichies = []
-    for prop in props or []:
-        dem = demand_store.obtenir(prop.get("demande_id", ""))
-        recherches = (dem or {}).get("recherches") or []
-        enrichies.append(proposition_avec_changements(prop, recherches))
-    return enrichies
-
-
-def _marquer_a_revoir_si_ecart(store, propositions, dem_id, recherche):
-    """Set request status to review when a newer reading changes a proposal line."""
-    props = propositions.lister_par_demande(dem_id)
-    for prop in props:
-        if not lecture_plus_recente_que_proposition(prop, recherche):
-            continue
-        changements = comparer_proposition(prop, recherche.get("resultats"))
-        if a_des_ecarts(changements):
-            store.changer_statut(dem_id, STATUT_A_REVOIR)
-            return True
-    return False
 
 
 def load_env_file(path=None):
@@ -261,7 +236,7 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                 if method == "GET" and path == "/health":
                     return self.send_json(200, {"status": "ok", "simulation": True})
 
-                if method == "GET" and path in ("/app.css", "/pages.js",
+                if method == "GET" and path in ("/app.css", "/pages.js", "/pages-propositions.js",
                                                 "/agent-widget.css", "/agent-widget.js"):
                     return self.send_static(path.lstrip("/"))
                 if method == "GET" and path == "/app.js":
@@ -534,7 +509,7 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                         resultat = supplier.rechercher(criteres_depuis_demande(record))
                         recherche = store.ajouter_recherche(match.group(1), resultat)
                         # Re-read may expose a delta vs proposal v1; never rewrite v1.
-                        _marquer_a_revoir_si_ecart(
+                        marquer_a_revoir_si_ecart(
                             store, propositions, match.group(1), recherche)
                         dem = store.obtenir(match.group(1))
                         return self.send_json(201, {
@@ -642,14 +617,14 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                 if method == "GET" and path == "/api/mes-propositions":
                     session = client_exige(self)
                     props = propositions.lister_par_user(session.get("user_id", ""), store)
-                    props = _enrichir_propositions(props, store)
+                    props = enrichir_propositions(props, store)
                     props.sort(key=lambda p: p.get("cree_le", ""), reverse=True)
                     return self.send_json(200, {"propositions": props, "simulation": True})
 
                 # ---------- Propositions (conseiller) ----------
                 if method == "GET" and path == "/api/propositions":
                     admin_exige(self)
-                    props = _enrichir_propositions(propositions.lister(), store)
+                    props = enrichir_propositions(propositions.lister(), store)
                     props.sort(key=lambda p: p.get("cree_le", ""), reverse=True)
                     return self.send_json(200, {"propositions": props, "simulation": True})
 
@@ -659,7 +634,7 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                         record = propositions.obtenir(match.group(1))
                         if not record:
                             raise ApiError(404, "proposition_not_found", "Proposition introuvable.")
-                        enrichie = _enrichir_propositions([record], store)[0]
+                        enrichie = enrichir_propositions([record], store)[0]
                         return self.send_json(200, {"proposition": enrichie, "simulation": True})
 
                 if method == "POST":
