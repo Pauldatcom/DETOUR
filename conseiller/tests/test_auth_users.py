@@ -37,7 +37,8 @@ PROPOSITION_VALIDE = {
     "description": "Un séjour romantique.",
     "prestations": [
         {"id": "train-lyon-01", "nom": "Train Lyon", "type": "transport",
-         "prix_unitaire_eur": 62, "quantite": 2},
+         "prix_unitaire_eur": 62, "quantite": 2, "disponible": True,
+         "source": "Serveur fictif DÉTOUR", "consulte_le": "2026-10-19T10:42:00+00:00"},
     ],
 }
 
