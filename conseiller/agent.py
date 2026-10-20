@@ -14,6 +14,7 @@ from store import ValidationError, analyser_informations, criteres_depuis_demand
 from utils import (DEFAULT_MODEL, MAX_MESSAGES, MAX_TOOL_ITERATIONS,
                    OPENROUTER_URL, TOOL_NAME)
 
+
 def _ssl_context():
     ctx = ssl.create_default_context()
     for path in (

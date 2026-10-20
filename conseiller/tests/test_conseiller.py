@@ -234,6 +234,33 @@ class TestDemandStore(unittest.TestCase):
         self.assertIsNone(record)
         self.assertEqual(mis, [])
 
+    def test_save_answers_rejects_other_traveler(self):
+        record, _ = self.store.enregistrer_reponses(
+            None, {"destination": "Lille"}, user_id="owner")
+        with self.assertRaises(ValidationError):
+            self.store.enregistrer_reponses(
+                record["id"], {"budget_max_par_personne": 200}, user_id="intrus")
+        with self.assertRaises(ValidationError):
+            self.store.enregistrer_reponses(
+                record["id"], {"budget_max_par_personne": 200}, user_id="")
+        fetched = self.store.obtenir(record["id"])
+        assert fetched is not None
+        self.assertNotIn("budget_max_par_personne", fetched["demande"])
+
+    def test_save_answers_clears_validation_and_records_history(self):
+        record = self.store.creer(dict(VALIDE, user_id="u1"))
+        self.store.definir_qualification(record["id"], QUALIF_PRET_PROPOSITION)
+        updated, mis = self.store.enregistrer_reponses(
+            record["id"], {"budget_max_par_personne": 700}, user_id="u1")
+        self.assertEqual(mis, ["budget_max_par_personne"])
+        self.assertIsNone(updated.get("qualification_validee_par"))
+        self.assertEqual(updated["qualification"], QUALIF_PRET_RELECTURE)
+        entry = updated["modifications"][-1]
+        self.assertEqual(entry["champ"], "budget_max_par_personne")
+        self.assertEqual(entry["avant"], 500)
+        self.assertEqual(entry["apres"], 700)
+        self.assertEqual(entry["par"], "u1")
+
 
 class TestHttpApi(unittest.TestCase):
     @classmethod

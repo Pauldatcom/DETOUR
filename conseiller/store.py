@@ -352,8 +352,9 @@ class DemandStore:
     def enregistrer_reponses(self, dem_id, champs, user_id=""):
         """Save traveler answers on an existing request, or create one.
 
-        Merges only the provided fields; other values are preserved. When the
-        merged demande is complete it is fully validated. Returns
+        Merges only the provided fields; other values are preserved. Ownership
+        is enforced when the request already has a user_id. Real field changes
+        clear advisor validation and are appended to `modifications`. Returns
         (record, champs_mis_a_jour). record is None if dem_id was set but unknown.
         """
         if not isinstance(user_id, str):
@@ -365,10 +366,13 @@ class DemandStore:
                 if not record:
                     return None, []
                 existant_uid = (record.get("demande") or {}).get("user_id", "")
-                if existant_uid and user_id and existant_uid != user_id:
+                if not isinstance(existant_uid, str):
+                    existant_uid = ""
+                existant_uid = existant_uid.strip()
+                if existant_uid and existant_uid != user_id:
                     raise ValidationError(
                         "Cette demande appartient à un autre voyageur.")
-                avant = record.get("demande") or {}
+                avant = dict(record.get("demande") or {})
                 merged, mis_a_jour = fusionner_reponses(avant, champs)
                 if user_id:
                     merged["user_id"] = user_id
@@ -376,6 +380,20 @@ class DemandStore:
                     merged["user_id"] = existant_uid or ""
                 if not champs_manquants(merged):
                     merged = valider_demande(merged)
+                if mis_a_jour:
+                    now = utc_now_iso()
+                    history = record.setdefault("modifications", [])
+                    auteur = user_id or "voyageur"
+                    for key in mis_a_jour:
+                        history.append({
+                            "champ": key,
+                            "avant": avant.get(key),
+                            "apres": merged.get(key),
+                            "par": auteur,
+                            "le": now,
+                        })
+                    record["qualification_validee_par"] = None
+                    record["qualification_validee_le"] = None
                 record["demande"] = merged
                 recalculer_qualification(record)
                 self.save()
