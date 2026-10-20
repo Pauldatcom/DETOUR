@@ -131,6 +131,51 @@ class TestDemandStore(unittest.TestCase):
     def test_obtenir_inexistant(self):
         self.assertIsNone(self.store.obtenir("dem_inconnu"))
 
+    def test_create_draft(self):
+        record = self.store.create_draft("client-1")
+
+        self.assertTrue(record["id"].startswith("dem_"))
+        self.assertEqual(record["statut"], "brouillon")
+        self.assertEqual(record["demande"]["user_id"], "client-1")
+        self.assertEqual(record["messages"], [])
+
+    def test_resume_draft_keeps_same_id(self):
+        first = self.store.create_draft("client-1")
+        resumed = self.store.create_draft(
+            "client-1",
+            request_id=first["id"],
+        )
+
+        self.assertEqual(resumed["id"], first["id"])
+
+    def test_another_client_cannot_resume_draft(self):
+        first = self.store.create_draft("client-1")
+
+        with self.assertRaises(ValidationError):
+            self.store.create_draft(
+                "client-2",
+                request_id=first["id"],
+            )    
+
+    
+    def test_update_draft_answers_preserves_previous_answers(self):
+        record = self.store.create_draft("client-1")
+
+        self.store.update_draft_answers(
+            record["id"],
+            "client-1",
+            {"destination": "Nantes"},
+        )
+
+        updated = self.store.update_draft_answers(
+            record["id"],
+            "client-1",
+            {"type_voyage": "aventure"},
+        )
+
+        self.assertEqual(updated["demande"]["destination"], "Nantes")
+        self.assertEqual(updated["demande"]["type_voyage"], "aventure")
+
 
 class TestHttpApi(unittest.TestCase):
     @classmethod

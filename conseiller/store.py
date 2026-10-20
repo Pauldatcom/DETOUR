@@ -138,6 +138,7 @@ class DemandStore:
         tmp.replace(self.path)
 
     def creer(self, data):
+
         valide = valider_demande(data)
         with self.lock:
             dem_id = "dem_" + secrets.token_hex(6)
@@ -150,6 +151,48 @@ class DemandStore:
             self.demandes[dem_id] = record
             self.save()
             return json.loads(json.dumps(record))
+    
+    
+    def create_draft(self, user_id, request_id=None):
+        """Create or retrieve a client's travel request draft."""
+        if not isinstance(user_id, str) or not user_id.strip():
+            raise ValidationError("user_id is required.")
+
+        user_id = user_id.strip()
+
+        with self.lock:
+            if request_id:
+                record = self.demandes.get(request_id)
+
+                if not record:
+                    raise ValidationError("Draft not found.")
+
+                existing_user_id = record.get("demande", {}).get("user_id")
+
+                if existing_user_id != user_id:
+                    raise ValidationError(
+                        "This draft belongs to another client."
+                    )
+
+                return json.loads(json.dumps(record))
+
+            request_id = "dem_" + secrets.token_hex(6)
+
+            record = {
+                "id": request_id,
+                "statut": "brouillon",
+                "cree_le": utc_now_iso(),
+                "demande": {
+                    "user_id": user_id
+                },
+                "messages": [],
+            }
+
+            self.demandes[request_id] = record
+            self.save()
+
+            return json.loads(json.dumps(record))
+
 
     def lister(self):
         with self.lock:
@@ -168,6 +211,53 @@ class DemandStore:
             record.update(champs)
             self.save()
             return json.loads(json.dumps(record))
+
+    
+    def update_draft_answers(self, request_id, user_id, answers):
+        """Save validated answers without overwriting unrelated fields."""
+        if not isinstance(answers, dict):
+            raise ValidationError("Answers must be a dictionary.")
+
+        if not isinstance(user_id, str) or not user_id.strip():
+            raise ValidationError("user_id is required.")
+
+        allowed_fields = {
+            "type_voyage",
+            "destination",
+            "date_depart",
+            "date_retour",
+            "nombre_voyageurs",
+            "has_enfants",
+            "nombre_enfants",
+            "budget_max_par_personne",
+            "niveau_aventure",
+            "besoin_guide",
+            "activites",
+            "contraintes",
+            "souhaits",
+        }
+
+        if not answers or not set(answers).issubset(allowed_fields):
+            raise ValidationError("Answers contain missing or unsupported fields.")
+
+        with self.lock:
+            record = self.demandes.get(request_id)
+
+            if not record:
+                raise ValidationError("Draft not found.")
+
+            request_data = record.get("demande", {})
+
+            if request_data.get("user_id") != user_id.strip():
+                raise ValidationError("This draft belongs to another client.")
+
+            request_data.update(answers)
+            record["demande"] = request_data
+
+            self.save()
+
+            return json.loads(json.dumps(record))
+
 
 
     def ajouter_recherche(self, dem_id, recherche):
