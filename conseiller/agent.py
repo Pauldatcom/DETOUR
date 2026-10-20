@@ -210,6 +210,10 @@ class Agent:
             entry["erreur"] = "Arguments invalides : un objet JSON était attendu."
             trace["tool_calls"].append(entry)
             return {"payload": {"erreur": entry["erreur"]}}
+        if args.get("qualification") == "pret_proposition":
+            entry["qualification_refusee"] = (
+                "L'agent ne peut pas marquer une demande prête pour proposition.")
+        args.pop("qualification", None)
         args.pop("user_id", None)
         args["user_id"] = user_id
         try:
