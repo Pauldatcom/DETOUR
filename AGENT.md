@@ -49,6 +49,7 @@ prestations.
 - The supplier API is a shared constraint: extend it additively and keep its
   documented contract (`server/README.md`, `server/CONTRAT.md`) accurate.
 - User-facing texts of the applications are in French.
+- Code comments are in English only. No French comments in source code.
 - Never simulate a success: if the supplier is unreachable, report the error.
 
 ## AI agent work
@@ -68,3 +69,4 @@ model, to logs or to traces.
   the issue with `Closes #123`, `Fixes #123` or `Refs #123`.
 - `main` is protected: one approving review, no direct pushes, no force
   pushes, administrators included.
+- No feature is delivered without an associated unit test.
