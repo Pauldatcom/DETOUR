@@ -2,6 +2,7 @@ import { useState } from "react";
 import { PublicNav } from "../components/landing/PublicNav";
 import { Footer } from "../components/landing/Footer";
 import { TravelRequestForm } from "../components/landing/TravelRequestForm";
+import { ChatWidget } from "../components/landing/ChatWidget";
 import { CONSEILLERS, COMMENT_CA_MARCHE } from "../data/detourContent";
 
 interface ConseillersPageProps {
@@ -147,6 +148,8 @@ export function ConseillersPage({ isLoggedIn }: ConseillersPageProps) {
           onClose={() => setFormOuvert(false)}
         />
       )}
+
+      <ChatWidget isLoggedIn={isLoggedIn} />
     </div>
   );
 }
