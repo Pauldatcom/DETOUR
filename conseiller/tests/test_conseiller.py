@@ -24,6 +24,7 @@ from store import (
     ValidationError,
     analyser_informations,
     criteres_depuis_demande,
+    fusionner_reponses,
     valider_demande,
 )
 from app import load_env_file, make_handler
@@ -132,6 +133,30 @@ class TestAnalyserInformations(unittest.TestCase):
         self.assertEqual(len(info["fournis"]), 7)
 
 
+class TestFusionnerReponses(unittest.TestCase):
+    """Traveler answers merge into an existing request without wiping other fields."""
+
+    def test_budget_update_preserves_destination(self):
+        existant = {
+            "type_voyage": "lune-de-miel",
+            "destination": "Nantes",
+            "date_depart": "2026-11-07",
+            "date_retour": "2026-11-09",
+            "nombre_voyageurs": 2,
+            "niveau_aventure": "calme",
+        }
+        merged, mis_a_jour = fusionner_reponses(
+            existant, {"budget_max_par_personne": 400})
+        self.assertEqual(mis_a_jour, ["budget_max_par_personne"])
+        self.assertEqual(merged["budget_max_par_personne"], 400)
+        self.assertEqual(merged["destination"], "Nantes")
+        self.assertEqual(merged["type_voyage"], "lune-de-miel")
+
+    def test_invalid_value_is_rejected(self):
+        with self.assertRaises(ValidationError):
+            fusionner_reponses({}, {"budget_max_par_personne": -5})
+
+
 class TestDemandStore(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
@@ -167,6 +192,74 @@ class TestDemandStore(unittest.TestCase):
 
     def test_obtenir_inexistant(self):
         self.assertIsNone(self.store.obtenir("dem_inconnu"))
+
+    def test_save_answers_creates_draft_then_completes(self):
+        record, mis = self.store.enregistrer_reponses(None, {
+            "type_voyage": "lune-de-miel",
+            "destination": "Nantes",
+            "date_depart": "2026-11-07",
+            "date_retour": "2026-11-09",
+            "nombre_voyageurs": 2,
+            "niveau_aventure": "calme",
+        }, user_id="u1")
+        self.assertTrue(record["id"].startswith("dem_"))
+        self.assertIn("budget_max_par_personne", record["champs_manquants"])
+        self.assertEqual(record["demande"]["destination"], "Nantes")
+        self.assertIn("destination", mis)
+
+        updated, mis2 = self.store.enregistrer_reponses(
+            record["id"], {"budget_max_par_personne": 450}, user_id="u1")
+        self.assertEqual(updated["id"], record["id"])
+        self.assertEqual(mis2, ["budget_max_par_personne"])
+        self.assertEqual(updated["demande"]["budget_max_par_personne"], 450)
+        self.assertEqual(updated["demande"]["destination"], "Nantes")
+        self.assertEqual(updated["champs_manquants"], [])
+        self.assertEqual(updated["qualification"], "pret_relecture")
+
+    def test_save_answers_preserves_fields_on_failure(self):
+        record, _ = self.store.enregistrer_reponses(None, {
+            "destination": "Lyon",
+            "budget_max_par_personne": 300,
+        })
+        with self.assertRaises(ValidationError):
+            self.store.enregistrer_reponses(
+                record["id"], {"budget_max_par_personne": -1})
+        fetched = self.store.obtenir(record["id"])
+        assert fetched is not None
+        self.assertEqual(fetched["demande"]["budget_max_par_personne"], 300)
+        self.assertEqual(fetched["demande"]["destination"], "Lyon")
+
+    def test_save_answers_unknown_request_returns_none(self):
+        record, mis = self.store.enregistrer_reponses("dem_deadbeef", {"destination": "Lille"})
+        self.assertIsNone(record)
+        self.assertEqual(mis, [])
+
+    def test_save_answers_rejects_other_traveler(self):
+        record, _ = self.store.enregistrer_reponses(
+            None, {"destination": "Lille"}, user_id="owner")
+        with self.assertRaises(ValidationError):
+            self.store.enregistrer_reponses(
+                record["id"], {"budget_max_par_personne": 200}, user_id="intrus")
+        with self.assertRaises(ValidationError):
+            self.store.enregistrer_reponses(
+                record["id"], {"budget_max_par_personne": 200}, user_id="")
+        fetched = self.store.obtenir(record["id"])
+        assert fetched is not None
+        self.assertNotIn("budget_max_par_personne", fetched["demande"])
+
+    def test_save_answers_clears_validation_and_records_history(self):
+        record = self.store.creer(dict(VALIDE, user_id="u1"))
+        self.store.definir_qualification(record["id"], QUALIF_PRET_PROPOSITION)
+        updated, mis = self.store.enregistrer_reponses(
+            record["id"], {"budget_max_par_personne": 700}, user_id="u1")
+        self.assertEqual(mis, ["budget_max_par_personne"])
+        self.assertIsNone(updated.get("qualification_validee_par"))
+        self.assertEqual(updated["qualification"], QUALIF_PRET_RELECTURE)
+        entry = updated["modifications"][-1]
+        self.assertEqual(entry["champ"], "budget_max_par_personne")
+        self.assertEqual(entry["avant"], 500)
+        self.assertEqual(entry["apres"], 700)
+        self.assertEqual(entry["par"], "u1")
 
 
 class TestHttpApi(unittest.TestCase):
@@ -506,8 +599,10 @@ class FakeAgent:
         }
         self.calls = []
 
-    def chat(self, messages, user_id=""):
-        self.calls.append({"messages": messages, "user_id": user_id})
+    def chat(self, messages, user_id="", demande_id=None):
+        self.calls.append({
+            "messages": messages, "user_id": user_id, "demande_id": demande_id,
+        })
         return self.result
 
 
@@ -561,6 +656,8 @@ class TestAgent(unittest.TestCase):
         self.assertIsNotNone(result["recherche"])
         self.assertEqual(result["trace"]["tool_calls"][0]["statut"], "ok")
         self.assertEqual(result["demande"]["qualification"], "pret_relecture")
+        tool_payload = json.loads(fake.requests[1]["body"]["messages"][-1]["content"])
+        self.assertIn("enregistrée", tool_payload["confirmation"])
         stored = self.store.obtenir(result["demande"]["id"])
         assert stored is not None
         self.assertEqual(len(stored["recherches"]), 1)
@@ -579,18 +676,20 @@ class TestAgent(unittest.TestCase):
         with self.assertRaises(ValidationError):
             self.store.definir_qualification(result["demande"]["id"], "pret_proposition", acteur="agent")
 
-    def test_invalid_arguments_returned_to_model(self):
+    def test_invalid_value_does_not_confirm_save(self):
         bad = copy.deepcopy(TOOL_CALL_MESSAGE)
         bad["tool_calls"][0]["function"]["arguments"] = json.dumps({"type_voyage": "inconnu"})
-        agent, _ = self.make_agent([{"message": bad}, {"message": FINAL_MESSAGE}])
+        agent, fake = self.make_agent([{"message": bad}, {"message": FINAL_MESSAGE}])
         result = agent.chat([{"role": "user", "content": "Nantes"}])
-        self.assertEqual(result["trace"]["tool_calls"][0]["statut"], "informations_manquantes")
-        info = result["trace"]["tool_calls"][0]["informations"]
-        self.assertIn("type_voyage", info["manquants"])
+        call = result["trace"]["tool_calls"][0]
+        self.assertEqual(call["statut"], "echec_mise_a_jour")
         self.assertIsNone(result["demande"])
         self.assertEqual(len(self.store.lister()), 0)
+        tool_payload = json.loads(fake.requests[1]["body"]["messages"][-1]["content"])
+        self.assertIsNone(tool_payload["confirmation"])
+        self.assertIn("échoué", tool_payload["consigne"])
 
-    def test_missing_budget_identified_without_reasking_provided_fields(self):
+    def test_partial_draft_saved_without_reasking_provided_fields(self):
         partial = copy.deepcopy(TOOL_CALL_MESSAGE)
         arguments = json.loads(partial["tool_calls"][0]["function"]["arguments"])
         del arguments["budget_max_par_personne"]
@@ -603,10 +702,43 @@ class TestAgent(unittest.TestCase):
         self.assertIn("destination", call["informations"]["fournis"])
         self.assertIn("date_depart", call["informations"]["fournis"])
         self.assertNotIn("budget_max_par_personne", call["informations"]["fournis"])
-        self.assertIsNone(result["demande"])
-        tool_payload = fake.requests[1]["body"]["messages"][-1]["content"]
-        self.assertIn("budget maximum par personne", tool_payload)
-        self.assertIn("Ne redemande pas", tool_payload)
+        self.assertIsNotNone(result["demande"])
+        self.assertEqual(result["demande"]["demande"]["destination"], "Nantes")
+        tool_payload = json.loads(fake.requests[1]["body"]["messages"][-1]["content"])
+        self.assertIn("enregistrée", tool_payload["confirmation"])
+        self.assertIn("budget maximum par personne", tool_payload["consigne"])
+        self.assertIn("Ne redemande pas", tool_payload["consigne"])
+
+    def test_budget_updates_existing_request(self):
+        existing, _ = self.store.enregistrer_reponses(None, {
+            "type_voyage": "lune-de-miel",
+            "destination": "Nantes",
+            "date_depart": "2026-11-07",
+            "date_retour": "2026-11-09",
+            "nombre_voyageurs": 2,
+            "niveau_aventure": "calme",
+        }, user_id="client-1")
+        budget_only = copy.deepcopy(TOOL_CALL_MESSAGE)
+        budget_only["tool_calls"][0]["function"]["arguments"] = json.dumps({
+            "budget_max_par_personne": 500,
+            "demande_id": "dem_from_model_ignored",
+        })
+        agent, fake = self.make_agent([{"message": budget_only}, {"message": FINAL_MESSAGE}])
+        result = agent.chat(
+            [{"role": "user", "content": "Mon budget est 500 €"}],
+            user_id="client-1",
+            demande_id=existing["id"],
+        )
+        self.assertEqual(result["demande"]["id"], existing["id"])
+        self.assertEqual(result["demande"]["demande"]["budget_max_par_personne"], 500)
+        self.assertEqual(result["demande"]["demande"]["destination"], "Nantes")
+        self.assertEqual(result["trace"]["tool_calls"][0]["statut"], "ok")
+        self.assertEqual(result["trace"]["tool_calls"][0]["champs_mis_a_jour"],
+                         ["budget_max_par_personne"])
+        self.assertEqual(len(self.store.lister()), 1)
+        tool_payload = json.loads(fake.requests[1]["body"]["messages"][-1]["content"])
+        self.assertEqual(tool_payload["demande_id"], existing["id"])
+        self.assertIn("enregistrée", tool_payload["confirmation"])
 
     def test_outil_inconnu_refuse(self):
         bad = copy.deepcopy(TOOL_CALL_MESSAGE)
@@ -656,6 +788,16 @@ class TestChatRoute(unittest.TestCase):
         self.assertTrue(data["simulation"])
         self.assertEqual(agent.calls[0]["messages"][0]["content"], "Bonjour")
 
+    def test_chat_forwards_demande_id_to_agent(self):
+        agent = FakeAgent()
+        base = self.serve(agent)
+        status, _ = post(f"{base}/api/chat", {
+            "messages": [{"role": "user", "content": "Mon budget est 400"}],
+            "demande_id": "dem_abcdef",
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(agent.calls[0]["demande_id"], "dem_abcdef")
+
     def test_chat_transmet_demande_et_recherche(self):
         store = DemandStore(None)
         demande = store.creer(dict(VALIDE))
@@ -688,7 +830,7 @@ class TestChatRoute(unittest.TestCase):
     def test_erreur_openrouter_remontee(self):
         agent = FakeAgent()
 
-        def chat(messages, user_id=""):
+        def chat(messages, user_id="", demande_id=None):
             raise OpenRouterError("OpenRouter injoignable.", 502)
 
         agent.chat = chat

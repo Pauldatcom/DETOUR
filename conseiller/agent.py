@@ -14,6 +14,7 @@ from store import ValidationError, analyser_informations, criteres_depuis_demand
 from utils import (DEFAULT_MODEL, MAX_MESSAGES, MAX_TOOL_ITERATIONS,
                    OPENROUTER_URL, TOOL_NAME)
 
+
 def _ssl_context():
     ctx = ssl.create_default_context()
     for path in (
@@ -68,6 +69,11 @@ Pose une question à la fois pour chacune (une seule par tour) :
 - souhaits : "Décrivez en quelques mots l'ambiance et les envies pour ce voyage" (texte libre)
 - allergies ou contraintes (contraintes, texte libre)
 Si le voyageur presse de finir, appelez l'outil avec ce que vous avez, sans inventer le reste.
+
+MISE À JOUR D'UNE DEMANDE EXISTANTE
+- Les réponses du voyageur sont enregistrées sur la demande en cours (pas une nouvelle à chaque fois).
+- Quand l'outil confirme l'enregistrement, dis-le clairement au voyageur.
+- Si l'outil renvoie une erreur, ne prétends pas que la réponse a été sauvée.
 
 RÈGLES ABSOLUES
 - Ne devine rien : si une information requise manque, pose la question (seulement pour les manquants).
@@ -150,11 +156,11 @@ class Agent:
         self.base_url = base_url
         self.timeout = timeout
 
-    def chat(self, messages, user_id=""):
+    def chat(self, messages, user_id="", demande_id=None):
         """Exécute un tour de conversation et retourne reply, demande, recherche, trace.
 
-        `user_id` provient de la session serveur : il n'est jamais demandé au
-        modèle ni exposé dans le schéma de l'outil."""
+        `user_id` and `demande_id` come from the server session / client thread:
+        they are never taken from the model."""
         if not self._api_key:
             raise OpenRouterError("Clé OpenRouter absente : définir OPENROUTER_API_KEY.", 503)
         trace = {"model": self.model, "tool_calls": [], "simulation": True}
@@ -162,6 +168,8 @@ class Agent:
         conversation += [{"role": m["role"], "content": m["content"]}
                          for m in messages[-MAX_MESSAGES:]]
         demande, recherche = None, None
+        if demande_id:
+            demande = self.store.obtenir(demande_id)
 
         for _ in range(MAX_TOOL_ITERATIONS):
             message = self._call_model(conversation)
@@ -172,8 +180,11 @@ class Agent:
             conversation.append({"role": "assistant", "content": message.get("content") or "",
                                  "tool_calls": tool_calls})
             for call in tool_calls:
-                outcome = self._execute_tool(call, trace, user_id=user_id)
-                demande = outcome.get("demande") or demande
+                outcome = self._execute_tool(
+                    call, trace, user_id=user_id, demande_id=demande_id)
+                if outcome.get("demande"):
+                    demande = outcome["demande"]
+                    demande_id = demande.get("id") or demande_id
                 recherche = outcome.get("recherche") or recherche
                 conversation.append({
                     "role": "tool",
@@ -259,7 +270,7 @@ class Agent:
         except (KeyError, IndexError, TypeError) as err:
             raise OpenRouterError("OpenRouter : réponse sans message exploitable.") from err
 
-    def _execute_tool(self, call, trace, user_id=""):
+    def _execute_tool(self, call, trace, user_id="", demande_id=None):
         function = call.get("function") or {}
         name = function.get("name")
         entry = {"outil": name, "statut": "refuse"}
@@ -278,45 +289,74 @@ class Agent:
         if args.get("qualification") == "pret_proposition":
             entry["qualification_refusee"] = (
                 "L'agent ne peut pas marquer une demande prête pour proposition.")
+        # Never trust model-supplied ids; only the server thread id is used.
         args.pop("qualification", None)
         args.pop("user_id", None)
-        args["user_id"] = user_id
-        # Program check: identify missing vs already provided required fields.
-        analyse = analyser_informations(args)
+        args.pop("demande_id", None)
+
+        try:
+            record, mis_a_jour = self.store.enregistrer_reponses(
+                demande_id, args, user_id=user_id)
+        except ValidationError as err:
+            entry["statut"] = "echec_mise_a_jour"
+            entry["erreur"] = str(err)
+            trace["tool_calls"].append(entry)
+            return {"payload": {
+                "erreur": str(err),
+                "confirmation": None,
+                "consigne": (
+                    "L'enregistrement a échoué. Ne dis pas que la réponse a été "
+                    "sauvée. Explique l'erreur et redemande une valeur valide."
+                ),
+            }}
+        if record is None:
+            entry["statut"] = "echec_mise_a_jour"
+            entry["erreur"] = "Demande introuvable."
+            trace["tool_calls"].append(entry)
+            return {"payload": {
+                "erreur": "Demande introuvable.",
+                "confirmation": None,
+                "consigne": (
+                    "L'enregistrement a échoué. Ne dis pas que la réponse a été sauvée."
+                ),
+            }}
+
+        analyse = analyser_informations(record["demande"])
+        entry["demande_id"] = record["id"]
+        entry["champs_mis_a_jour"] = mis_a_jour
+        entry["informations"] = {
+            "fournis": analyse["fournis"],
+            "manquants": analyse["manquants"],
+        }
+        labels = analyse["labels"]
+        confirmation = (
+            f"Réponse enregistrée sur la demande {record['id']}."
+            if mis_a_jour else
+            f"Demande {record['id']} à jour (aucun nouveau champ)."
+        )
         if not analyse["complet"]:
             entry["statut"] = "informations_manquantes"
-            entry["informations"] = {
-                "fournis": analyse["fournis"],
-                "manquants": analyse["manquants"],
-            }
             trace["tool_calls"].append(entry)
-            labels = analyse["labels"]
             manquants_lisible = [labels.get(c, c) for c in analyse["manquants"]]
             fournis_lisible = [labels.get(c, c) for c in analyse["fournis"]]
             return {
+                "demande": record,
                 "payload": {
+                    "confirmation": confirmation,
+                    "champs_mis_a_jour": mis_a_jour,
+                    "demande_id": record["id"],
                     "informations": analyse,
                     "consigne": (
-                        "Demande incomplète. Demande uniquement : "
+                        "Réponse bien enregistrée. Confirme brièvement la sauvegarde. "
+                        "Demande ensuite uniquement : "
                         + ", ".join(manquants_lisible)
                         + ". Ne redemande pas : "
                         + (", ".join(fournis_lisible) if fournis_lisible else "(rien encore)")
                         + "."
                     ),
-                }
+                },
             }
-        try:
-            record = self.store.creer(args)
-        except ValidationError as err:
-            entry["statut"] = "invalide"
-            entry["erreur"] = str(err)
-            entry["informations"] = analyser_informations(args)
-            trace["tool_calls"].append(entry)
-            return {"payload": {"erreur": f"Demande refusée : {err}",
-                                "informations": entry["informations"]}}
-        entry["demande_id"] = record["id"]
-        entry["arguments"] = record["demande"]
-        entry["informations"] = analyser_informations(record["demande"])
+
         entry["statut"] = "enregistree"
         try:
             resultat = self.supplier.rechercher(criteres_depuis_demande(record))
@@ -326,10 +366,19 @@ class Agent:
             entry["erreur"] = str(err)
             trace["tool_calls"].append(entry)
             return {"demande": record,
-                    "payload": {"erreur": str(err),
-                                "consigne": "Le serveur de prestations est indisponible. Informe le voyageur sans inventer de prestation."}}
+                    "payload": {
+                        "confirmation": confirmation,
+                        "erreur": str(err),
+                        "consigne": (
+                            "La demande est enregistrée mais le serveur de prestations "
+                            "est indisponible. Informe le voyageur sans inventer de prestation."
+                        ),
+                    }}
         entry["statut"] = "ok"
         trace["tool_calls"].append(entry)
         payload = dict(recherche) if isinstance(recherche, dict) else {"recherche": recherche}
-        payload["informations"] = entry["informations"]
+        payload["confirmation"] = confirmation
+        payload["champs_mis_a_jour"] = mis_a_jour
+        payload["demande_id"] = record["id"]
+        payload["informations"] = analyse
         return {"demande": record, "recherche": recherche, "payload": payload}
