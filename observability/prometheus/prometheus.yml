@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "detour-conseiller"
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - "host.docker.internal:8766"
+        labels:
+          app: "detour-conseiller"
+
+  - job_name: "detour-supplier"
+    static_configs:
+      - targets:
+          - "host.docker.internal:8765"
+        labels:
+          app: "detour-supplier"
+
+rule_files: []
