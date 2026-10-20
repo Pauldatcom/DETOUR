@@ -47,10 +47,7 @@ export default function App() {
         path="/inspirations"
         element={<InspirationsPage onDecrir={() => {}} isLoggedIn={connecte} />}
       />
-      <Route
-        path="/conseillers"
-        element={<ConseillersPage isLoggedIn={connecte} />}
-      />
+      <Route path="/conseillers" element={<ConseillersPage isLoggedIn={connecte} />} />
       <Route
         path="/login"
         element={

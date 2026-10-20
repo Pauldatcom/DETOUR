@@ -28,7 +28,7 @@ export function DataTable<T extends object>({
     <div className="overflow-x-auto rounded-xl border border-border">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-border bg-surface/50 text-left text-xs uppercase tracking-wider text-muted">
+          <tr className="border-b border-border bg-surface/50 text-left text-xs tracking-wider text-muted uppercase">
             {columns.map((col) => (
               <th key={col.key} className="px-4 py-3 font-semibold">
                 {col.label}
@@ -38,10 +38,7 @@ export function DataTable<T extends object>({
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr
-              key={i}
-              className="border-b border-border/50 last:border-0 hover:bg-surface/30"
-            >
+            <tr key={i} className="border-b border-border/50 last:border-0 hover:bg-surface/30">
               {columns.map((col) => (
                 <td key={col.key} className="px-4 py-3 text-text">
                   {col.render

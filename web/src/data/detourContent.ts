@@ -226,8 +226,7 @@ export const FOOTER = {
 
 export const FORMULAIRE = {
   titre: "Décrivez votre voyage",
-  sousTitre:
-    "Le conseiller a besoin de quelques repères pour préparer une proposition pertinente.",
+  sousTitre: "Le conseiller a besoin de quelques repères pour préparer une proposition pertinente.",
   champDestination: "Où souhaitez-vous aller ? (pays, ville ou région)",
   champDates: "Quelles dates envisagez-vous ? (indicatif)",
   champVoyageurs: "Combien de voyageurs ?",

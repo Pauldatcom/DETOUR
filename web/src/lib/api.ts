@@ -9,10 +9,7 @@ import type {
   ApiError as ApiErrorType,
 } from "../types";
 
-async function request<T>(
-  url: string,
-  options?: RequestInit,
-): Promise<T> {
+async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     credentials: "include",
     headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) },
@@ -70,20 +67,18 @@ export const api = {
 
   stats: () => request<Stats>("/api/stats"),
   propositions: () => request<{ propositions: Proposition[] }>("/api/propositions"),
-  proposition: (id: string) =>
-    request<{ proposition: Proposition }>(`/api/propositions/${id}`),
-  mesPropositions: () =>
-    request<{ propositions: Proposition[] }>("/api/mes-propositions"),
+  proposition: (id: string) => request<{ proposition: Proposition }>(`/api/propositions/${id}`),
+  mesPropositions: () => request<{ propositions: Proposition[] }>("/api/mes-propositions"),
   creerProposition: (demandeId: string, data: Record<string, unknown>) =>
     request<{ proposition: Proposition }>(`/api/demandes/${demandeId}/propositions`, {
       method: "POST",
       body: JSON.stringify(data),
     }),
   genererProposition: (demandeId: string) =>
-    request<{ proposition: Proposition }>(
-      `/api/demandes/${demandeId}/propositions/generer`,
-      { method: "POST", body: JSON.stringify({}) },
-    ),
+    request<{ proposition: Proposition }>(`/api/demandes/${demandeId}/propositions/generer`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
   patchProposition: (id: string, data: Record<string, unknown>) =>
     request<{ proposition: Proposition }>(`/api/propositions/${id}`, {
       method: "PATCH",

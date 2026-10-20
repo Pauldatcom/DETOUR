@@ -28,10 +28,7 @@ export function Accueil({ isLoggedIn }: AccueilProps) {
       <Footer />
 
       {formOuvert && (
-        <TravelRequestForm
-          isLoggedIn={isLoggedIn}
-          onClose={() => setFormOuvert(false)}
-        />
+        <TravelRequestForm isLoggedIn={isLoggedIn} onClose={() => setFormOuvert(false)} />
       )}
 
       <ChatWidget isLoggedIn={isLoggedIn} />

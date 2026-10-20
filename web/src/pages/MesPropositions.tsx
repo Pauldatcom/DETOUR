@@ -41,7 +41,7 @@ export function MesPropositions({ nom, onLogout }: MesPropositionsProps) {
               void api.logout();
               onLogout();
             }}
-            className="rounded-full border border-[#d5e0ee] px-4 py-2 text-sm font-semibold text-[#0b2447] outline-none transition hover:border-[#38bdb8] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+            className="rounded-full border border-[#d5e0ee] px-4 py-2 text-sm font-semibold text-[#0b2447] transition outline-none hover:border-[#38bdb8] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
           >
             Déconnexion
           </button>
@@ -75,12 +75,12 @@ export function MesPropositions({ nom, onLogout }: MesPropositionsProps) {
             </div>
             <h2 className="text-lg font-bold">Aucune proposition pour le moment</h2>
             <p className="mt-2 text-sm text-[#4b6480]">
-              Décrivez votre voyage et un conseiller vous préparera une
-              proposition sous 24 à 48 heures ouvrées.
+              Décrivez votre voyage et un conseiller vous préparera une proposition sous 24 à 48
+              heures ouvrées.
             </p>
             <Link
               to="/accueil"
-              className="mt-6 inline-block rounded-full bg-[#0b2447] px-6 py-2.5 text-sm font-semibold text-white outline-none transition hover:bg-[#12335e] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+              className="mt-6 inline-block rounded-full bg-[#0b2447] px-6 py-2.5 text-sm font-semibold text-white transition outline-none hover:bg-[#12335e] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
             >
               Décrire mon voyage
             </Link>

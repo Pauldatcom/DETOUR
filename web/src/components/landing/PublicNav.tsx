@@ -30,7 +30,7 @@ export function PublicNav() {
             <li key={item.label}>
               <Link
                 to={item.href}
-                className="rounded-lg px-2 py-1 text-sm font-medium text-[#334d6b] outline-none transition hover:text-[#0b2447] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+                className="rounded-lg px-2 py-1 text-sm font-medium text-[#334d6b] transition outline-none hover:text-[#0b2447] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
               >
                 {item.label}
               </Link>
@@ -41,7 +41,7 @@ export function PublicNav() {
         <div className="hidden items-center gap-3 lg:flex">
           <Link
             to="/login"
-            className="rounded-full border border-[#d5e0ee] px-4 py-2 text-sm font-semibold text-[#0b2447] outline-none transition hover:border-[#38bdb8] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+            className="rounded-full border border-[#d5e0ee] px-4 py-2 text-sm font-semibold text-[#0b2447] transition outline-none hover:border-[#38bdb8] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
           >
             Se connecter
           </Link>
@@ -53,11 +53,22 @@ export function PublicNav() {
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
         >
-          <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
+          <svg
+            className="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            aria-hidden="true"
+          >
             {open ? (
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
             ) : (
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
+              />
             )}
           </svg>
         </button>

@@ -20,7 +20,7 @@ export function ConseillersPage({ isLoggedIn }: ConseillersPageProps) {
         {/* Hero page */}
         <section className="bg-[#0b2447] py-16 text-white lg:py-24">
           <div className="mx-auto max-w-6xl px-4 sm:px-6">
-            <p className="mb-2 text-sm font-semibold uppercase tracking-widest text-[#7fd9d5]">
+            <p className="mb-2 text-sm font-semibold tracking-widest text-[#7fd9d5] uppercase">
               {CONSEILLERS.surtitre}
             </p>
             <h1 className="text-3xl font-bold sm:text-4xl">{CONSEILLERS.titre}</h1>
@@ -44,20 +44,15 @@ export function ConseillersPage({ isLoggedIn }: ConseillersPageProps) {
                   <div
                     className="flex h-16 w-16 items-center justify-center rounded-full text-2xl font-bold text-white"
                     style={{
-                      background:
-                        "linear-gradient(135deg, #38bdb8, #7a5cd6)",
+                      background: "linear-gradient(135deg, #38bdb8, #7a5cd6)",
                     }}
                     aria-hidden="true"
                   >
                     {p.prenom[0]}
                   </div>
                   <h3 className="mt-4 text-lg font-bold">{p.prenom}</h3>
-                  <p className="mt-1 text-sm font-semibold text-[#38bdb8]">
-                    {p.specialite}
-                  </p>
-                  <p className="mt-3 text-sm leading-relaxed text-[#4b6480]">
-                    {p.bio}
-                  </p>
+                  <p className="mt-1 text-sm font-semibold text-[#38bdb8]">{p.specialite}</p>
+                  <p className="mt-3 text-sm leading-relaxed text-[#4b6480]">{p.bio}</p>
                   <div className="mt-4 rounded-xl bg-[#f2f7fc] px-4 py-2 text-xs text-[#4b6480]">
                     Disponible : {p.disponibilite}
                   </div>
@@ -72,24 +67,22 @@ export function ConseillersPage({ isLoggedIn }: ConseillersPageProps) {
           <div className="mx-auto max-w-6xl px-4 sm:px-6">
             <div className="grid gap-8 lg:grid-cols-3">
               <div className="rounded-2xl border border-[#e8eef6] bg-white p-6 text-center">
-                <p className="text-xs font-semibold uppercase tracking-widest text-[#38bdb8]">
+                <p className="text-xs font-semibold tracking-widest text-[#38bdb8] uppercase">
                   Disponibles
                 </p>
                 <p className="mt-2 text-lg font-bold">{CONSEILLERS.disponibilite.jours}</p>
               </div>
               <div className="rounded-2xl border border-[#e8eef6] bg-white p-6 text-center">
-                <p className="text-xs font-semibold uppercase tracking-widest text-[#38bdb8]">
+                <p className="text-xs font-semibold tracking-widest text-[#38bdb8] uppercase">
                   Horaires
                 </p>
                 <p className="mt-2 text-lg font-bold">{CONSEILLERS.disponibilite.heures}</p>
               </div>
               <div className="rounded-2xl border border-[#e8eef6] bg-white p-6 text-center">
-                <p className="text-xs font-semibold uppercase tracking-widest text-[#38bdb8]">
+                <p className="text-xs font-semibold tracking-widest text-[#38bdb8] uppercase">
                   Délai de réponse
                 </p>
-                <p className="mt-2 text-lg font-bold">
-                  {CONSEILLERS.disponibilite.delai}
-                </p>
+                <p className="mt-2 text-lg font-bold">{CONSEILLERS.disponibilite.delai}</p>
               </div>
             </div>
             <p className="mt-6 text-center text-sm text-[#4b6480]">
@@ -101,7 +94,7 @@ export function ConseillersPage({ isLoggedIn }: ConseillersPageProps) {
         {/* Comment ça marche (rappel compact) */}
         <section className="py-16 lg:py-20">
           <div className="mx-auto max-w-6xl px-4 sm:px-6">
-            <p className="mb-2 text-sm font-semibold uppercase tracking-widest text-[#38bdb8]">
+            <p className="mb-2 text-sm font-semibold tracking-widest text-[#38bdb8] uppercase">
               {COMMENT_CA_MARCHE.surtitre}
             </p>
             <h2 className="text-2xl font-bold">{COMMENT_CA_MARCHE.titre}</h2>
@@ -112,9 +105,7 @@ export function ConseillersPage({ isLoggedIn }: ConseillersPageProps) {
                     <span className="text-xl font-bold text-[#7a5cd6]">{etape.numero}</span>
                   </div>
                   <h3 className="mt-4 text-lg font-bold">{etape.titre}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-[#4b6480]">
-                    {etape.texte}
-                  </p>
+                  <p className="mt-2 text-sm leading-relaxed text-[#4b6480]">{etape.texte}</p>
                 </div>
               ))}
             </div>
@@ -124,16 +115,14 @@ export function ConseillersPage({ isLoggedIn }: ConseillersPageProps) {
         {/* CTA */}
         <section className="bg-[#0b2447] py-16 text-white lg:py-20">
           <div className="mx-auto max-w-2xl px-4 text-center sm:px-6">
-            <h2 className="text-2xl font-bold sm:text-3xl">
-              Prêt à décrire votre voyage ?
-            </h2>
+            <h2 className="text-2xl font-bold sm:text-3xl">Prêt à décrire votre voyage ?</h2>
             <p className="mt-4 text-[#c9d9ec]">
-              Un conseiller vous répond sous 24 à 48 heures ouvrées. Aucune
-              réservation réelle — vous gardez la main.
+              Un conseiller vous répond sous 24 à 48 heures ouvrées. Aucune réservation réelle —
+              vous gardez la main.
             </p>
             <button
               onClick={() => setFormOuvert(true)}
-              className="mt-8 rounded-full bg-white px-8 py-3 text-base font-semibold text-[#0b2447] shadow-lg outline-none transition hover:bg-[#eaf4fb] focus-visible:ring-2 focus-visible:ring-[#38bdb8] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b2447]"
+              className="mt-8 rounded-full bg-white px-8 py-3 font-semibold text-[#0b2447] text-base shadow-lg transition outline-none hover:bg-[#eaf4fb] focus-visible:ring-2 focus-visible:ring-[#38bdb8] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b2447]"
             >
               Décrire mon voyage
             </button>
@@ -143,10 +132,7 @@ export function ConseillersPage({ isLoggedIn }: ConseillersPageProps) {
       <Footer />
 
       {formOuvert && (
-        <TravelRequestForm
-          isLoggedIn={isLoggedIn}
-          onClose={() => setFormOuvert(false)}
-        />
+        <TravelRequestForm isLoggedIn={isLoggedIn} onClose={() => setFormOuvert(false)} />
       )}
 
       <ChatWidget isLoggedIn={isLoggedIn} />

@@ -16,16 +16,14 @@ export function PropositionCard({ proposition: prop }: PropositionCardProps) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-bold text-[#0b2447]">{prop.titre}</h3>
-          <p className="mt-1 line-clamp-2 text-sm text-[#4b6480]">
-            {prop.description}
-          </p>
+          <p className="mt-1 line-clamp-2 text-sm text-[#4b6480]">{prop.description}</p>
         </div>
         <span
           className={`inline-flex items-center rounded-full border border-[#e8eef6] px-2.5 py-0.5 text-xs font-semibold ${
-            (STATUT_COLORS[prop.statut] ?? "text-[#8ba8c4]")
+            STATUT_COLORS[prop.statut] ?? "text-[#8ba8c4]"
           }`}
         >
-          {(PROP_STATUT_LABELS[prop.statut] ?? prop.statut)}
+          {PROP_STATUT_LABELS[prop.statut] ?? prop.statut}
         </span>
       </div>
       <div className="mt-4 flex items-center justify-between border-t border-[#e8eef6] pt-3">
@@ -40,9 +38,7 @@ export function PropositionCard({ proposition: prop }: PropositionCardProps) {
             </>
           )}
         </div>
-        <span className="font-bold text-[#38bdb8]">
-          {formatEuro(prop.prix_total_eur)}
-        </span>
+        <span className="font-bold text-[#38bdb8]">{formatEuro(prop.prix_total_eur)}</span>
       </div>
     </Link>
   );
