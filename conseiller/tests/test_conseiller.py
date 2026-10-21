@@ -28,7 +28,7 @@ from store import (
     valider_demande,
 )
 from app import load_env_file, make_handler
-from agent import Agent, OpenRouterError
+from agent import SYSTEM_PROMPT, Agent, OpenRouterError
 from fournisseur import SupplierClient, SupplierError
 from propositions import PropositionStore, PropositionError
 from utils import QUALIF_PRET_PROPOSITION, QUALIF_PRET_RELECTURE
@@ -562,6 +562,22 @@ TOOL_CALL_MESSAGE = {
 FINAL_MESSAGE = {"role": "assistant", "content": "Voici les prestations vérifiées pour Nantes."}
 
 
+def _tool_call_message(arguments, call_id="call_1"):
+    """Build a scripted OpenRouter assistant message that calls chercher_voyages."""
+    return {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [{
+            "id": call_id,
+            "type": "function",
+            "function": {
+                "name": "chercher_voyages",
+                "arguments": json.dumps(arguments),
+            },
+        }],
+    }
+
+
 class FakeOpenRouter:
     """Imite l'API OpenRouter avec des réponses scriptées, une par appel reçu."""
 
@@ -767,6 +783,142 @@ class TestAgent(unittest.TestCase):
         self.assertEqual(result["trace"]["tool_calls"][0]["statut"], "serveur_indisponible")
         self.assertIsNotNone(result["demande"])
         self.assertIsNone(result["recherche"])
+
+
+class TestMissingInfoConversationFlow(unittest.TestCase):
+    """Conversation flow for incomplete travel requests (#38).
+
+    Starts with missing dates and budget, answers one step at a time on the
+    same demande_id, and only allows advisor proposal validation when complete.
+    """
+
+    def setUp(self):
+        self.store = DemandStore(None)
+        self.props = PropositionStore(None)
+        self.supplier = FakeSupplier()
+
+    def make_agent(self, responses):
+        fake = FakeOpenRouter(responses)
+        self.addCleanup(fake.stop)
+        return Agent(self.supplier, self.store, api_key="cle-test",
+                     model="modele-test", base_url=fake.url, timeout=5), fake
+
+    def test_system_prompt_requires_one_question_per_turn(self):
+        self.assertIn("une question à la fois", SYSTEM_PROMPT)
+
+    def test_incomplete_request_blocks_proposal_until_dates_and_budget_filled(self):
+        draft, _ = self.store.enregistrer_reponses(None, {
+            "type_voyage": "lune-de-miel",
+            "destination": "Nantes",
+            "nombre_voyageurs": 2,
+            "niveau_aventure": "calme",
+        }, user_id="client-1")
+        dem_id = draft["id"]
+        self.assertIn("date_depart", draft["champs_manquants"])
+        self.assertIn("date_retour", draft["champs_manquants"])
+        self.assertIn("budget_max_par_personne", draft["champs_manquants"])
+        with self.assertRaises(ValidationError) as blocked:
+            self.store.definir_qualification(dem_id, QUALIF_PRET_PROPOSITION)
+        self.assertIn("date_depart", str(blocked.exception))
+        self.assertEqual(self.props.lister_par_demande(dem_id), [])
+
+        # Turn 1: agent asks only for dates (no tool, one question).
+        ask_dates = {
+            "role": "assistant",
+            "content": "Quelles sont vos dates de départ et de retour ?",
+        }
+        agent, _ = self.make_agent([{"message": ask_dates}])
+        turn1 = agent.chat(
+            [{"role": "user", "content": "Week-end à Nantes pour 2"}],
+            user_id="client-1",
+            demande_id=dem_id,
+        )
+        self.assertIn("dates", turn1["reply"].lower())
+        self.assertNotIn("budget", turn1["reply"].lower())
+        self.assertEqual(turn1["trace"]["tool_calls"], [])
+        self.assertIsNone(turn1["recherche"])
+        self.assertEqual(len(self.store.lister()), 1)
+
+        # Turn 2: customer answers dates → same request updated, still incomplete.
+        ask_budget = {
+            "role": "assistant",
+            "content": "Quel est votre budget maximum par personne ?",
+        }
+        agent, fake = self.make_agent([
+            {"message": _tool_call_message({
+                "date_depart": "2026-11-07",
+                "date_retour": "2026-11-09",
+            })},
+            {"message": ask_budget},
+        ])
+        turn2 = agent.chat(
+            [
+                {"role": "user", "content": "Week-end à Nantes pour 2"},
+                {"role": "assistant", "content": ask_dates["content"]},
+                {"role": "user", "content": "Du 7 au 9 novembre 2026"},
+            ],
+            user_id="client-1",
+            demande_id=dem_id,
+        )
+        self.assertEqual(turn2["demande"]["id"], dem_id)
+        self.assertEqual(turn2["demande"]["demande"]["date_depart"], "2026-11-07")
+        self.assertEqual(turn2["demande"]["demande"]["date_retour"], "2026-11-09")
+        self.assertEqual(turn2["demande"]["demande"]["destination"], "Nantes")
+        self.assertNotIn("budget_max_par_personne", turn2["demande"]["demande"])
+        call = turn2["trace"]["tool_calls"][0]
+        self.assertEqual(call["statut"], "informations_manquantes")
+        self.assertEqual(call["informations"]["manquants"], ["budget_max_par_personne"])
+        self.assertIn("date_depart", call["informations"]["fournis"])
+        self.assertIsNone(turn2["recherche"])
+        self.assertIn("budget", turn2["reply"].lower())
+        self.assertNotIn("dates", turn2["reply"].lower())
+        tool_payload = json.loads(fake.requests[1]["body"]["messages"][-1]["content"])
+        self.assertEqual(tool_payload["demande_id"], dem_id)
+        with self.assertRaises(ValidationError):
+            self.store.definir_qualification(dem_id, QUALIF_PRET_PROPOSITION)
+        self.assertEqual(self.props.lister_par_demande(dem_id), [])
+        self.assertEqual(len(self.store.lister()), 1)
+
+        # Turn 3: budget completes the request → supplier search, still no proposal.
+        agent, _ = self.make_agent([
+            {"message": _tool_call_message({"budget_max_par_personne": 500})},
+            {"message": FINAL_MESSAGE},
+        ])
+        turn3 = agent.chat(
+            [{"role": "user", "content": "Mon budget est 500 euros par personne"}],
+            user_id="client-1",
+            demande_id=dem_id,
+        )
+        self.assertEqual(turn3["demande"]["id"], dem_id)
+        self.assertEqual(turn3["demande"]["demande"]["budget_max_par_personne"], 500)
+        self.assertEqual(turn3["demande"]["demande"]["date_depart"], "2026-11-07")
+        self.assertEqual(turn3["demande"]["champs_manquants"], [])
+        self.assertEqual(turn3["trace"]["tool_calls"][0]["statut"], "ok")
+        self.assertIsNotNone(turn3["recherche"])
+        self.assertEqual(turn3["demande"]["qualification"], QUALIF_PRET_RELECTURE)
+        self.assertEqual(self.props.lister_par_demande(dem_id), [])
+        self.assertEqual(len(self.store.lister()), 1)
+
+        validated = self.store.definir_qualification(dem_id, QUALIF_PRET_PROPOSITION)
+        self.assertEqual(validated["qualification"], QUALIF_PRET_PROPOSITION)
+
+    def test_complete_request_in_one_tool_call_still_not_a_proposal(self):
+        agent, _ = self.make_agent([
+            {"message": TOOL_CALL_MESSAGE},
+            {"message": FINAL_MESSAGE},
+        ])
+        result = agent.chat(
+            [{"role": "user", "content": "Week-end à Nantes pour 2, budget 500"}],
+            user_id="client-1",
+        )
+        self.assertTrue(result["demande"]["id"].startswith("dem_"))
+        self.assertEqual(result["demande"]["champs_manquants"], [])
+        self.assertIsNotNone(result["recherche"])
+        self.assertEqual(result["demande"]["qualification"], QUALIF_PRET_RELECTURE)
+        self.assertEqual(self.props.lister_par_demande(result["demande"]["id"]), [])
+        with self.assertRaises(ValidationError):
+            self.store.definir_qualification(
+                result["demande"]["id"], QUALIF_PRET_PROPOSITION, acteur="agent")
 
 
 class TestChatRoute(unittest.TestCase):
