@@ -14,7 +14,7 @@ SOURCE_LABEL = "Serveur fictif DÉTOUR"
 
 # Agent conversationnel (surchargeable par OPENROUTER_MODEL).
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL = "openai/gpt-4o-mini"
+DEFAULT_MODEL = "nvidia/nemotron-3.5-super-vl:free"  
 MAX_MESSAGES = 40
 MAX_TOOL_ITERATIONS = 3
 TOOL_NAME = "chercher_voyages"
