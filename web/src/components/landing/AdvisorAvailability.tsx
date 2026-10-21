@@ -50,9 +50,7 @@ export function AdvisorAvailability({ onDecrir }: AdvisorAvailabilityProps) {
             <div className="rounded-xl border border-white/15 bg-white/5 p-4 text-center">
               <p className="text-xs text-[#7fd9d5]">Statut</p>
               {/* #49: never claim advisors are available when closed or unknown. */}
-              <p className="mt-1 text-sm font-bold">
-                {fenetre?.ouvert ? "Ouvert" : "Fermé"}
-              </p>
+              <p className="mt-1 text-sm font-bold">{fenetre?.ouvert ? "Ouvert" : "Fermé"}</p>
             </div>
             <div className="rounded-xl border border-white/15 bg-white/5 p-4 text-center">
               <p className="text-xs text-[#7fd9d5]">Horaires</p>
