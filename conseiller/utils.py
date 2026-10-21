@@ -27,10 +27,18 @@ ACTIVITES_POSSIBLES = ("créatif", "jeu", "cuisine", "intérieur", "extérieur",
 # Statuts d'une demande.
 STATUT_NOUVELLE = "nouvelle"
 STATUT_A_ANALYSER = "a_analyser"
+STATUT_A_REVOIR = "a_revoir"  # To review — price or availability changed after v1.
 STATUT_PROPOSE = "propose"
 STATUT_VALIDE = "valide"
 STATUT_REFUSE = "refuse"
-STATUTS = (STATUT_NOUVELLE, STATUT_A_ANALYSER, STATUT_PROPOSE, STATUT_VALIDE, STATUT_REFUSE)
+STATUTS = (
+    STATUT_NOUVELLE,
+    STATUT_A_ANALYSER,
+    STATUT_A_REVOIR,
+    STATUT_PROPOSE,
+    STATUT_VALIDE,
+    STATUT_REFUSE,
+)
 # Qualification de la demande, avant toute proposition. Distincte de STATUTS.
 QUALIF_INCOMPLET = "incomplet"
 QUALIF_EN_COURS = "en_cours"
@@ -51,6 +59,7 @@ QUALIFICATION_LABELS = {
 STATUT_LABELS = {
     STATUT_NOUVELLE: "Nouvelle",
     STATUT_A_ANALYSER: "À analyser",
+    STATUT_A_REVOIR: "À revoir",
     STATUT_PROPOSE: "Proposée",
     STATUT_VALIDE: "Validée",
     STATUT_REFUSE: "Refusée",

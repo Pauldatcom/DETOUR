@@ -1,6 +1,7 @@
 export const STATUT_LABELS: Record<string, string> = {
   nouvelle: "Nouvelle",
   a_analyser: "À analyser",
+  a_revoir: "À revoir",
   propose: "Proposée",
   valide: "Validée",
   refuse: "Refusée",
@@ -16,6 +17,7 @@ export const PROP_STATUT_LABELS: Record<string, string> = {
 export const STATUT_COLORS: Record<string, string> = {
   nouvelle: "text-accent-bright",
   a_analyser: "text-warning",
+  a_revoir: "text-warning",
   propose: "text-accent",
   valide: "text-success",
   refuse: "text-danger",

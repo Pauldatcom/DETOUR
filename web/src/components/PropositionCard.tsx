@@ -1,4 +1,4 @@
-import type { Prestation, Proposition } from "../types";
+import type { ChangementLecture, Prestation, Proposition } from "../types";
 import { PROP_STATUT_LABELS, STATUT_COLORS, formatEuro, formatDate, formatDateTime } from "../lib/format";
 
 interface PropositionCardProps {
@@ -32,6 +32,27 @@ function PrestationLine({ item }: { item: Prestation }) {
   );
 }
 
+/** Newer reading vs v1: previous/new price, unavailable, or unchanged. */
+function ChangementLine({ item }: { item: ChangementLecture }) {
+  if (item.inchange) {
+    return (
+      <li className="text-xs text-[#8ba8c4]">
+        {item.nom}: prix et disponibilité inchangés
+      </li>
+    );
+  }
+  return (
+    <li className="text-xs text-[#4b6480]">
+      {item.nom}
+      {item.prix_change && (
+        <>: {formatEuro(item.prix_avant)} → {formatEuro(item.prix_apres)}</>
+      )}
+      {!item.disponible_apres && <> · indisponible</>}
+      {item.disponibilite_change && item.disponible_apres && <> · devenu disponible</>}
+    </li>
+  );
+}
+
 /** Proposal card: title, total, and each line with its source and read time. */
 export function PropositionCard({ proposition: prop }: PropositionCardProps) {
   return (
@@ -54,6 +75,15 @@ export function PropositionCard({ proposition: prop }: PropositionCardProps) {
         <ul className="mt-4 space-y-2 border-t border-[#e8eef6] pt-3">
           {prop.prestations.map((item) => (
             <PrestationLine key={item.id} item={item} />
+          ))}
+        </ul>
+      )}
+
+      {prop.changements && prop.changements.length > 0 && (
+        <ul className="mt-3 space-y-1 border-t border-dashed border-[#e8eef6] pt-3">
+          <li className="text-xs font-semibold text-[#0b2447]">Nouvelle lecture</li>
+          {prop.changements.map((item) => (
+            <ChangementLine key={item.id} item={item} />
           ))}
         </ul>
       )}

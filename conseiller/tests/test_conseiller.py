@@ -30,7 +30,15 @@ from store import (
 from app import load_env_file, make_handler
 from agent import Agent, OpenRouterError
 from fournisseur import SupplierClient, SupplierError
-from propositions import PropositionStore, PropositionError, aligner_sur_serveur
+from propositions import (
+    PropositionStore,
+    PropositionError,
+    a_des_ecarts,
+    aligner_sur_serveur,
+    comparer_ligne,
+    comparer_proposition,
+    proposition_avec_changements,
+)
 from utils import QUALIF_PRET_PROPOSITION, QUALIF_PRET_RELECTURE
 
 
@@ -363,6 +371,15 @@ def post(url, payload=None):
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     headers = {"Content-Type": "application/json"} if payload is not None else {}
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req) as res:
+            return res.status, json.loads(res.read())
+    except urllib.error.HTTPError as err:
+        return err.code, json.loads(err.read())
+
+
+def get(url):
+    req = urllib.request.Request(url, method="GET")
     try:
         with urllib.request.urlopen(req) as res:
             return res.status, json.loads(res.read())
@@ -1092,6 +1109,154 @@ class TestProvenancePrestation(unittest.TestCase):
         self.assertIsNone(ligne["prix_unitaire_eur"])
         self.assertIsNone(ligne["disponible"])
         self.assertEqual(prop["prix_total_eur"], 0)
+
+
+class TestComparerLectures(unittest.TestCase):
+    """Compare proposal v1 with a newer reading without rewriting v1."""
+
+    LIGNE = {
+        "id": "train-nantes-01", "nom": "Train Nantes", "type": "transport",
+        "quantite": 2, "verification": "verifie", "prix_unitaire_eur": 48,
+        "prix_total_eur": 96, "disponible": True,
+        "source": "Serveur fictif DÉTOUR", "consulte_le": "2026-10-19T10:42:00+00:00",
+    }
+
+    def test_prix_change_montre_ancien_et_nouveau(self):
+        delta = comparer_ligne(self.LIGNE, {
+            "id": "train-nantes-01", "prix_unitaire_eur": 62, "disponible": True,
+        })
+        self.assertEqual(delta["prix_avant"], 48)
+        self.assertEqual(delta["prix_apres"], 62)
+        self.assertTrue(delta["prix_change"])
+        self.assertFalse(delta["inchange"])
+
+    def test_indisponible_apres_nouvelle_lecture(self):
+        delta = comparer_ligne(self.LIGNE, {
+            "id": "train-nantes-01", "prix_unitaire_eur": 48, "disponible": False,
+        })
+        self.assertTrue(delta["disponibilite_change"])
+        self.assertFalse(delta["disponible_apres"])
+        self.assertFalse(delta["inchange"])
+
+    def test_inchange_quand_meme_prix_et_dispo(self):
+        delta = comparer_ligne(self.LIGNE, {
+            "id": "train-nantes-01", "prix_unitaire_eur": 48, "disponible": True,
+        })
+        self.assertTrue(delta["inchange"])
+        self.assertFalse(a_des_ecarts([delta]))
+
+    def test_lecture_manquante_n_est_pas_un_changement(self):
+        self.assertIsNone(comparer_ligne(self.LIGNE, None))
+        self.assertIsNone(comparer_ligne(self.LIGNE, {"id": "train-nantes-01"}))
+        self.assertEqual(comparer_proposition(
+            {"prestations": [self.LIGNE]}, [{"id": "autre-01", "prix_unitaire_eur": 10,
+                                             "disponible": True}]), [])
+
+    def test_v1_reste_lisible_apres_enrichissement(self):
+        prop = PropositionStore(None).creer("dem_abc", dict(PROPOSITION_VALIDE))
+        recherches = [
+            {"consulte_le": "2026-10-19T10:42:00+00:00", "resultats": []},
+            {"consulte_le": "2026-10-20T11:00:00+00:00", "resultats": [
+                {"id": "train-nantes-01", "prix_unitaire_eur": 62, "disponible": True},
+                {"id": "hotel-nantes-01", "prix_unitaire_eur": 120, "disponible": True},
+            ]},
+        ]
+        enrichie = proposition_avec_changements(prop, recherches)
+        self.assertEqual(enrichie["prestations"][0]["prix_unitaire_eur"], 48)
+        self.assertEqual(enrichie["changements"][0]["prix_apres"], 62)
+        # Stored record must still be the original v1 prices.
+        self.assertEqual(prop["prestations"][0]["prix_unitaire_eur"], 48)
+
+
+class SequenceSupplier:
+    """Returns successive search payloads for re-read scenarios."""
+
+    def __init__(self, payloads):
+        self.payloads = list(payloads)
+        self.calls = []
+
+    def rechercher(self, criteres):
+        self.calls.append(criteres)
+        if not self.payloads:
+            raise AssertionError("No more supplier payloads")
+        return self.payloads.pop(0)
+
+
+class TestStatutARevoirApresChangement(unittest.TestCase):
+    """Request becomes To review when a re-read changes price or availability."""
+
+    def serve(self, supplier, props):
+        store = DemandStore(None)
+        server = ThreadingHTTPServer(
+            ("127.0.0.1", 0), make_handler(store, supplier, propositions=props))
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(lambda: (server.shutdown(), server.server_close()))
+        return store, f"http://127.0.0.1:{server.server_port}"
+
+    def test_prix_change_passe_la_demande_a_revoir(self):
+        props = PropositionStore(None)
+        supplier = SequenceSupplier([
+            {"source_label": "Faux", "source_url": "http://faux",
+             "consulte_le": "2026-10-19T10:42:00+00:00",
+             "criteres": {}, "resultats": [
+                 {"id": "train-nantes-01", "nom": "Train", "type": "transport",
+                  "prix_unitaire_eur": 48, "disponible": True}]},
+            {"source_label": "Faux", "source_url": "http://faux",
+             "consulte_le": "2026-10-20T11:00:00+00:00",
+             "criteres": {}, "resultats": [
+                 {"id": "train-nantes-01", "nom": "Train", "type": "transport",
+                  "prix_unitaire_eur": 62, "disponible": True}]},
+        ])
+        store, base = self.serve(supplier, props)
+        dem_id = store.creer(dict(VALIDE))["id"]
+        post(f"{base}/api/demandes/{dem_id}/recherche")
+        prop = props.creer(dem_id, {
+            "titre": "Nantes", "description": "",
+            "prestations": [{
+                "id": "train-nantes-01", "nom": "Train Nantes", "type": "transport",
+                "prix_unitaire_eur": 48, "quantite": 2, "disponible": True,
+                "source": "Serveur fictif DÉTOUR",
+                "consulte_le": "2026-10-19T10:42:00+00:00",
+            }],
+        })
+        status, data = post(f"{base}/api/demandes/{dem_id}/recherche")
+        self.assertEqual(status, 201)
+        self.assertEqual(data["demande"]["statut"], "a_revoir")
+        self.assertEqual(store.obtenir(dem_id)["statut"], "a_revoir")
+        # v1 kept on disk / in store
+        self.assertEqual(props.obtenir(prop["id"])["prestations"][0]["prix_unitaire_eur"], 48)
+        _, got = get(f"{base}/api/propositions/{prop['id']}")
+        self.assertEqual(got["proposition"]["prestations"][0]["prix_unitaire_eur"], 48)
+        self.assertEqual(got["proposition"]["changements"][0]["prix_avant"], 48)
+        self.assertEqual(got["proposition"]["changements"][0]["prix_apres"], 62)
+
+    def test_lecture_manquante_ne_passe_pas_a_revoir(self):
+        props = PropositionStore(None)
+        supplier = SequenceSupplier([
+            {"source_label": "Faux", "source_url": "http://faux",
+             "consulte_le": "2026-10-19T10:42:00+00:00",
+             "criteres": {}, "resultats": [
+                 {"id": "train-nantes-01", "nom": "Train", "type": "transport",
+                  "prix_unitaire_eur": 48, "disponible": True}]},
+            {"source_label": "Faux", "source_url": "http://faux",
+             "consulte_le": "2026-10-20T11:00:00+00:00",
+             "criteres": {}, "resultats": []},
+        ])
+        store, base = self.serve(supplier, props)
+        dem_id = store.creer(dict(VALIDE))["id"]
+        post(f"{base}/api/demandes/{dem_id}/recherche")
+        props.creer(dem_id, {
+            "titre": "Nantes", "description": "",
+            "prestations": [{
+                "id": "train-nantes-01", "nom": "Train Nantes", "type": "transport",
+                "prix_unitaire_eur": 48, "quantite": 2, "disponible": True,
+                "source": "Serveur fictif DÉTOUR",
+                "consulte_le": "2026-10-19T10:42:00+00:00",
+            }],
+        })
+        status, data = post(f"{base}/api/demandes/{dem_id}/recherche")
+        self.assertEqual(status, 201)
+        self.assertEqual(data["demande"]["statut"], "a_analyser")
 
 
 class TestCorrigerDemande(unittest.TestCase):

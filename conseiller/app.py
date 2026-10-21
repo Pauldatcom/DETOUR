@@ -21,14 +21,45 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 from agent import Agent, DEFAULT_MODEL, OpenRouterError
 from fournisseur import DEFAULT_URL, SupplierClient, SupplierError
-from propositions import PropositionError, PropositionStore
+from propositions import (
+    PropositionError,
+    PropositionStore,
+    a_des_ecarts,
+    comparer_proposition,
+    lecture_plus_recente_que_proposition,
+    proposition_avec_changements,
+)
 from store import DemandStore, ValidationError, criteres_depuis_demande
 from users import UserStore, UserError
 from utils import (GOOGLE_OAUTH_URL, GOOGLE_TOKEN_URL, GOOGLE_USERINFO_URL,
-                   PROP_STATUTS, SESSION_COOKIE, SESSION_MAX)
+                   PROP_STATUTS, SESSION_COOKIE, SESSION_MAX, STATUT_A_REVOIR)
 
 ROOT = Path(__file__).resolve().parent
 WEB_ROOT = ROOT.parent / "web" / "dist"
+
+
+def _enrichir_propositions(props, demand_store):
+    """Attach price/availability deltas from the latest search; v1 lines stay intact."""
+    enrichies = []
+    for prop in props or []:
+        dem = demand_store.obtenir(prop.get("demande_id", ""))
+        recherches = (dem or {}).get("recherches") or []
+        enrichies.append(proposition_avec_changements(prop, recherches))
+    return enrichies
+
+
+def _marquer_a_revoir_si_ecart(store, propositions, dem_id, recherche):
+    """Set request status to review when a newer reading changes a proposal line."""
+    props = propositions.lister_par_demande(dem_id)
+    for prop in props:
+        if not lecture_plus_recente_que_proposition(prop, recherche):
+            continue
+        changements = comparer_proposition(prop, recherche.get("resultats"))
+        if a_des_ecarts(changements):
+            store.changer_statut(dem_id, STATUT_A_REVOIR)
+            return True
+    return False
+
 
 def load_env_file(path=None):
     env_path = Path(path) if path else ROOT.parent / ".env"
@@ -495,7 +526,15 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                             raise ApiError(503, "supplier_not_configured", "Serveur fictif non configuré.")
                         resultat = supplier.rechercher(criteres_depuis_demande(record))
                         recherche = store.ajouter_recherche(match.group(1), resultat)
-                        return self.send_json(201, {"recherche": recherche, "simulation": True})
+                        # Re-read may expose a delta vs proposal v1; never rewrite v1.
+                        _marquer_a_revoir_si_ecart(
+                            store, propositions, match.group(1), recherche)
+                        dem = store.obtenir(match.group(1))
+                        return self.send_json(201, {
+                            "recherche": recherche,
+                            "demande": dem,
+                            "simulation": True,
+                        })
 
                 if method == "PATCH":
                     match = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/qualification", path)
@@ -596,13 +635,14 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                 if method == "GET" and path == "/api/mes-propositions":
                     session = client_exige(self)
                     props = propositions.lister_par_user(session.get("user_id", ""), store)
+                    props = _enrichir_propositions(props, store)
                     props.sort(key=lambda p: p.get("cree_le", ""), reverse=True)
                     return self.send_json(200, {"propositions": props, "simulation": True})
 
                 # ---------- Propositions (conseiller) ----------
                 if method == "GET" and path == "/api/propositions":
                     admin_exige(self)
-                    props = propositions.lister()
+                    props = _enrichir_propositions(propositions.lister(), store)
                     props.sort(key=lambda p: p.get("cree_le", ""), reverse=True)
                     return self.send_json(200, {"propositions": props, "simulation": True})
 
@@ -612,7 +652,8 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                         record = propositions.obtenir(match.group(1))
                         if not record:
                             raise ApiError(404, "proposition_not_found", "Proposition introuvable.")
-                        return self.send_json(200, {"proposition": record, "simulation": True})
+                        enrichie = _enrichir_propositions([record], store)[0]
+                        return self.send_json(200, {"proposition": enrichie, "simulation": True})
 
                 if method == "POST":
                     match_gen = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/propositions/generer", path)
