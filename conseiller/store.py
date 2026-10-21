@@ -551,12 +551,12 @@ class DemandStore:
             return _publier(record)
 
     def changer_statut(self, dem_id, statut, auteur="", motif=""):
-        """Change le statut de proposition. Retourne None si la demande est inconnue.
+        """Change the proposal status. Returns None if the request is unknown.
 
-        Proposée ou validée seulement après validation explicite du conseiller.
-        The decision is traced: the author (from the advisor session), the date
-        (recorded automatically) and an optional reason are appended to the
-        record's decision history.
+        A proposal can only be proposed or validated after an explicit
+        advisor approval. The decision is traced: the author (from the
+        advisor session), the date (recorded automatically) and an optional
+        reason are appended to the record's decision history.
         """
         if statut not in STATUTS:
             raise ValidationError(f"statut doit être l'un de {', '.join(STATUTS)}.")
