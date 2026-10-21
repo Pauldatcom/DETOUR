@@ -406,7 +406,7 @@ class DemandStore:
 
     def lister(self):
         with self.lock:
-            # #51 : chaque demande affiche son échéance de réponse (24h/48h ouvrées).
+            # #51: each request carries its response deadline (24h/48h working hours).
             return [marquer_echeances(_publier(record)) for record in self.demandes.values()]
 
     def obtenir(self, dem_id):
