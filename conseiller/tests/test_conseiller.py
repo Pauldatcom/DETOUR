@@ -867,9 +867,11 @@ PROPOSITION_VALIDE = {
     "description": "Un séjour romantique à Nantes.",
     "prestations": [
         {"id": "train-nantes-01", "nom": "Train Nantes", "type": "transport",
-         "prix_unitaire_eur": 48, "quantite": 2},
+         "prix_unitaire_eur": 48, "quantite": 2, "disponible": True,
+         "source": "Serveur fictif DÉTOUR", "consulte_le": "2026-10-19T10:42:00+00:00"},
         {"id": "hotel-nantes-01", "nom": "Hôtel Nantes", "type": "hébergement",
-         "prix_unitaire_eur": 120, "quantite": 1},
+         "prix_unitaire_eur": 120, "quantite": 1, "disponible": True,
+         "source": "Serveur fictif DÉTOUR", "consulte_le": "2026-10-19T10:42:00+00:00"},
     ],
 }
 
@@ -1016,24 +1018,80 @@ class TestPropositionGeneration(unittest.TestCase):
 
 
 class TestAlignerSurServeur(unittest.TestCase):
-    """Le prix d'une proposition vient toujours du serveur, jamais du modèle."""
+    """Price and provenance come from the server search, never from the model."""
     RESULTATS = [{"id": "train-lyon-01", "nom": "Train vers Lyon",
-                  "type": "transport", "prix_unitaire_eur": 62}]
+                  "type": "transport", "prix_unitaire_eur": 62, "disponible": True}]
+    CONSULTE = "2026-10-19T10:42:00+00:00"
 
     def test_prix_du_serveur_remplace_celui_du_modele(self):
         data = {"titre": "Lyon", "prestations": [
             {"id": "train-lyon-01", "nom": "Train", "type": "transport",
              "prix_unitaire_eur": 26, "quantite": 2}]}
-        prestation = aligner_sur_serveur(data, self.RESULTATS)["prestations"][0]
+        prestation = aligner_sur_serveur(
+            data, self.RESULTATS, source_label="Serveur fictif DÉTOUR",
+            consulte_le=self.CONSULTE)["prestations"][0]
         self.assertEqual(prestation["prix_unitaire_eur"], 62)
         self.assertEqual(prestation["nom"], "Train vers Lyon")
         self.assertEqual(prestation["quantite"], 2)
+        self.assertEqual(prestation["verification"], "verifie")
+        self.assertTrue(prestation["disponible"])
+        self.assertEqual(prestation["source"], "Serveur fictif DÉTOUR")
+        self.assertEqual(prestation["consulte_le"], self.CONSULTE)
 
-    def test_prestation_inconnue_du_serveur_refusee(self):
+    def test_prestation_inconnue_du_serveur_est_manquante(self):
         data = {"titre": "Lyon", "prestations": [
             {"id": "bateau-lyon-99", "nom": "Croisière", "prix_unitaire_eur": 40}]}
-        with self.assertRaises(PropositionError):
-            aligner_sur_serveur(data, self.RESULTATS)
+        prestation = aligner_sur_serveur(
+            data, self.RESULTATS, source_label="Serveur fictif DÉTOUR",
+            consulte_le=self.CONSULTE)["prestations"][0]
+        self.assertEqual(prestation["verification"], "manquant")
+        self.assertIsNone(prestation["prix_unitaire_eur"])
+        self.assertIsNone(prestation["disponible"])
+        self.assertIsNone(prestation["source"])
+        self.assertIsNone(prestation["consulte_le"])
+
+    def test_sans_heure_de_consultation_reste_manquant(self):
+        data = {"titre": "Lyon", "prestations": [
+            {"id": "train-lyon-01", "nom": "Train", "prix_unitaire_eur": 26}]}
+        prestation = aligner_sur_serveur(data, self.RESULTATS)["prestations"][0]
+        self.assertEqual(prestation["verification"], "manquant")
+        self.assertIsNone(prestation["prix_unitaire_eur"])
+
+
+class TestProvenancePrestation(unittest.TestCase):
+    """Verified lines keep source and time; incomplete prices stay missing."""
+
+    def test_ligne_verifiee_persistee(self):
+        tmp = tempfile.mkdtemp()
+        path = Path(tmp) / "propositions.json"
+        store = PropositionStore(path)
+        prop = store.creer("dem_abc", dict(PROPOSITION_VALIDE))
+        train = prop["prestations"][0]
+        self.assertEqual(train["verification"], "verifie")
+        self.assertEqual(train["source"], "Serveur fictif DÉTOUR")
+        self.assertEqual(train["consulte_le"], "2026-10-19T10:42:00+00:00")
+        self.assertTrue(train["disponible"])
+        self.assertEqual(train["prix_unitaire_eur"], 48)
+        # Reopening the stored proposition must keep the same source and time.
+        reouvert = PropositionStore(path).obtenir(prop["id"])
+        self.assertEqual(reouvert["prestations"][0]["source"], train["source"])
+        self.assertEqual(reouvert["prestations"][0]["consulte_le"], train["consulte_le"])
+
+    def test_prix_sans_provenance_devient_manquant(self):
+        data = {
+            "titre": "Sans preuve",
+            "description": "",
+            "prestations": [{
+                "id": "train-nantes-01", "nom": "Train", "type": "transport",
+                "prix_unitaire_eur": 48, "quantite": 2,
+            }],
+        }
+        prop = PropositionStore(None).creer("dem_abc", data)
+        ligne = prop["prestations"][0]
+        self.assertEqual(ligne["verification"], "manquant")
+        self.assertIsNone(ligne["prix_unitaire_eur"])
+        self.assertIsNone(ligne["disponible"])
+        self.assertEqual(prop["prix_total_eur"], 0)
 
 
 class TestCorrigerDemande(unittest.TestCase):

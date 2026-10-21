@@ -232,7 +232,13 @@ class Agent:
         if not isinstance(prop_data, dict):
             raise OpenRouterError("Réponse du modèle invalide (objet attendu).")
         try:
-            return aligner_sur_serveur(prop_data, resultats)
+            # Stamp source and consultation time from the search; never invent them.
+            return aligner_sur_serveur(
+                prop_data,
+                resultats,
+                source_label=(recherche or {}).get("source_label"),
+                consulte_le=(recherche or {}).get("consulte_le"),
+            )
         except PropositionError as err:
             raise OpenRouterError(f"Proposition refusée : {err}") from err
 

@@ -85,13 +85,20 @@ export interface Proposition {
   prix_total_eur: number;
 }
 
+/** One line in a proposal. Only "verifie" lines carry a real server price. */
+export type VerificationPrestation = "verifie" | "manquant";
+
 export interface Prestation {
   id: string;
   nom: string;
   type: string;
-  prix_unitaire_eur: number;
   quantite: number;
-  prix_total_eur: number;
+  verification: VerificationPrestation;
+  prix_unitaire_eur: number | null;
+  prix_total_eur: number | null;
+  disponible: boolean | null;
+  source: string | null;
+  consulte_le: string | null;
 }
 
 export interface ChatMessage {

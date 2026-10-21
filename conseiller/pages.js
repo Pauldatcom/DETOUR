@@ -273,6 +273,53 @@ function detailChamp(label, valeur) {
   return div;
 }
 
+/** Render stored proposals: verified lines show price, source and time; others stay missing. */
+async function afficherPropositionsDemande(content, demId) {
+  try {
+    const data = await apiJSON("/api/propositions");
+    const props = (data.propositions || []).filter((p) => p.demande_id === demId);
+    const titre = document.createElement("h3");
+    titre.className = "detail-subtitle";
+    titre.textContent = "Propositions";
+    content.append(titre);
+    if (!props.length) {
+      const vide = document.createElement("p");
+      vide.className = "demande-empty";
+      vide.textContent = "Aucune proposition pour cette demande.";
+      content.append(vide);
+      return;
+    }
+    for (const prop of props) {
+      const bloc = document.createElement("div");
+      bloc.className = "source-box";
+      bloc.append(Object.assign(document.createElement("div"), {
+        textContent: `${prop.titre} (${prop.id}) — total ${prop.prix_total_eur} €`,
+      }));
+      const liste = document.createElement("ul");
+      liste.className = "detail-liste";
+      for (const item of prop.prestations || []) {
+        const li = document.createElement("li");
+        if (item.verification === "verifie") {
+          const dispo = item.disponible ? "disponible" : "indisponible";
+          li.textContent =
+            `${item.nom} (${item.id}) — ${item.prix_unitaire_eur} €/pers · ${dispo}` +
+            ` · ${item.source} · ${formatDateTime(item.consulte_le)}`;
+        } else {
+          li.textContent = `${item.nom} (${item.id}) — manquant`;
+        }
+        liste.append(li);
+      }
+      bloc.append(liste);
+      content.append(bloc);
+    }
+  } catch (err) {
+    const erreur = document.createElement("p");
+    erreur.className = "form-error";
+    erreur.textContent = err.message;
+    content.append(erreur);
+  }
+}
+
 async function afficherDetail(demId) {
   const content = document.getElementById("detail-content");
   const section = document.getElementById("detail-section");
@@ -349,6 +396,9 @@ async function afficherDetail(demId) {
       aucune.textContent = "Aucune recherche vérifiée pour cette demande.";
       content.append(aucune);
     }
+
+    // Proposals for this request: each line keeps its own source and read time.
+    await afficherPropositionsDemande(content, demId);
   } catch (err) {
     const erreur = document.createElement("p");
     erreur.className = "form-error";
