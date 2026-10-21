@@ -157,7 +157,7 @@ class TestRepresentationDecision(unittest.TestCase):
         record = self.props.decider(prop2["id"], DECISION_ACCEPTER, CONSEILLER, "ok")
         self.assertEqual(record["decisions_statut"][0]["version"], 2)
 
-    def test_les_instructions_ne_sont_conservees_pour_une_correction(self):
+    def test_instructions_kept_for_correction_only(self):
         record = self.props.decider(self.prop["id"], DECISION_CORRECTION, CONSEILLER,
                                     "prix à revoir", "proposer un train moins cher")
         entree = record["decisions_statut"][0]
