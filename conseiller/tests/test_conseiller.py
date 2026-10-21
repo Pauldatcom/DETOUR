@@ -191,6 +191,18 @@ class TestDemandStore(unittest.TestCase):
         self.assertEqual(len(demandes), 2)
         self.assertIn(demandes[0]["demande"]["destination"], ("Nantes", "Lyon"))
 
+    def test_lister_affiche_echeance(self):
+        # #51 : every listed demande carries its response deadline and status.
+        self.store.creer(dict(VALIDE))
+        demandes = self.store.lister()
+        self.assertEqual(len(demandes), 1)
+        record = demandes[0]
+        self.assertIsNotNone(record.get("echeance_cible"))
+        self.assertIsNotNone(record.get("echeance_max"))
+        self.assertIn(
+            record.get("echeance_statut"), ("dans_delai", "approche", "depassee")
+        )
+
     def test_obtenir_inexistant(self):
         self.assertIsNone(self.store.obtenir("dem_inconnu"))
 
