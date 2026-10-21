@@ -117,6 +117,7 @@ if (conseillerLoginForm) {
 const STATUT_LABELS = {
   nouvelle: "Nouvelle",
   a_analyser: "À analyser",
+  a_revoir: "À revoir",
   propose: "Proposée",
   valide: "Validée",
   refuse: "Refusée",
@@ -349,6 +350,9 @@ async function afficherDetail(demId) {
       aucune.textContent = "Aucune recherche vérifiée pour cette demande.";
       content.append(aucune);
     }
+
+    // Proposals for this request: each line keeps its own source and read time.
+    await afficherPropositionsDemande(content, demId);
   } catch (err) {
     const erreur = document.createElement("p");
     erreur.className = "form-error";

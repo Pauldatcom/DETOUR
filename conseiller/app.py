@@ -21,6 +21,11 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 from agent import Agent, DEFAULT_MODEL, OpenRouterError
 from fournisseur import DEFAULT_URL, SupplierClient, SupplierError
+from lecture import (
+    enrichir_propositions,
+    marquer_a_revoir_si_ecart,
+    proposition_avec_changements,
+)
 from propositions import PropositionError, PropositionStore
 from store import DemandStore, ValidationError, criteres_depuis_demande
 from users import UserStore, UserError
@@ -29,6 +34,7 @@ from utils import (GOOGLE_OAUTH_URL, GOOGLE_TOKEN_URL, GOOGLE_USERINFO_URL,
 
 ROOT = Path(__file__).resolve().parent
 WEB_ROOT = ROOT.parent / "web" / "dist"
+
 
 def load_env_file(path=None):
     env_path = Path(path) if path else ROOT.parent / ".env"
@@ -114,7 +120,10 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
     def admin_exige(handler):
         session = client_depuis_cookie(handler.headers)
         if users is None:
-            return session or {"role": "conseiller", "user_id": "", "email": "", "nom": ""}
+            # Match login-conseiller default so decisions always have an advisor name.
+            return session or {
+                "role": "conseiller", "user_id": "", "email": "", "nom": "Conseiller DÉTOUR",
+            }
         if session and session["role"] == "conseiller":
             return session
         raise SessionError(401, "auth_requise", "Accès conseiller requis.")
@@ -227,7 +236,7 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                 if method == "GET" and path == "/health":
                     return self.send_json(200, {"status": "ok", "simulation": True})
 
-                if method == "GET" and path in ("/app.css", "/pages.js",
+                if method == "GET" and path in ("/app.css", "/pages.js", "/pages-propositions.js",
                                                 "/agent-widget.css", "/agent-widget.js"):
                     return self.send_static(path.lstrip("/"))
                 if method == "GET" and path == "/app.js":
@@ -330,6 +339,10 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                         if not (admin or (client and _proprietaire(store, m2.group(1), session))):
                             raise ApiError(401, "auth_requise", "Connectez-vous pour relancer une recherche.")
                     elif method == "POST" and (m2 := re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/propositions(?:/generer)?", path)):
+                        if not admin:
+                            raise ApiError(401, "auth_requise", "Accès conseiller requis.")
+                    elif method == "POST" and re.fullmatch(
+                            r"/api/propositions/(prop_[a-f0-9]+)/decisions", path):
                         if not admin:
                             raise ApiError(401, "auth_requise", "Accès conseiller requis.")
                     elif method == "PATCH":
@@ -495,7 +508,15 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                             raise ApiError(503, "supplier_not_configured", "Serveur fictif non configuré.")
                         resultat = supplier.rechercher(criteres_depuis_demande(record))
                         recherche = store.ajouter_recherche(match.group(1), resultat)
-                        return self.send_json(201, {"recherche": recherche, "simulation": True})
+                        # Re-read may expose a delta vs proposal v1; never rewrite v1.
+                        marquer_a_revoir_si_ecart(
+                            store, propositions, match.group(1), recherche)
+                        dem = store.obtenir(match.group(1))
+                        return self.send_json(201, {
+                            "recherche": recherche,
+                            "demande": dem,
+                            "simulation": True,
+                        })
 
                 if method == "PATCH":
                     match = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/qualification", path)
@@ -596,13 +617,14 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                 if method == "GET" and path == "/api/mes-propositions":
                     session = client_exige(self)
                     props = propositions.lister_par_user(session.get("user_id", ""), store)
+                    props = enrichir_propositions(props, store)
                     props.sort(key=lambda p: p.get("cree_le", ""), reverse=True)
                     return self.send_json(200, {"propositions": props, "simulation": True})
 
                 # ---------- Propositions (conseiller) ----------
                 if method == "GET" and path == "/api/propositions":
                     admin_exige(self)
-                    props = propositions.lister()
+                    props = enrichir_propositions(propositions.lister(), store)
                     props.sort(key=lambda p: p.get("cree_le", ""), reverse=True)
                     return self.send_json(200, {"propositions": props, "simulation": True})
 
@@ -612,9 +634,30 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                         record = propositions.obtenir(match.group(1))
                         if not record:
                             raise ApiError(404, "proposition_not_found", "Proposition introuvable.")
-                        return self.send_json(200, {"proposition": record, "simulation": True})
+                        enrichie = enrichir_propositions([record], store)[0]
+                        return self.send_json(200, {"proposition": enrichie, "simulation": True})
 
                 if method == "POST":
+                    # Advisor keep/replace/drop on a changed line — no send, no option call.
+                    match_dec = re.fullmatch(
+                        r"/api/propositions/(prop_[a-f0-9]+)/decisions", path)
+                    if match_dec:
+                        session = admin_exige(self)
+                        data = self.read_json()
+                        record = propositions.enregistrer_decision(
+                            match_dec.group(1),
+                            data.get("prestation_id"),
+                            data.get("choix"),
+                            session.get("nom", ""),
+                            data.get("motif"),
+                        )
+                        if record is None:
+                            raise ApiError(404, "proposition_not_found", "Proposition introuvable.")
+                        dem = store.obtenir(record.get("demande_id", ""))
+                        enrichie = proposition_avec_changements(
+                            record, (dem or {}).get("recherches") or [])
+                        return self.send_json(200, {"proposition": enrichie, "simulation": True})
+
                     match_gen = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/propositions/generer", path)
                     if match_gen:
                         record = store.obtenir(match_gen.group(1))

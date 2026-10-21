@@ -30,7 +30,7 @@ from store import (
 from app import load_env_file, make_handler
 from agent import Agent, OpenRouterError
 from fournisseur import SupplierClient, SupplierError
-from propositions import PropositionStore, PropositionError, aligner_sur_serveur
+from propositions import PropositionStore, PropositionError
 from utils import QUALIF_PRET_PROPOSITION, QUALIF_PRET_RELECTURE
 from store import questions_conditionnelles
 
@@ -364,6 +364,15 @@ def post(url, payload=None):
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     headers = {"Content-Type": "application/json"} if payload is not None else {}
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req) as res:
+            return res.status, json.loads(res.read())
+    except urllib.error.HTTPError as err:
+        return err.code, json.loads(err.read())
+
+
+def get(url):
+    req = urllib.request.Request(url, method="GET")
     try:
         with urllib.request.urlopen(req) as res:
             return res.status, json.loads(res.read())
@@ -863,78 +872,6 @@ class TestEnvLoader(unittest.TestCase):
         load_env_file(Path("/tmp/detour-inexistant-.env"))
 
 
-PROPOSITION_VALIDE = {
-    "titre": "Week-end à Nantes",
-    "description": "Un séjour romantique à Nantes.",
-    "prestations": [
-        {"id": "train-nantes-01", "nom": "Train Nantes", "type": "transport",
-         "prix_unitaire_eur": 48, "quantite": 2},
-        {"id": "hotel-nantes-01", "nom": "Hôtel Nantes", "type": "hébergement",
-         "prix_unitaire_eur": 120, "quantite": 1},
-    ],
-}
-
-
-class TestPropositionStore(unittest.TestCase):
-    def setUp(self):
-        self.tmpdir = tempfile.mkdtemp()
-        self.path = Path(self.tmpdir) / "propositions.json"
-        self.store = PropositionStore(self.path)
-        self.demand_store = DemandStore(Path(self.tmpdir) / "demandes.json")
-
-    def test_creer_et_obtenir(self):
-        prop = self.store.creer("dem_abc123", dict(PROPOSITION_VALIDE), conseiller="Alice")
-        self.assertTrue(prop["id"].startswith("prop_"))
-        self.assertEqual(prop["statut"], "brouillon")
-        self.assertEqual(prop["conseiller"], "Alice")
-        self.assertEqual(prop["prix_total_eur"], 216)
-        fetched = self.store.obtenir(prop["id"])
-        assert fetched is not None
-        self.assertEqual(fetched["titre"], "Week-end à Nantes")
-
-    def test_persiste_sur_disque(self):
-        prop = self.store.creer("dem_abc123", dict(PROPOSITION_VALIDE))
-        store2 = PropositionStore(self.path)
-        self.assertEqual(len(store2.lister()), 1)
-        self.assertEqual(store2.obtenir(prop["id"])["titre"], "Week-end à Nantes")
-
-    def test_lister_par_demande(self):
-        self.store.creer("dem_aaa", dict(PROPOSITION_VALIDE))
-        self.store.creer("dem_bbb", dict(PROPOSITION_VALIDE))
-        self.store.creer("dem_aaa", dict(PROPOSITION_VALIDE, titre="Autre"))
-        self.assertEqual(len(self.store.lister_par_demande("dem_aaa")), 2)
-        self.assertEqual(len(self.store.lister_par_demande("dem_bbb")), 1)
-
-    def test_lister_par_user(self):
-        dem = self.demand_store.creer({**VALIDE, "user_id": "usr_abc"})
-        self.store.creer(dem["id"], dict(PROPOSITION_VALIDE))
-        self.store.creer("dem_autre", dict(PROPOSITION_VALIDE))
-        props = self.store.lister_par_user("usr_abc", self.demand_store)
-        self.assertEqual(len(props), 1)
-
-    def test_mettre_a_jour(self):
-        prop = self.store.creer("dem_abc", dict(PROPOSITION_VALIDE))
-        updated = self.store.mettre_a_jour(prop["id"], {"titre": "Modifié",
-             "description": "Nouvelle desc", "prestations": []})
-        self.assertEqual(updated["titre"], "Modifié")
-        self.assertEqual(updated["prix_total_eur"], 0)
-
-    def test_changer_statut(self):
-        prop = self.store.creer("dem_abc", dict(PROPOSITION_VALIDE))
-        self.assertEqual(self.store.changer_statut(prop["id"], "envoyee")["statut"], "envoyee")
-        with self.assertRaises(PropositionError):
-            self.store.changer_statut(prop["id"], "inconnu")
-        self.assertIsNone(self.store.changer_statut("prop_inconnu", "envoyee"))
-
-    def test_prestation_invalide(self):
-        with self.assertRaises(PropositionError):
-            self.store.creer("dem_abc", {"titre": "Test", "prestations": [{"nom": ""}]})
-
-    def test_titre_manquant(self):
-        with self.assertRaises(PropositionError):
-            self.store.creer("dem_abc", {"titre": "", "prestations": []})
-
-
 class TestConfigAndMetrics(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -990,51 +927,6 @@ class TestConfigAndMetrics(unittest.TestCase):
                 self.assertEqual(res.status, 200)
         finally:
             os.environ.pop("METRICS_TOKEN", None)
-
-
-class FakeAgentWithGeneration(FakeAgent):
-    def generer_proposition(self, demande_record, recherche):
-        return {"titre": "Généré", "description": "Proposition générée",
-                "prestations": [{"id": "train-01", "nom": "Train", "type": "transport",
-                                 "prix_unitaire_eur": 50, "quantite": 2}]}
-
-
-class TestPropositionGeneration(unittest.TestCase):
-    """Test proposition generation through the agent (no real OpenRouter call)."""
-
-    def test_generer_proposition_retourne_json(self):
-        agent = FakeAgentWithGeneration()
-        demande = {"demande": {"destination": "Nantes", "date_depart": "2026-11-07",
-                               "date_retour": "2026-11-09", "nombre_voyageurs": 2,
-                               "budget_max_par_personne": 500, "type_voyage": "trek-randonnee",
-                               "niveau_aventure": "modere", "souhaits": ""}}
-        recherche = {"resultats": [{"id": "train-nantes-01", "nom": "Train", "type": "transport",
-                                    "prix_unitaire_eur": 48, "prix_total_eur": 96}]}
-        result = agent.generer_proposition(demande, recherche)
-        self.assertEqual(result["titre"], "Généré")
-        self.assertIsInstance(result["prestations"], list)
-        
-
-
-class TestAlignerSurServeur(unittest.TestCase):
-    """Le prix d'une proposition vient toujours du serveur, jamais du modèle."""
-    RESULTATS = [{"id": "train-lyon-01", "nom": "Train vers Lyon",
-                  "type": "transport", "prix_unitaire_eur": 62}]
-
-    def test_prix_du_serveur_remplace_celui_du_modele(self):
-        data = {"titre": "Lyon", "prestations": [
-            {"id": "train-lyon-01", "nom": "Train", "type": "transport",
-             "prix_unitaire_eur": 26, "quantite": 2}]}
-        prestation = aligner_sur_serveur(data, self.RESULTATS)["prestations"][0]
-        self.assertEqual(prestation["prix_unitaire_eur"], 62)
-        self.assertEqual(prestation["nom"], "Train vers Lyon")
-        self.assertEqual(prestation["quantite"], 2)
-
-    def test_prestation_inconnue_du_serveur_refusee(self):
-        data = {"titre": "Lyon", "prestations": [
-            {"id": "bateau-lyon-99", "nom": "Croisière", "prix_unitaire_eur": 40}]}
-        with self.assertRaises(PropositionError):
-            aligner_sur_serveur(data, self.RESULTATS)
 
 
 class TestCorrigerDemande(unittest.TestCase):

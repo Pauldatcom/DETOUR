@@ -72,6 +72,19 @@ export interface PrestationRecherche {
   dans_budget: boolean;
 }
 
+/** Delta between proposal v1 and a newer server reading (never mutates v1). */
+export interface ChangementLecture {
+  id: string;
+  nom: string;
+  prix_avant: number;
+  prix_apres: number;
+  disponible_avant: boolean;
+  disponible_apres: boolean;
+  prix_change: boolean;
+  disponibilite_change: boolean;
+  inchange: boolean;
+}
+
 export interface Proposition {
   id: string;
   demande_id: string;
@@ -83,15 +96,23 @@ export interface Proposition {
   description: string;
   prestations: Prestation[];
   prix_total_eur: number;
+  changements?: ChangementLecture[];
 }
+
+/** One line in a proposal. Only "verifie" lines carry a real server price. */
+export type VerificationPrestation = "verifie" | "manquant";
 
 export interface Prestation {
   id: string;
   nom: string;
   type: string;
-  prix_unitaire_eur: number;
   quantite: number;
-  prix_total_eur: number;
+  verification: VerificationPrestation;
+  prix_unitaire_eur: number | null;
+  prix_total_eur: number | null;
+  disponible: boolean | null;
+  source: string | null;
+  consulte_le: string | null;
 }
 
 export interface ChatMessage {
