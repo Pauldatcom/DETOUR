@@ -82,6 +82,15 @@ class TestUserStore(unittest.TestCase):
         for compte in brut["users"].values():
             self.assertNotIn("motdepasse", json.dumps(compte))
 
+    def test_compte_google_peut_definir_un_mot_de_passe(self):
+        compte = self.users.creer_ou_lier_google(
+            "google@exemple.fr", "Google", "google-sub-unique")
+        self.assertFalse(self.users.mot_de_passe_defini(compte["id"]))
+        self.users.changer_mot_de_passe(compte["id"], "", "secret123")
+        self.assertTrue(self.users.mot_de_passe_defini(compte["id"]))
+        self.assertEqual(
+            self.users.authentifier("google@exemple.fr", "secret123")["id"], compte["id"])
+
 
 class TestNouveauxChampsDemande(unittest.TestCase):
     def test_souhaits_et_user_id_par_defaut(self):
@@ -410,6 +419,104 @@ class TestPortailSansUsers(unittest.TestCase):
         status, data, _ = client.patch(f"/api/demandes/{dem_id}/statut",
                         {"statut": "valide", "motif": "offre acceptee"})
         self.assertEqual(status, 200)
+
+
+class TestEspaceCompteAPI(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.users = UserStore(Path(self.tmp) / "users.json")
+        self.store = DemandStore(Path(self.tmp) / "demandes.json")
+        self.team_key = "cle-" + secrets.token_urlsafe(12)
+        handler = make_handler(self.store, None, FakeAgent(), users=self.users,
+                               team_key=self.team_key)
+        self.server, self.base = demarrer(handler)
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_profil_et_mot_de_passe(self):
+        client = ClientHTTP(self.base)
+        status, _, _ = client.get("/api/account")
+        self.assertEqual(status, 401)
+
+        status, _, _ = client.post("/api/register", {
+            "email": "alice@exemple.fr", "nom": "Alice", "mot_de_passe": "secret123",
+        })
+        self.assertEqual(status, 201)
+        status, data, _ = client.get("/api/account")
+        self.assertEqual(status, 200)
+        self.assertTrue(data["compte"]["mot_de_passe_defini"])
+        self.assertNotIn("hash", data["compte"])
+
+        status, data, _ = client.patch("/api/account", {
+            "email": "alice.nouveau@exemple.fr", "nom": "Alice Nouveau",
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(data["compte"]["nom"], "Alice Nouveau")
+        status, session, _ = client.get("/api/session")
+        self.assertEqual(status, 200)
+        self.assertEqual(session["email"], "alice.nouveau@exemple.fr")
+        self.assertEqual(session["nom"], "Alice Nouveau")
+
+        autre = ClientHTTP(self.base)
+        autre.post("/api/register", {
+            "email": "bob@exemple.fr", "nom": "Bob", "mot_de_passe": "secret123",
+        })
+        status, _, _ = autre.patch("/api/account", {
+            "email": "alice.nouveau@exemple.fr", "nom": "Bob",
+        })
+        self.assertEqual(status, 409)
+        status, _, _ = client.patch("/api/account", {"email": "invalide", "nom": "Alice"})
+        self.assertEqual(status, 400)
+
+        status, _, _ = client.post("/api/account/password", {
+            "mot_de_passe_actuel": "incorrect", "nouveau_mot_de_passe": "nouveau123",
+        })
+        self.assertEqual(status, 401)
+        status, _, _ = client.post("/api/account/password", {
+            "mot_de_passe_actuel": "secret123", "nouveau_mot_de_passe": "nouveau123",
+        })
+        self.assertEqual(status, 200)
+        self.assertIsNone(self.users.authentifier("alice.nouveau@exemple.fr", "secret123"))
+        self.assertIsNotNone(self.users.authentifier("alice.nouveau@exemple.fr", "nouveau123"))
+
+        conseiller = ClientHTTP(self.base)
+        conseiller.post("/api/login-conseiller", {"cle": self.team_key})
+        status, _, _ = conseiller.get("/api/account")
+        self.assertEqual(status, 401)
+
+    def test_demande_attachee_a_la_session_et_non_au_json_client(self):
+        voyageur = ClientHTTP(self.base)
+        voyageur.post("/api/register", {
+            "email": "voyageur@exemple.fr", "nom": "Voyageur", "mot_de_passe": "secret123",
+        })
+        user_id = self.users.authentifier("voyageur@exemple.fr", "secret123")["id"]
+        status, data, _ = voyageur.post("/api/demandes", {
+            **VALIDE, "user_id": "usr_compte_quelquun_dautre",
+        })
+        self.assertEqual(status, 201)
+        demande = data["demande"]
+        self.assertEqual(demande["demande"]["user_id"], user_id)
+        status, data, _ = voyageur.get("/api/mes-demandes")
+        self.assertEqual(status, 200)
+        self.assertEqual([d["id"] for d in data["demandes"]], [demande["id"]])
+
+        autre = ClientHTTP(self.base)
+        autre.post("/api/register", {
+            "email": "autre@exemple.fr", "nom": "Autre", "mot_de_passe": "secret123",
+        })
+        status, data, _ = autre.get("/api/mes-demandes")
+        self.assertEqual(status, 200)
+        self.assertEqual(data["demandes"], [])
+        status, _, _ = autre.get(f"/api/demandes/{demande['id']}")
+        self.assertEqual(status, 404)
+
+        conseiller = ClientHTTP(self.base)
+        conseiller.post("/api/login-conseiller", {"cle": self.team_key})
+        status, _, _ = conseiller.post("/api/demandes", dict(VALIDE))
+        self.assertEqual(status, 401)
 
 
 class TestCatalogueRoute(unittest.TestCase):

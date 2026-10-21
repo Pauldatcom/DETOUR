@@ -4,7 +4,7 @@ import { PropositionCard } from "../components/PropositionCard";
 import { api } from "../lib/api";
 import type { Proposition } from "../types";
 
-/** Single proposal page — restores navigation from the card list. */
+/** Détail d’une proposition dans l’espace personnel. */
 export function PropositionDetail() {
   const { id } = useParams<{ id: string }>();
   const [prop, setProp] = useState<Proposition | null>(null);
@@ -36,10 +36,10 @@ export function PropositionDetail() {
   const loading = Boolean(id) && readyFor !== id;
 
   return (
-    <main className="min-h-screen bg-[#f7fafd] px-4 py-8">
-      <div className="mx-auto max-w-2xl">
+    <section>
+      <div className="max-w-2xl">
         <Link
-          to="/mes-propositions"
+          to="/mon-compte/propositions"
           className="text-sm font-medium text-[#0b2447] outline-none hover:text-[#38bdb8] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
         >
           ← Mes propositions
@@ -56,6 +56,6 @@ export function PropositionDetail() {
           </div>
         )}
       </div>
-    </main>
+    </section>
   );
 }

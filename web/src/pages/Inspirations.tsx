@@ -5,14 +5,22 @@ import { DestinationCard } from "../components/landing/DestinationCard";
 import { ChatWidget } from "../components/landing/ChatWidget";
 import { INSPIRATIONS } from "../data/detourContent";
 import type { Destination } from "../data/detourContent";
+import type { Session } from "../types";
 
 interface InspirationsPageProps {
   onDecrir: () => void;
   isLoggedIn: boolean;
+  session: Session | null;
+  onLogout: () => Promise<void>;
 }
 
 /** Page Inspirations — toutes les destinations, filtre par ambiance. */
-export function InspirationsPage({ onDecrir, isLoggedIn }: InspirationsPageProps) {
+export function InspirationsPage({
+  onDecrir,
+  isLoggedIn,
+  session,
+  onLogout,
+}: InspirationsPageProps) {
   const ambiances = Array.from(new Set(INSPIRATIONS.destinations.map((d) => d.ambiance)));
   const [filtre, setFiltre] = useState<string | null>(null);
 
@@ -22,7 +30,7 @@ export function InspirationsPage({ onDecrir, isLoggedIn }: InspirationsPageProps
 
   return (
     <div className="min-h-screen bg-white text-[#0b2447]">
-      <PublicNav />
+      <PublicNav session={session} onLogout={onLogout} />
       <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:py-20">
         <div className="max-w-2xl">
           <p className="mb-2 text-sm font-semibold tracking-widest text-[#38bdb8] uppercase">

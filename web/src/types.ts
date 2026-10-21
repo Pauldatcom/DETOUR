@@ -2,6 +2,14 @@ export interface Session {
   connecte: boolean;
   role?: "client" | "conseiller";
   nom?: string;
+  email?: string;
+}
+
+export interface Account {
+  id: string;
+  email: string;
+  nom: string;
+  mot_de_passe_defini: boolean;
 }
 
 export interface Config {
