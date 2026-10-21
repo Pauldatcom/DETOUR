@@ -12,6 +12,7 @@ from utils import (
     PROP_STATUTS,
     SOURCE_LABEL,
     STATUT_BROUILLON,
+    TRANSITIONS_PROPOSITION,
 )
 
 # Provenance of a line in a proposition. Only "verifie" may show a price.
@@ -273,15 +274,38 @@ class PropositionStore:
             self.save()
             return json.loads(json.dumps(record))
 
-    def changer_statut(self, prop_id, statut):
+    def changer_statut(self, prop_id, statut, par, motif):
+        """Décision du conseiller sur le statut d'une proposition.
+
+        La transition doit être autorisée et la décision est journalisée
+        (auteur, date, motif) dans l'historique de la proposition.
+        """
         if statut not in PROP_STATUTS:
             raise PropositionError(f"statut doit être l'un de {', '.join(PROP_STATUTS)}.")
+        if not isinstance(par, str) or not par.strip():
+            raise PropositionError("Le nom du conseiller est obligatoire.")
+        if not isinstance(motif, str) or not motif.strip():
+            raise PropositionError("Le motif de la décision est obligatoire.")
         with self.lock:
             record = self.propositions.get(prop_id)
             if not record:
                 return None
+            actuel = record.get("statut")
+            if statut not in TRANSITIONS_PROPOSITION.get(actuel, frozenset()):
+                raise PropositionError(
+                    f"Transition de statut interdite : {actuel} → {statut}.")
             record["statut"] = statut
             record["modifiee_le"] = utc_now_iso()
+            journal = list(record.get("decisions_statut") or [])
+            journal.append({
+                "action": "statut",
+                "par": par.strip(),
+                "le": utc_now_iso(),
+                "motif": motif.strip(),
+                "avant": actuel,
+                "apres": statut,
+            })
+            record["decisions_statut"] = journal
             self.save()
             return json.loads(json.dumps(record))
 

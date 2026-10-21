@@ -7,10 +7,12 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from utils import (ACTIVITES_POSSIBLES, NIVEAUX_AVENTURE, QUALIF_EN_COURS,
+from utils import (ACTIVITES_POSSIBLES, ACTEUR_AGENT, NIVEAUX_AVENTURE,
+                   QUALIF_EN_COURS,
                    QUALIF_INCOMPLET, QUALIF_PRET_PROPOSITION, QUALIF_PRET_RELECTURE,
                    STATUTS, STATUT_A_ANALYSER, STATUT_PROPOSE, STATUT_VALIDE,
-                   TYPES_ACTIVITE_PHYSIQUE, TYPES_AVEC_GUIDE, TYPES_VOYAGE)
+                   TYPES_ACTIVITE_PHYSIQUE, TYPES_AVEC_GUIDE, TYPES_VOYAGE,
+                   TRANSITIONS_DEMANDE)
 
 
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -32,6 +34,42 @@ def _valid_date(value):
 
 class ValidationError(ValueError):
     pass
+
+
+def _valider_decision(par, motif):
+    """Every advisor decision needs an author and a reason."""
+    if not isinstance(par, str) or not par.strip():
+        raise ValidationError("Le nom du conseiller est obligatoire.")
+    if not isinstance(motif, str) or not motif.strip():
+        raise ValidationError("Le motif de la décision est obligatoire.")
+
+
+def _refuser_agent(identite):
+    """The agent never takes a human decision."""
+    if isinstance(identite, str) and identite.strip().lower() == ACTEUR_AGENT:
+        raise ValidationError(
+            "L'agent ne peut pas prendre une décision. Seul le conseiller tranche.")
+
+
+def _journaliser(record, action, par, motif, avant=None, apres=None, champs=None):
+    """Append an advisor decision to the request journal.
+
+    The journal is append-only: author, date and reason are kept for every
+    decision so the history stays auditable.
+    """
+    entry = {
+        "action": action,
+        "par": par.strip(),
+        "le": utc_now_iso(),
+        "motif": motif.strip(),
+        "avant": avant,
+        "apres": apres,
+        "champs": list(champs) if champs else None,
+    }
+    journal = list(record.get("decisions") or [])
+    journal.append(entry)
+    record["decisions"] = journal
+    return entry
 
 
 # Required fields for a travel request (agent must not re-ask when already provided).
@@ -456,11 +494,12 @@ class DemandStore:
             self.save()
             return _publier(record), mis_a_jour
 
-    def corriger(self, dem_id, champs, auteur):
+    def corriger(self, dem_id, champs, auteur, motif=""):
         """Let the advisor correct fields of a request. Every change is recorded.
 
         A correction invalidates a previous validation: the advisor must review
-        the corrected request again before it goes to proposal.
+        the corrected request again before it goes to proposal. The decision
+        needs an author and a reason, and is kept in the request journal.
         """
         if not isinstance(champs, dict) or not champs:
             raise ValidationError("fields must be a non-empty object.")
@@ -468,6 +507,8 @@ class DemandStore:
             raise ValidationError("user_id cannot be changed.")
         if not isinstance(auteur, str) or not auteur.strip():
             raise ValidationError("author is required.")
+        _refuser_agent(auteur)
+        _valider_decision(auteur, motif)
         with self.lock:
             record = self.demandes.get(dem_id)
             if not record:
@@ -477,9 +518,11 @@ class DemandStore:
             now = utc_now_iso()
             history = record.setdefault("modifications", [])
             changed = False
+            champs_modifies = []
             for field, value in updated.items():
                 if before.get(field) != value:
                     changed = True
+                    champs_modifies.append(field)
                     history.append({
                         "champ": field,
                         "avant": before.get(field),
@@ -492,6 +535,9 @@ class DemandStore:
                 record["qualification_validee_par"] = None
                 record["qualification_validee_le"] = None
             recalculer_qualification(record)
+            if changed:
+                _journaliser(record, "correction", auteur, motif,
+                             champs=champs_modifies)
             self.save()
             return _publier(record)
 
@@ -517,10 +563,12 @@ class DemandStore:
             self.save()
             return _publier(record)
 
-    def definir_qualification(self, dem_id, qualification, acteur="conseiller"):
+    def definir_qualification(self, dem_id, qualification, acteur="conseiller",
+                              par="", motif=""):
         """Décision du conseiller : renvoyer en incomplet, ou valider pour proposition.
 
-        L'agent n'est pas un acteur autorisé. Une validation exige les champs obligatoires.
+        L'agent n'est pas un acteur autorisé. Une validation exige les champs
+        obligatoires, un nom de conseiller et un motif.
         """
         if acteur != "conseiller":
             raise ValidationError(
@@ -529,10 +577,13 @@ class DemandStore:
         if qualification not in (QUALIF_INCOMPLET, QUALIF_PRET_PROPOSITION):
             raise ValidationError(
                 "Le conseiller peut renvoyer la demande en incomplet ou la valider pour proposition.")
+        _refuser_agent(par)
+        _valider_decision(par, motif)
         with self.lock:
             record = self.demandes.get(dem_id)
             if not record:
                 return None
+            avant = record.get("qualification")
             if qualification == QUALIF_PRET_PROPOSITION:
                 manquants = champs_manquants(record.get("demande"))
                 if manquants:
@@ -546,13 +597,35 @@ class DemandStore:
                 record["qualification_validee_par"] = None
                 record["qualification_validee_le"] = None
             recalculer_qualification(record)
+            _journaliser(record, "qualification", par, motif,
+                         avant=avant, apres=record.get("qualification"))
             self.save()
             return _publier(record)
 
-    def changer_statut(self, dem_id, statut):
-        """Change le statut de proposition. Retourne None si la demande est inconnue.
+    def changer_statut(self, dem_id, statut, par, motif):
+        """Décision du conseiller sur le statut de la demande.
 
-        Proposée ou validée seulement après validation explicite du conseiller.
+        Le changement est journalisé (auteur, date, motif) et la transition
+        doit être autorisée. Retourne None si la demande est inconnue.
+        """
+        if statut not in STATUTS:
+            raise ValidationError(f"statut doit être l'un de {', '.join(STATUTS)}.")
+        _refuser_agent(par)
+        _valider_decision(par, motif)
+        with self.lock:
+            record = self.demandes.get(dem_id)
+            if not record:
+                return None
+            avant = self._appliquer_statut(record, statut)
+            _journaliser(record, "statut", par, motif,
+                         avant=avant, apres=statut)
+            self.save()
+            return _publier(record)
+
+    def changer_statut_automatique(self, dem_id, statut):
+        """Transition système : lecture serveur plus récente, pas de décision humaine.
+
+        Aucun journal n'est écrit : personne n'a décidé, le programme a constaté.
         """
         if statut not in STATUTS:
             raise ValidationError(f"statut doit être l'un de {', '.join(STATUTS)}.")
@@ -560,13 +633,25 @@ class DemandStore:
             record = self.demandes.get(dem_id)
             if not record:
                 return None
-            recalculer_qualification(record)
-            if statut in (STATUT_PROPOSE, STATUT_VALIDE) and record.get("qualification") != QUALIF_PRET_PROPOSITION:
-                raise ValidationError(
-                    "La demande ne peut partir en proposition que si le conseiller l'a validée.")
-            record["statut"] = statut
+            self._appliquer_statut(record, statut)
             self.save()
             return _publier(record)
+
+    def _appliquer_statut(self, record, statut):
+        """Applique un statut en vérifiant la transition et la qualification.
+
+        Retourne le statut précédent.
+        """
+        actuel = record.get("statut")
+        if statut not in TRANSITIONS_DEMANDE.get(actuel, frozenset()):
+            raise ValidationError(
+                f"Transition de statut interdite : {actuel} → {statut}.")
+        recalculer_qualification(record)
+        if statut in (STATUT_PROPOSE, STATUT_VALIDE) and record.get("qualification") != QUALIF_PRET_PROPOSITION:
+            raise ValidationError(
+                "La demande ne peut partir en proposition que si le conseiller l'a validée.")
+        record["statut"] = statut
+        return actuel
 
     def definir_messages(self, dem_id, messages):
         """Remplace l'historique de conversation d'une demande (liste de messages)."""

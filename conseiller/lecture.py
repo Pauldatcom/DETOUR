@@ -122,6 +122,6 @@ def marquer_a_revoir_si_ecart(store, propositions, dem_id, recherche):
             continue
         changements = comparer_proposition(prop, recherche.get("resultats"))
         if a_des_ecarts(changements):
-            store.changer_statut(dem_id, STATUT_A_REVOIR)
+            store.changer_statut_automatique(dem_id, STATUT_A_REVOIR)
             return True
     return False
