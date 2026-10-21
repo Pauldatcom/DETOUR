@@ -9,29 +9,31 @@ export function PropositionDetail() {
   const { id } = useParams<{ id: string }>();
   const [prop, setProp] = useState<Proposition | null>(null);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [readyFor, setReadyFor] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
-    setLoading(true);
     api
       .proposition(id)
       .then((data) => {
-        if (!cancelled) setProp(data.proposition);
+        if (cancelled) return;
+        setProp(data.proposition);
+        setError("");
+        setReadyFor(id);
       })
       .catch((err) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Proposition introuvable.");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (cancelled) return;
+        setProp(null);
+        setError(err instanceof Error ? err.message : "Proposition introuvable.");
+        setReadyFor(id);
       });
     return () => {
       cancelled = true;
     };
   }, [id]);
+
+  const loading = Boolean(id) && readyFor !== id;
 
   return (
     <main className="min-h-screen bg-[#f7fafd] px-4 py-8">

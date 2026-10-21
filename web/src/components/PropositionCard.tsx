@@ -22,9 +22,7 @@ function PrestationLine({ item }: { item: Prestation }) {
         <span className="font-medium text-[#0b2447]">{item.nom}</span>
         <span className="text-[#8ba8c4]"> ({item.id})</span>
         <span> — manquant</span>
-        {item.copie_depuis_v1 && (
-          <span className="text-[#8ba8c4]"> · repris de v1 (non relu)</span>
-        )}
+        {item.copie_depuis_v1 && <span className="text-[#8ba8c4]"> · repris de v1 (non relu)</span>}
       </li>
     );
   }
@@ -128,14 +126,16 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
 
   if (!linked) {
     return (
-      <article className="rounded-2xl border border-[#e8eef6] bg-white p-5 shadow-sm">{body}</article>
+      <article className="rounded-2xl border border-[#e8eef6] bg-white p-5 shadow-sm">
+        {body}
+      </article>
     );
   }
 
   return (
     <Link
       to={`/propositions/${prop.id}`}
-      className="block rounded-2xl border border-[#e8eef6] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg outline-none focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+      className="block rounded-2xl border border-[#e8eef6] bg-white p-5 shadow-sm transition outline-none hover:-translate-y-0.5 hover:shadow-lg focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
     >
       {body}
     </Link>
