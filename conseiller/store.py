@@ -11,7 +11,8 @@ from horaires import marquer_echeances
 from utils import (ACTIVITES_POSSIBLES, ACTEUR_AGENT, NIVEAUX_AVENTURE,
                    QUALIF_EN_COURS,
                    QUALIF_INCOMPLET, QUALIF_PRET_PROPOSITION, QUALIF_PRET_RELECTURE,
-                   STATUTS, STATUT_A_ANALYSER, STATUT_PROPOSE, STATUT_VALIDE,
+                   STATUTS, STATUT_A_ANALYSER, STATUT_NOUVELLE, STATUT_PROPOSE,
+                   STATUT_VALIDE,
                    TYPES_ACTIVITE_PHYSIQUE, TYPES_AVEC_GUIDE, TYPES_VOYAGE,
                    TRANSITIONS_DEMANDE)
 
@@ -393,7 +394,9 @@ class DemandStore:
             dem_id = "dem_" + secrets.token_hex(6)
             record = {
                 "id": dem_id,
-                "statut": STATUT_A_ANALYSER,
+                # #49: customer submission is always accepted (Submitted → nouvelle),
+                # including outside advisor working hours.
+                "statut": STATUT_NOUVELLE,
                 "cree_le": utc_now_iso(),
                 "demande": valide,
                 "qualification_retenue": None,
@@ -484,7 +487,8 @@ class DemandStore:
                 merged = valider_demande(merged)
             record = {
                 "id": dem_id,
-                "statut": STATUT_A_ANALYSER,
+                # #49: draft-from-answers is still a customer submission (nouvelle).
+                "statut": STATUT_NOUVELLE,
                 "cree_le": utc_now_iso(),
                 "demande": merged,
                 "qualification_retenue": None,

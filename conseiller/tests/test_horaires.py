@@ -270,5 +270,25 @@ class TestMarquerEcheances(unittest.TestCase):
         self.assertEqual(marque["statut"], "a_analyser")
 
 
+class TestSoumissionHorsHoraires(unittest.TestCase):
+    """#49: a request can be submitted when the service is closed."""
+
+    def test_fenetre_samedi_ne_promet_pas_une_reponse_immediate(self):
+        fenetre = fenetre_reponse(metier(2026, 1, 10, 15, 0))  # saturday
+        self.assertFalse(fenetre["ouvert"])
+        self.assertFalse(est_ouvert(metier(2026, 1, 10, 15, 0)))
+        self.assertIn("fermé", fenetre["message"])
+
+    def test_creation_reste_nouvelle_avec_horodatage(self):
+        from store import DemandStore
+        from test_conseiller import VALIDE
+
+        record = DemandStore(None).creer(dict(VALIDE))
+        self.assertEqual(record["statut"], "nouvelle")
+        self.assertTrue(record["cree_le"])
+        # Closed hours must not block persistence (no gate in creer).
+        self.assertTrue(record["id"].startswith("dem_"))
+
+
 if __name__ == "__main__":
     unittest.main()

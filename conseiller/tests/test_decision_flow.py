@@ -102,6 +102,9 @@ class BaseDecision(unittest.TestCase):
         self.server, self.base = demarrer(handler)
         self.addCleanup(lambda: (self.server.shutdown(), self.server.server_close()))
         self.dem_id = self.store.creer(dict(VALIDE))["id"]
+        # #49: customer submission starts as nouvelle; advisor takes it in charge
+        # (direct write avoids polluting the decision journal under test).
+        self.store.demandes[self.dem_id]["statut"] = STATUT_A_ANALYSER
 
     def conseiller(self):
         client = ClientHTTP(self.base)
@@ -247,6 +250,7 @@ class TestTracabilite(BaseDecision):
         path = Path(tmp) / "demandes.json"
         store = DemandStore(path)
         dem_id = store.creer(dict(VALIDE))["id"]
+        store.demandes[dem_id]["statut"] = STATUT_A_ANALYSER
         store.definir_qualification(dem_id, QUALIF_PRET_PROPOSITION,
                                     acteur="conseiller", par=CONSEILLER,
                                     motif="dossier complet")

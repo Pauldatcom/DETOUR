@@ -49,37 +49,30 @@ export function AdvisorAvailability({ onDecrir }: AdvisorAvailabilityProps) {
           <div className="mt-8 grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl border border-white/15 bg-white/5 p-4 text-center">
               <p className="text-xs text-[#7fd9d5]">Statut</p>
+              {/* #49: never claim advisors are available when closed or unknown. */}
               <p className="mt-1 text-sm font-bold">
-                {fenetre ? (fenetre.ouvert ? "Ouvert" : "Fermé") : "Disponibles"}
+                {fenetre?.ouvert ? "Ouvert" : "Fermé"}
               </p>
             </div>
             <div className="rounded-xl border border-white/15 bg-white/5 p-4 text-center">
               <p className="text-xs text-[#7fd9d5]">Horaires</p>
               <p className="mt-1 text-sm font-bold">
-                {fenetre?.prochaine_ouverture
-                  ? new Date(fenetre.prochaine_ouverture).toLocaleString("fr-FR", {
-                      weekday: "long",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })
-                  : CONSEILLERS.disponibilite.heures}
+                {CONSEILLERS.disponibilite.jours}
+                <br />
+                {CONSEILLERS.disponibilite.heures}
               </p>
             </div>
             <div className="rounded-xl border border-white/15 bg-white/5 p-4 text-center">
               <p className="text-xs text-[#7fd9d5]">Délai de réponse</p>
-              <p className="mt-1 text-sm font-bold">
-                {fenetre?.echeance_cible
-                  ? new Date(fenetre.echeance_cible).toLocaleString("fr-FR", {
-                      dateStyle: "short",
-                      timeStyle: "short",
-                    })
-                  : CONSEILLERS.disponibilite.delai}
-              </p>
+              <p className="mt-1 text-sm font-bold">{CONSEILLERS.disponibilite.delai}</p>
             </div>
           </div>
           <p className="mt-4 text-sm text-[#afc4dc]">
             {fenetre?.promesse_delai || CONSEILLERS.disponibilite.precision}
           </p>
+          {fenetre && !fenetre.ouvert && fenetre.message && (
+            <p className="mt-2 text-sm text-[#7fd9d5]">{fenetre.message}</p>
+          )}
         </div>
 
         <div>

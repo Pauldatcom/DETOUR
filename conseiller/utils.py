@@ -72,7 +72,9 @@ STATUT_LABELS = {
 # Transitions de statut autorisées pour une demande. Un statut absent de la
 # liste est terminal : aucune décision ne peut le faire bouger.
 TRANSITIONS_DEMANDE = {
-    STATUT_NOUVELLE: frozenset({STATUT_A_ANALYSER, STATUT_REFUSE}),
+    # #49: submitted (nouvelle) can be taken in charge, refused, or flagged
+    # to review after a re-read — without claiming an advisor already analysed it.
+    STATUT_NOUVELLE: frozenset({STATUT_A_ANALYSER, STATUT_A_REVOIR, STATUT_REFUSE}),
     STATUT_A_ANALYSER: frozenset({STATUT_A_REVOIR, STATUT_PROPOSE, STATUT_VALIDE, STATUT_REFUSE}),
     STATUT_A_REVOIR: frozenset({STATUT_A_ANALYSER, STATUT_PROPOSE, STATUT_VALIDE, STATUT_REFUSE}),
     STATUT_PROPOSE: frozenset({STATUT_VALIDE, STATUT_REFUSE, STATUT_A_ANALYSER, STATUT_A_REVOIR}),

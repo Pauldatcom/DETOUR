@@ -104,8 +104,10 @@ class TestNouveauxChampsDemande(unittest.TestCase):
     def test_changer_statut(self):
         store = DemandStore(None)
         dem_id = store.creer(dict(VALIDE))["id"]
+        self.assertEqual(store.obtenir(dem_id)["statut"], "nouvelle")  # #49 Submitted
         with self.assertRaises(ValidationError):
             store.changer_statut(dem_id, "propose", "Alice", "offre prete")
+        store.changer_statut(dem_id, "a_analyser", "Alice", "prise en charge")
         store.definir_qualification(dem_id, "pret_proposition", acteur="conseiller",
                                     par="Alice", motif="dossier complet")
         self.assertEqual(
@@ -339,6 +341,10 @@ class TestPortailAuth(unittest.TestCase):
                                   {"statut": "propose", "motif": "offre prete"})
         self.assertEqual(status, 400)
         status, data, _ = conseiller.patch(
+            f"/api/demandes/{record['id']}/statut",
+            {"statut": "a_analyser", "motif": "prise en charge"})
+        self.assertEqual(status, 200)
+        status, data, _ = conseiller.patch(
             f"/api/demandes/{record['id']}/qualification",
             {"qualification": "pret_proposition", "motif": "dossier complet"})
         self.assertEqual(status, 200)
@@ -403,6 +409,10 @@ class TestPortailSansUsers(unittest.TestCase):
         status, data, _ = client.patch(f"/api/demandes/{dem_id}/statut",
                         {"statut": "valide", "motif": "offre acceptee"})
         self.assertEqual(status, 400)
+        status, data, _ = client.patch(
+            f"/api/demandes/{dem_id}/statut",
+            {"statut": "a_analyser", "motif": "prise en charge"})
+        self.assertEqual(status, 200)
         status, data, _ = client.patch(
             f"/api/demandes/{dem_id}/qualification",
             {"qualification": "pret_proposition", "motif": "dossier complet"})
