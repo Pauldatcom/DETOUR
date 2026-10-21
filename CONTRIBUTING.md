@@ -82,7 +82,7 @@ The `main` branch is protected:
 
 - direct pushes are rejected, including for administrators;
 - pull requests require one approving review;
-- stale reviews are dismissed when new commits are pushed;
+- approving reviews are kept when new commits are pushed;
 - force pushes are disabled.
 
 All changes reach `main` through a pull request.
