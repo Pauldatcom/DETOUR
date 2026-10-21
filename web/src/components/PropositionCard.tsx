@@ -1,6 +1,12 @@
 import { Link } from "react-router-dom";
 import type { ChangementLecture, Prestation, Proposition } from "../types";
-import { PROP_STATUT_LABELS, STATUT_COLORS, formatEuro, formatDate, formatDateTime } from "../lib/format";
+import {
+  PROP_STATUT_LABELS,
+  STATUT_COLORS,
+  formatEuro,
+  formatDate,
+  formatDateTime,
+} from "../lib/format";
 
 interface PropositionCardProps {
   proposition: Proposition;
@@ -42,17 +48,15 @@ function PrestationLine({ item }: { item: Prestation }) {
 /** Newer reading vs v1: previous/new price, unavailable, or unchanged. */
 function ChangementLine({ item }: { item: ChangementLecture }) {
   if (item.inchange) {
-    return (
-      <li className="text-xs text-[#8ba8c4]">
-        {item.nom}: prix et disponibilité inchangés
-      </li>
-    );
+    return <li className="text-xs text-[#8ba8c4]">{item.nom}: prix et disponibilité inchangés</li>;
   }
   return (
     <li className="text-xs text-[#4b6480]">
       {item.nom}
       {item.prix_change && (
-        <>: {formatEuro(item.prix_avant)} → {formatEuro(item.prix_apres)}</>
+        <>
+          : {formatEuro(item.prix_avant)} → {formatEuro(item.prix_apres)}
+        </>
       )}
       {!item.disponible_apres && <> · indisponible</>}
       {item.disponibilite_change && item.disponible_apres && <> · devenu disponible</>}

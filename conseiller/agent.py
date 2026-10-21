@@ -64,11 +64,19 @@ CONTRÔLE DES INFORMATIONS (fait par le programme, pas par toi)
 AUTRES INFORMATIONS À RECUEILLIR AUSSI AVANT L'APPEL
 Pose une question à la fois pour chacune (une seule par tour) :
 - présence d'enfants et leur nombre (has_enfants, nombre_enfants), si le voyageur n'en a pas parlé
-- besoin_guide : "Souhaitez-vous un guide pour ce voyage ?"
 - activites préférées (activites) : "créatif", "jeu", "cuisine", "intérieur", "extérieur"
 - souhaits : "Décrivez en quelques mots l'ambiance et les envies pour ce voyage" (texte libre)
 - allergies ou contraintes (contraintes, texte libre)
 Si le voyageur presse de finir, appelez l'outil avec ce que vous avez, sans inventer le reste.
+
+QUESTIONS SELON LE VOYAGE (choisies par le programme, pas par toi)
+- L'outil renvoie `informations.questions_conditionnelles` : les seules questions en plus utiles pour ce voyage.
+- Pose uniquement ces questions-là, une par tour, si le voyageur n'y a pas déjà répondu :
+  - niveau_aventure (trek) : "Quel est votre niveau pour la randonnée : calme, modéré ou intense ?"
+  - besoin_guide : "Souhaitez-vous un guide pour ce voyage ?"
+  - permis_conduire : "Avez-vous le permis de conduire ?"
+- Ne pose jamais une question absente de cette liste (pas de question sur le guide pour une lune de miel, par exemple).
+- Si le voyageur parle de voiture ou de road trip, enregistre avec_voiture à true : l'outil ajoutera alors la question du permis.
 
 MISE À JOUR D'UNE DEMANDE EXISTANTE
 - Les réponses du voyageur sont enregistrées sur la demande en cours (pas une nouvelle à chaque fois).
@@ -114,6 +122,10 @@ TOOL_DEFINITION = {
                 "budget_max_par_personne": {"type": "integer", "description": "Budget maximum par personne, en euros."},
                 "niveau_aventure": {"type": "string", "enum": ["calme", "modere", "intense"]},
                 "besoin_guide": {"type": "boolean", "description": "Un guide est-il requis ?"},
+                "avec_voiture": {"type": "boolean",
+                                 "description": "Le voyageur veut-il se déplacer en voiture sur place ?"},
+                "permis_conduire": {"type": "boolean",
+                                    "description": "Le voyageur a-t-il le permis de conduire ? Seulement si avec_voiture."},
                 "activites": {"type": "array", "items": {"type": "string"},
                               "description": "Activités souhaitées : créatif, jeu, cuisine, intérieur, extérieur."},
                 "contraintes": {"type": "string", "description": "Allergies ou contraintes importantes."},

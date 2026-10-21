@@ -24,6 +24,10 @@ TYPES_VOYAGE = ("trek-randonnee", "lune-de-miel", "voyage-familial", "autres")
 NIVEAUX_AVENTURE = ("calme", "modere", "intense")
 ACTIVITES_POSSIBLES = ("créatif", "jeu", "cuisine", "intérieur", "extérieur", "train", "sans voiture")
 
+# Conditional questions (#22). App-side only: never sent to the fictional server.
+TYPES_ACTIVITE_PHYSIQUE = ("trek-randonnee",)
+TYPES_AVEC_GUIDE = ("trek-randonnee",)
+
 # Statuts d'une demande.
 STATUT_NOUVELLE = "nouvelle"
 STATUT_A_ANALYSER = "a_analyser"
