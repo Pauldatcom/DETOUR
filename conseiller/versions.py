@@ -8,7 +8,7 @@ from lecture import (
     comparer_proposition,
     lecture_plus_recente_que_proposition,
 )
-from propositions import VERIFICATION_VERIFIE, PropositionError
+from propositions import VERIFICATION_VERIFIE, PropositionError, parse_iso8601
 from utils import (
     DECISION_DROP,
     DECISION_KEEP,
@@ -78,16 +78,18 @@ def construire_donnees_v2(proposition_v1, recherche, decisions):
         raise PropositionError("Une nouvelle lecture serveur est obligatoire pour la v2.")
     label = (recherche.get("source_label") or "").strip() or SOURCE_LABEL
     consulte_le = (recherche.get("consulte_le") or "").strip()
-    if not consulte_le:
-        raise PropositionError("consulte_le manquant sur la nouvelle lecture.")
+    if parse_iso8601(consulte_le) is None:
+        raise PropositionError(
+            "consulte_le ISO-8601 manquant ou invalide sur la nouvelle lecture.")
     par_id = {
         r["id"]: r for r in recherche.get("resultats") or []
         if isinstance(r, dict) and r.get("id")
     }
-    par_decision = {
-        d["prestation_id"]: d for d in decisions or []
-        if isinstance(d, dict) and d.get("prestation_id")
-    }
+    # Latest decision per service wins; history stays append-only in the store.
+    par_decision = {}
+    for d in decisions or []:
+        if isinstance(d, dict) and d.get("prestation_id"):
+            par_decision[d["prestation_id"]] = d
     needed = set(ids_a_decider(proposition_v1, recherche))
     prestations = []
     for ligne in proposition_v1.get("prestations") or []:
@@ -130,7 +132,10 @@ def construire_donnees_v2(proposition_v1, recherche, decisions):
             prestations.append(
                 _ligne_depuis_serveur(serveur, quantite, label, consulte_le))
         elif ligne.get("verification") == VERIFICATION_VERIFIE:
-            prestations.append(dict(ligne))
+            # Absent from the new reading: keep v1 data but flag it explicitly.
+            copie = dict(ligne)
+            copie["copie_depuis_v1"] = True
+            prestations.append(copie)
     return {
         "titre": proposition_v1.get("titre") or "Proposition",
         "description": proposition_v1.get("description") or "",

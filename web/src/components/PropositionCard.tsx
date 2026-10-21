@@ -1,8 +1,11 @@
+import { Link } from "react-router-dom";
 import type { ChangementLecture, Prestation, Proposition } from "../types";
 import { PROP_STATUT_LABELS, STATUT_COLORS, formatEuro, formatDate, formatDateTime } from "../lib/format";
 
 interface PropositionCardProps {
   proposition: Proposition;
+  /** When false, render as a static article (detail page). Default: linked list card. */
+  linked?: boolean;
 }
 
 /** One prestation line: verified price + source/time, or missing (never invented). */
@@ -13,6 +16,9 @@ function PrestationLine({ item }: { item: Prestation }) {
         <span className="font-medium text-[#0b2447]">{item.nom}</span>
         <span className="text-[#8ba8c4]"> ({item.id})</span>
         <span> — manquant</span>
+        {item.copie_depuis_v1 && (
+          <span className="text-[#8ba8c4]"> · repris de v1 (non relu)</span>
+        )}
       </li>
     );
   }
@@ -27,6 +33,7 @@ function PrestationLine({ item }: { item: Prestation }) {
       </span>
       <div className="mt-0.5 text-xs text-[#8ba8c4]">
         {item.source} · {formatDateTime(item.consulte_le ?? "")}
+        {item.copie_depuis_v1 && " · repris de v1 (non relu)"}
       </div>
     </li>
   );
@@ -54,9 +61,10 @@ function ChangementLine({ item }: { item: ChangementLecture }) {
 }
 
 /** Proposal card: title, total, and each line with its source and read time. */
-export function PropositionCard({ proposition: prop }: PropositionCardProps) {
-  return (
-    <article className="rounded-2xl border border-[#e8eef6] bg-white p-5 shadow-sm">
+export function PropositionCard({ proposition: prop, linked = true }: PropositionCardProps) {
+  const manquantes = prop.prestations.filter((p) => p.verification !== "verifie").length;
+  const body = (
+    <>
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-bold text-[#0b2447]">{prop.titre}</h3>
@@ -100,8 +108,32 @@ export function PropositionCard({ proposition: prop }: PropositionCardProps) {
             </>
           )}
         </div>
-        <span className="font-bold text-[#38bdb8]">{formatEuro(prop.prix_total_eur)}</span>
+        <div className="text-right">
+          <span className="font-bold text-[#38bdb8]">{formatEuro(prop.prix_total_eur)}</span>
+          {manquantes > 0 && (
+            <p className="mt-0.5 text-[10px] text-[#8ba8c4]">
+              {manquantes > 1
+                ? `total vérifié · ${manquantes} lignes non vérifiées`
+                : "total vérifié · 1 ligne non vérifiée"}
+            </p>
+          )}
+        </div>
       </div>
-    </article>
+    </>
+  );
+
+  if (!linked) {
+    return (
+      <article className="rounded-2xl border border-[#e8eef6] bg-white p-5 shadow-sm">{body}</article>
+    );
+  }
+
+  return (
+    <Link
+      to={`/propositions/${prop.id}`}
+      className="block rounded-2xl border border-[#e8eef6] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg outline-none focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+    >
+      {body}
+    </Link>
   );
 }

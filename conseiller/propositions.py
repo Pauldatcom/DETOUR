@@ -23,12 +23,22 @@ def utc_now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
+def parse_iso8601(value):
+    """Parse an ISO-8601 timestamp, or return None if unusable."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 class PropositionError(ValueError):
     pass
 
 
 def _provenance_complete(data):
-    """True when price, availability, source and read time are all present."""
+    """True when price, availability, source and ISO read time are all present."""
     prix = data.get("prix_unitaire_eur")
     disponible = data.get("disponible")
     source = data.get("source")
@@ -37,7 +47,7 @@ def _provenance_complete(data):
         type(prix) is int and prix >= 0
         and type(disponible) is bool
         and isinstance(source, str) and bool(source.strip())
-        and isinstance(consulte_le, str) and bool(consulte_le.strip())
+        and parse_iso8601(consulte_le) is not None
     )
 
 
@@ -134,6 +144,8 @@ def aligner_sur_serveur(data, resultats, source_label=None, consulte_le=None):
               if isinstance(r, dict) and r.get("id")}
     label = (source_label or "").strip() or SOURCE_LABEL
     lu_le = (consulte_le or "").strip()
+    if lu_le and parse_iso8601(lu_le) is None:
+        lu_le = ""
     prestations = []
     for p in data.get("prestations", []):
         if not isinstance(p, dict):
@@ -277,9 +289,9 @@ class PropositionStore:
                              remplacement_id=None):
         """Store keep/replace/drop for a changed line. Does not send or book.
 
-        Requires a non-empty advisor name. Replaces any prior choice for the
-        same service id so the next proposal version can follow the latest one.
-        replace requires remplacement_id (a service id from a server reading).
+        Requires a non-empty advisor name. Decisions are append-only so the
+        advisor history stays auditable; builders use the latest choice per
+        service id. replace requires remplacement_id from a server reading.
         """
         prest_id = str(prestation_id or "").strip()
         if not prest_id:
@@ -313,10 +325,7 @@ class PropositionStore:
                 "motif": motif.strip(),
                 "remplacement_id": remp,
             }
-            decisions = [
-                d for d in record.get("decisions") or []
-                if isinstance(d, dict) and d.get("prestation_id") != prest_id
-            ]
+            decisions = list(record.get("decisions") or [])
             decisions.append(entree)
             record["decisions"] = decisions
             # Never send to the customer and never change send/book status here.

@@ -398,6 +398,15 @@ class TestDecisionPrestation(unittest.TestCase):
         self.assertNotEqual(record["statut"], "envoyee")
         self.assertEqual(record["statut"], "brouillon")
 
+    def test_decisions_are_append_only_for_audit(self):
+        self.props.enregistrer_decision(
+            self.prop["id"], "train-nantes-01", "keep", "Nora", "first look")
+        record = self.props.enregistrer_decision(
+            self.prop["id"], "train-nantes-01", "drop", "Nora", "changed mind")
+        self.assertEqual(len(record["decisions"]), 2)
+        self.assertEqual(record["decisions"][0]["choix"], "keep")
+        self.assertEqual(record["decisions"][1]["choix"], "drop")
+
     def test_http_decision_sans_appel_option(self):
         class SpySupplier(FakeSupplier):
             def __init__(self):

@@ -113,6 +113,8 @@ export interface Prestation {
   disponible: boolean | null;
   source: string | null;
   consulte_le: string | null;
+  /** True when v2 kept a v1 price that was not refreshed from the new reading. */
+  copie_depuis_v1?: boolean;
 }
 
 export interface ChatMessage {

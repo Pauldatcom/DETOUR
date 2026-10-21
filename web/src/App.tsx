@@ -6,6 +6,7 @@ import { Login } from "./pages/Login";
 import { InspirationsPage } from "./pages/Inspirations";
 import { ConseillersPage } from "./pages/Conseillers";
 import { MesPropositions } from "./pages/MesPropositions";
+import { PropositionDetail } from "./pages/PropositionDetail";
 import { api } from "./lib/api";
 import type { Config } from "./types";
 
@@ -68,6 +69,12 @@ export default function App() {
           ) : (
             <Navigate to="/login" replace />
           )
+        }
+      />
+      <Route
+        path="/propositions/:id"
+        element={
+          connecte ? <PropositionDetail /> : <Navigate to="/login" replace />
         }
       />
 
