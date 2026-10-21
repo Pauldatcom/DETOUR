@@ -7,11 +7,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from utils import (
+    DECISION_ACCEPTER,
+    DECISION_ACTIONS,
+    DECISION_CORRECTION,
+    DECISION_REFUSER,
     DECISION_REPLACE,
+    DECISIONS_AVEC_MOTIF,
     DECISIONS_PRESTATION,
     PROP_STATUTS,
     SOURCE_LABEL,
     STATUT_BROUILLON,
+    STATUT_PAR_DECISION,
     TRANSITIONS_PROPOSITION,
 )
 
@@ -271,6 +277,54 @@ class PropositionStore:
             record["prestations"] = champs["prestations"]
             record["prix_total_eur"] = champs["prix_total_eur"]
             record["modifiee_le"] = utc_now_iso()
+            self.save()
+            return json.loads(json.dumps(record))
+
+    def decider(self, prop_id, action, par, motif="", instructions=""):
+        """Décision du conseiller sur une proposition : accepter, corriger ou refuser.
+
+        La décision suit la représentation partagée : action, auteur, date,
+        motif, instructions, proposition visée et version visée. Elle est
+        journalisée dans `decisions_statut` et le statut de la proposition
+        suit l'action. Une correction et un refus exigent un motif.
+        """
+        if action not in DECISION_ACTIONS:
+            raise PropositionError(
+                f"action doit être l'une de {', '.join(DECISION_ACTIONS)}.")
+        if not isinstance(par, str) or not par.strip():
+            raise PropositionError("Le nom du conseiller est obligatoire.")
+        motif = (motif or "").strip()
+        instructions = (instructions or "").strip()
+        if action in DECISIONS_AVEC_MOTIF and not motif:
+            raise PropositionError(
+                "Le motif de la décision est obligatoire pour cette action.")
+        if action == DECISION_CORRECTION and not instructions:
+            raise PropositionError(
+                "Les instructions de correction sont obligatoires.")
+        with self.lock:
+            record = self.propositions.get(prop_id)
+            if not record:
+                return None
+            actuel = record.get("statut")
+            cible = STATUT_PAR_DECISION[action]
+            if cible not in TRANSITIONS_PROPOSITION.get(actuel, frozenset()):
+                raise PropositionError(
+                    f"Transition de statut interdite : {actuel} → {cible}.")
+            record["statut"] = cible
+            record["modifiee_le"] = utc_now_iso()
+            journal = list(record.get("decisions_statut") or [])
+            journal.append({
+                "action": action,
+                "par": par.strip(),
+                "le": utc_now_iso(),
+                "motif": motif,
+                "avant": actuel,
+                "apres": cible,
+                "proposition_id": record.get("id"),
+                "version": record.get("version", 1),
+                "instructions": instructions or None,
+            })
+            record["decisions_statut"] = journal
             self.save()
             return json.loads(json.dumps(record))
 
