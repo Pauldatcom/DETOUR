@@ -12,6 +12,125 @@ const DECISION_LABELS = {
   drop: "Retirer",
 };
 
+/** Statuts d'une proposition (miroir de utils.py). */
+const PROP_STATUT_LABELS = {
+  brouillon: "Brouillon",
+  envoyee: "Envoyée",
+  validee: "Validée",
+  refusee: "Refusée",
+  correction_requested: "Correction demandée",
+};
+
+/** Décisions du conseiller sur une proposition (#28, #32, #36). */
+const DECISION_PROPOSITION = [
+  { action: "accepter", route: "accepter", label: "Accepter", motif: false },
+  {
+    action: "demander_correction",
+    route: "correction",
+    label: "Demander une correction",
+    motif: true,
+  },
+  { action: "refuser", route: "refuser", label: "Refuser", motif: true },
+];
+
+/**
+ * Bloc de décision du conseiller sur une proposition.
+ *
+ * Affiche le statut, propose Accepter / Demander une correction / Refuser,
+ * demande le motif quand l'action l'exige, puis confirme l'action et le
+ * nouveau statut. La décision reste écrite côté serveur.
+ */
+function blocDecisionProposition(prop, demId) {
+  const wrap = document.createElement("div");
+  wrap.className = "prop-decision";
+
+  const statut = document.createElement("div");
+  statut.className = "prop-statut";
+  statut.textContent = `Statut : ${PROP_STATUT_LABELS[prop.statut] || prop.statut}`;
+
+  const champs = document.createElement("div");
+  champs.className = "prop-motif";
+  champs.hidden = true;
+
+  const motif = document.createElement("textarea");
+  motif.className = "prop-motif-input";
+  motif.rows = 2;
+  motif.placeholder = "Motif (obligatoire)";
+  motif.setAttribute("aria-label", "Motif de la décision");
+
+  const instructions = document.createElement("textarea");
+  instructions.className = "prop-motif-input";
+  instructions.rows = 2;
+  instructions.placeholder = "Instructions de correction (obligatoire)";
+  instructions.setAttribute("aria-label", "Instructions de correction");
+  instructions.hidden = true;
+
+  champs.append(motif, instructions);
+
+  const actions = document.createElement("div");
+  actions.className = "prop-actions";
+  const erreur = document.createElement("div");
+  erreur.className = "form-error";
+  const confirmation = document.createElement("div");
+  confirmation.className = "prop-confirmation";
+
+  async function envoyer(decision, bouton) {
+    erreur.textContent = "";
+    const corps = { motif: motif.value.trim() };
+    if (decision.action === "demander_correction") {
+      corps.instructions = instructions.value.trim();
+    }
+    for (const autre of actions.querySelectorAll("button")) {
+      autre.disabled = true;
+    }
+    try {
+      const data = await apiJSON(
+        `/api/propositions/${encodeURIComponent(prop.id)}/${decision.route}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(corps),
+        },
+      );
+      const apres = (data.proposition || {}).statut;
+      const libelle = PROP_STATUT_LABELS[apres] || apres;
+      statut.textContent = `Statut : ${libelle}`;
+      confirmation.textContent = `${decision.label} — nouveau statut : ${libelle}.`;
+      champs.hidden = true;
+    } catch (err) {
+      erreur.textContent = err.message;
+      for (const autre of actions.querySelectorAll("button")) {
+        autre.disabled = false;
+      }
+    }
+  }
+
+  for (const decision of DECISION_PROPOSITION) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "secondary-button";
+    btn.textContent = decision.label;
+    btn.addEventListener("click", () => {
+      if (!decision.motif) {
+        void envoyer(decision, btn);
+        return;
+      }
+      // Le motif n'est demandé que pour les actions qui l'exigent.
+      if (champs.hidden) {
+        champs.hidden = false;
+        instructions.hidden = decision.action !== "demander_correction";
+        motif.focus();
+        return;
+      }
+      void envoyer(decision, btn);
+    });
+    actions.append(btn);
+  }
+
+  wrap.append(statut, actions, champs, confirmation, erreur);
+  return wrap;
+}
+
 /** Form to keep / replace / drop a changed line (stores choice only — no send, no option). */
 function formDecisionPrestation(propId, changement, demId) {
   const wrap = document.createElement("div");
@@ -102,6 +221,8 @@ async function afficherPropositionsDemande(content, demId) {
       bloc.append(Object.assign(document.createElement("div"), {
         textContent: `${prop.titre} (${prop.id})${lienParent} — total ${prop.prix_total_eur} €`,
       }));
+      // Statut et décisions du conseiller sur la proposition (#36).
+      bloc.append(blocDecisionProposition(prop, demId));
       const liste = document.createElement("ul");
       liste.className = "detail-liste";
       for (const item of prop.prestations || []) {
@@ -148,6 +269,28 @@ async function afficherPropositionsDemande(content, demId) {
           listeDec.append(li);
         }
         bloc.append(titreDec, listeDec);
+      }
+      // Historique des décisions sur la proposition elle-même.
+      const decisionsStatut = prop.decisions_statut || [];
+      if (decisionsStatut.length) {
+        const titreStatut = document.createElement("div");
+        titreStatut.textContent = "Décisions sur la proposition :";
+        const listeStatut = document.createElement("ul");
+        listeStatut.className = "detail-liste";
+        for (const d of decisionsStatut) {
+          const li = document.createElement("li");
+          const action = DECISION_PROPOSITION.find(
+            (x) => x.action === d.action,
+          );
+          const parties = [action ? action.label : d.action];
+          if (d.motif) parties.push(d.motif);
+          if (d.instructions) parties.push(d.instructions);
+          li.textContent =
+            `${parties.join(" — ")} · ${d.par} · ${formatDateTime(d.le)}` +
+            (d.version ? ` · v${d.version}` : "");
+          listeStatut.append(li);
+        }
+        bloc.append(titreStatut, listeStatut);
       }
       content.append(bloc);
     }
