@@ -82,5 +82,59 @@ class TestVerifierContraintes(unittest.TestCase):
         self.assertEqual(line_for(lines, "budget")["statut"], STATUT_OK)
 
 
+class FakeDemandStore:
+    def __init__(self, record):
+        self.record = record
+
+    def obtenir(self, dem_id):
+        if dem_id == self.record.get("id"):
+            return self.record
+        return None
+
+
+class TestEnrichirContraintes(unittest.TestCase):
+    """#41 UI follow-up: enriched proposals carry the constraint lines."""
+
+    def test_enrichir_attache_contraintes_verifiees(self):
+        from lecture import enrichir_propositions
+
+        dem = {
+            "id": "dem_lyon",
+            "demande": LYON_REQUEST,
+            "recherches": [{
+                "consulte_le": "2026-10-19T14:15:00+00:00",
+                "resultats": LYON_RESULTS,
+            }],
+        }
+        prop = {
+            "id": "prop_1",
+            "demande_id": "dem_lyon",
+            "prestations": LYON_PROPOSAL["prestations"],
+            "prix_total_eur": 534,
+        }
+        enrichie = enrichir_propositions([prop], FakeDemandStore(dem))[0]
+        lines = enrichie["contraintes_verifiees"]
+        self.assertEqual(line_for(lines, "budget")["statut"], STATUT_OK)
+        self.assertIn("267 €", line_for(lines, "budget")["detail"])
+        self.assertEqual(line_for(lines, "niveau")["statut"], STATUT_A_VERIFIER)
+
+    def test_enrichir_montre_budget_depasse(self):
+        from lecture import enrichir_propositions
+
+        dem = {
+            "id": "dem_lyon",
+            "demande": dict(LYON_REQUEST, budget_max_par_personne=200),
+            "recherches": [{"consulte_le": "2026-10-19T14:15:00+00:00",
+                            "resultats": LYON_RESULTS}],
+        }
+        prop = {
+            "id": "prop_1", "demande_id": "dem_lyon",
+            "prestations": LYON_PROPOSAL["prestations"], "prix_total_eur": 534,
+        }
+        lines = enrichir_propositions([prop], FakeDemandStore(dem))[0][
+            "contraintes_verifiees"]
+        self.assertEqual(line_for(lines, "budget")["statut"], STATUT_NON_RESPECTEE)
+
+
 if __name__ == "__main__":
     unittest.main()

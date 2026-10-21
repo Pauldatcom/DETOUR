@@ -238,6 +238,22 @@ async function afficherPropositionsDemande(content, demId) {
         liste.append(li);
       }
       bloc.append(liste);
+      // #41: constraints the program checked against this proposal.
+      const contraintes = prop.contraintes_verifiees || [];
+      if (contraintes.length) {
+        const titreC = document.createElement("div");
+        titreC.textContent = "Contraintes prises en compte :";
+        const listeC = document.createElement("ul");
+        listeC.className = "detail-liste";
+        for (const c of contraintes) {
+          const li = document.createElement("li");
+          const marque =
+            c.statut === "ok" ? "✅" : c.statut === "non_respectee" ? "❌" : "⚠️";
+          li.textContent = `${marque} ${c.detail}`;
+          listeC.append(li);
+        }
+        bloc.append(titreC, listeC);
+      }
       // Newer reading vs v1: previous/new price, unavailable, or unchanged.
       const changements = prop.changements || [];
       if (changements.length) {
