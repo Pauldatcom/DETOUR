@@ -514,7 +514,7 @@ class FakeAgent:
         }
         self.calls = []
 
-    def chat(self, messages, user_id=""):
+    def chat(self, messages, user_id="", demande_id=None):
         self.calls.append({"messages": messages, "user_id": user_id})
         return self.result
 
@@ -663,7 +663,7 @@ class TestChatRoute(unittest.TestCase):
     def test_erreur_openrouter_remontee(self):
         agent = FakeAgent()
 
-        def chat(messages, user_id=""):
+        def chat(messages, user_id="", demande_id=None):
             raise OpenRouterError("OpenRouter injoignable.", 502)
 
         agent.chat = chat

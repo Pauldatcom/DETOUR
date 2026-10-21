@@ -145,18 +145,26 @@ class Agent:
         self.base_url = base_url
         self.timeout = timeout
 
-    def chat(self, messages, user_id=""):
+    def chat(self, messages, user_id="", demande_id=None):
         """Exécute un tour de conversation et retourne reply, demande, recherche, trace.
 
         `user_id` provient de la session serveur : il n'est jamais demandé au
         modèle ni exposé dans le schéma de l'outil."""
         if not self._api_key:
             raise OpenRouterError("Clé OpenRouter absente : définir OPENROUTER_API_KEY.", 503)
+        
         trace = {"model": self.model, "tool_calls": [], "simulation": True}
         conversation: list = [{"role": "system", "content": SYSTEM_PROMPT}]
+        demande, recherche = None, None
+
+        if demande_id:
+            try:
+                demande = self.store.get_draft(demande_id, user_id)
+            except ValidationError:
+                demande = None
+
         conversation += [{"role": m["role"], "content": m["content"]}
                          for m in messages[-MAX_MESSAGES:]]
-        demande, recherche = None, None
 
         for _ in range(MAX_TOOL_ITERATIONS):
             message = self._call_model(conversation)

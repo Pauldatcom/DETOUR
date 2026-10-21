@@ -528,9 +528,13 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                     demande_id = data.get("demande_id")
                     if demande_id is not None and not (isinstance(demande_id, str)
                                                       and re.fullmatch(r"dem_[a-f0-9]+", demande_id)):
-                        demande_id = None
-                    result = agent.chat(messages, user_id=session.get("user_id", "")
-                                        if isinstance(session, dict) else "")
+                        demande_id = None   
+                    result = agent.chat(
+   
+                     messages,
+                     user_id=session.get("user_id", "") if isinstance(session, dict) else "",
+                     demande_id=demande_id,
+                       )
                     print("[agent] " + json.dumps(result["trace"], ensure_ascii=False), flush=True)
 
                     thread_id = demande_id or (result.get("demande") or {}).get("id")

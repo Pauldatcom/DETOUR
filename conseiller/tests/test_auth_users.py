@@ -126,8 +126,8 @@ class FakeAgent:
         self.result = {"reply": "D'accord !", "demande": None, "recherche": None,
                        "trace": {"model": "test", "tool_calls": [], "simulation": True}}
 
-    def chat(self, messages, user_id=""):
-        self.calls.append({"messages": messages, "user_id": user_id})
+    def chat(self, messages, user_id="", demande_id=None):
+        self.calls.append({"messages": messages, "user_id": user_id, "demande_id": demande_id})
         return self.result
 
 

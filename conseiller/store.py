@@ -203,6 +203,27 @@ class DemandStore:
             record = self.demandes.get(dem_id)
             return json.loads(json.dumps(record)) if record else None
 
+    def get_draft(self, request_id, user_id):
+        """Retrieve a draft only if it belongs to the requesting client."""
+        if not isinstance(user_id, str) or not user_id.strip():
+            raise ValidationError("user_id is required.")
+
+        with self.lock:
+            record = self.demandes.get(request_id)
+
+            if not record:
+                raise ValidationError("Draft not found.")
+
+            request_data = record.get("demande", {})
+
+            if request_data.get("user_id") != user_id.strip():
+                raise ValidationError("This draft belongs to another client.")
+
+            if record.get("statut") != "brouillon":
+                raise ValidationError("This request is not a draft.")
+
+            return json.loads(json.dumps(record))     
+
     def mettre_a_jour(self, dem_id, **champs):
         with self.lock:
             record = self.demandes.get(dem_id)
