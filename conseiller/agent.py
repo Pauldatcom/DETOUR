@@ -11,8 +11,17 @@ from pathlib import Path
 from fournisseur import SupplierError
 from propositions import PropositionError, aligner_sur_serveur
 from store import ValidationError, criteres_depuis_demande
-from utils import (DEFAULT_MODEL, MAX_MESSAGES, MAX_TOOL_ITERATIONS,
-                   OPENROUTER_URL, TOOL_NAME)
+
+from utils import (
+    ACTIVITES_POSSIBLES,
+    DEFAULT_MODEL,
+    MAX_MESSAGES,
+    MAX_TOOL_ITERATIONS,
+    NIVEAUX_AVENTURE,
+    OPENROUTER_URL,
+    TOOL_NAME,
+    TYPES_VOYAGE,
+)
 
 def _ssl_context():
     ctx = ssl.create_default_context()
@@ -35,52 +44,67 @@ class OpenRouterError(Exception):
         self.status = status
 
 
-SYSTEM_PROMPT = """Tu es l'assistant voyage de DÉTOUR, une agence de voyages insolites et de week-ends surprises. Tu discutes avec un voyageur pour préparer sa demande.
+
+SYSTEM_PROMPT = """Tu es l'assistant voyage de DÉTOUR, une agence de voyages insolites et de week-ends surprises.
 
 CONTEXTE
-- Le catalogue est fictif et restreint : destinations possibles uniquement Nantes, Lyon et Lille.
+- Le catalogue est fictif et limité à Nantes, Lyon et Lille.
 - Chaque destination propose un transport, un hébergement et une activité.
 - Toutes les données sont fictives : c'est une démonstration.
 
 TON TRAVAIL
-1. Recueillir les informations du voyageur avec des questions courtes et amicales.
-2. Une fois le minimum réuni, appeler l'outil chercher_voyages pour enregistrer la demande et vérifier les prestations.
-3. Présenter les résultats en t'appuyant uniquement sur ce que l'outil renvoie.
+1. Recueillir les informations avec des questions courtes et amicales.
+2. Sauvegarder progressivement les réponses dans le brouillon existant.
+3. Quand toutes les informations minimales sont disponibles, appeler chercher_voyages pour rechercher les prestations.
+4. Présenter les résultats uniquement à partir des données renvoyées par l'outil.
 
-INFORMATIONS REQUISES AVANT L'APPEL DE L'OUTIL (minimum)
-- type_voyage : "trek-randonnee", "lune-de-miel", "voyage-familial" ou "autres"
-- destination : "Nantes", "Lyon" ou "Lille"
+SAUVEGARDE PROGRESSIVE
+- Après chaque nouvelle réponse utile du voyageur, appelle sauvegarder_brouillon avec uniquement les champs connus grâce à la conversation.
+- Ne transmets jamais de valeur inventée ou supposée.
+- Ne remplace pas une réponse connue par une valeur vide ou une valeur par défaut non confirmée.
+- Utilise uniquement les champs autorisés par cet outil.
+- La sauvegarde ne lance aucune recherche de prestations.
+- Si la sauvegarde échoue, explique le problème honnêtement et ne prétends pas que les réponses sont enregistrées.
+
+INFORMATIONS MINIMALES POUR LA RECHERCHE
+- type_voyage : trek-randonnee, lune-de-miel, voyage-familial ou autres
+- destination : Nantes, Lyon ou Lille
 - date_depart et date_retour : format AAAA-MM-JJ
 - nombre_voyageurs : entier de 1 à 20
 - budget_max_par_personne : entier positif en euros
-- niveau_aventure : "calme", "modere" ou "intense"
+- niveau_aventure : calme, modere ou intense
 
-AUTRES INFORMATIONS À RECUEILLIR AUSSI AVANT L'APPEL
-Pose une question à la fois pour chacune (une seule par tour) :
-- présence d'enfants et leur nombre (has_enfants, nombre_enfants), si le voyageur n'en a pas parlé
-- besoin_guide : "Souhaitez-vous un guide pour ce voyage ?"
-- activites préférées (activites) : "créatif", "jeu", "cuisine", "intérieur", "extérieur"
-- souhaits : "Décrivez en quelques mots l'ambiance et les envies pour ce voyage" (texte libre)
-- allergies ou contraintes (contraintes, texte libre)
-Si le voyageur presse de finir, appelez l'outil avec ce que vous avez, sans inventer le reste.
+AUTRES INFORMATIONS À RECUEILLIR
+Pose une seule question à la fois :
+- présence d'enfants et nombre d'enfants ;
+- besoin d'un guide ;
+- activités souhaitées : créatif, jeu, cuisine, intérieur, extérieur, train ou sans voiture ;
+- souhaits et ambiance du voyage ;
+- allergies ou autres contraintes.
+
+RECHERCHE DE PRESTATIONS
+- Appelle chercher_voyages uniquement lorsque toutes les informations minimales sont connues et valides.
+- Transmets les informations confirmées, sans en inventer.
+- Ne lance pas une recherche simplement parce que le voyageur a donné une nouvelle réponse.
+- Si le voyageur souhaite terminer plus tôt, explique quelles informations minimales manquent ; ne lance pas une recherche incomplète.
 
 RÈGLES ABSOLUES
-- Ne devine rien : si une information requise manque, pose la question.
-- N'invente jamais un prix, une disponibilité, une prestation ou une date de mise à jour : ils viennent uniquement de l'outil.
-- Tu ne prends aucune réservation et ne poses aucune option. Aucune réservation n'existe à l'issue de la conversation.
-- Si le voyageur veut une autre destination, explique que le catalogue est restreint pour le moment.
-- Si l'outil renvoie une erreur, explique-la honnêtement au voyageur sans inventer de résultat.
+- Ne devine rien.
+- N'invente jamais de prix, de disponibilité, de prestation ou de date de mise à jour.
+- Tu ne prends aucune réservation et ne poses aucune option.
+- Si le voyageur demande une destination hors catalogue, explique la limitation.
+- Si un outil renvoie une erreur, explique-la honnêtement.
 
-APRÈS L'OUTIL
-- Présente chaque prestation vérifiée : nom, type, prix par personne et total pour le groupe, disponibilité.
-- Précise que les prix et disponibilités ont été vérifiés auprès du serveur à la date indiquée ; la disponibilité est vérifiée à la date de départ uniquement.
-- Signale ce qui n'est pas vérifiable au catalogue : le niveau d'aventure, le besoin de guide et les allergies ne figurent pas dans le serveur.
-- Un conseiller humain préparera ensuite la proposition définitive.
+APRÈS LA RECHERCHE
+- Présente les prestations vérifiées, leurs prix par personne, le total du groupe et leur disponibilité, uniquement si ces données sont renvoyées.
+- Précise que la disponibilité est vérifiée à la date de départ uniquement, si le résultat de l'outil le confirme.
+- Signale que le niveau d'aventure, le besoin de guide et les allergies ne sont pas vérifiables dans le catalogue.
+- Indique qu'un conseiller humain préparera la proposition définitive.
 
 STYLE
-- Réponses courtes, en français, une question à la fois quand tu collectes les informations."""
-
-
+- Réponses courtes, en français.
+- Une seule question à la fois.
+- N'affirme jamais qu'une sauvegarde ou une recherche a réussi sans confirmation de l'outil."""
 TOOL_DEFINITION = {
     "type": "function",
     "function": {
@@ -115,7 +139,51 @@ TOOL_DEFINITION = {
     },
 }
 
-
+SAVE_DRAFT_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "sauvegarder_brouillon",
+        "description": (
+            "Enregistre dans le brouillon existant les réponses que le "
+            "voyageur vient de donner. N'invente aucune information. "
+            "N'effectue aucune recherche de prestations."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "type_voyage": {
+                    "type": "string",
+                    "enum": list(TYPES_VOYAGE),
+                },
+                "destination": {
+                    "type": "string",
+                    "enum": ["Nantes", "Lyon", "Lille"],
+                },
+                "date_depart": {"type": "string"},
+                "date_retour": {"type": "string"},
+                "nombre_voyageurs": {"type": "integer"},
+                "has_enfants": {"type": "boolean"},
+                "nombre_enfants": {"type": "integer"},
+                "budget_max_par_personne": {"type": "integer"},
+                "niveau_aventure": {
+                    "type": "string",
+                    "enum": list(NIVEAUX_AVENTURE),
+                },
+                "besoin_guide": {"type": "boolean"},
+                "activites": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": list(ACTIVITES_POSSIBLES),
+                    },
+                },
+                "contraintes": {"type": "string"},
+                "souhaits": {"type": "string"},
+            },
+            "minProperties": 1,
+        },
+    },
+}
 PROPOSITION_SYSTEM = (
     "Tu es l'assistant DÉTOUR. Un conseiller te demande de préparer une proposition "
     "de voyage basée sur les prestations vérifiées par le serveur fictif. "
@@ -152,16 +220,17 @@ class Agent:
         modèle ni exposé dans le schéma de l'outil."""
         if not self._api_key:
             raise OpenRouterError("Clé OpenRouter absente : définir OPENROUTER_API_KEY.", 503)
-        
+
         trace = {"model": self.model, "tool_calls": [], "simulation": True}
         conversation: list = [{"role": "system", "content": SYSTEM_PROMPT}]
+
         demande, recherche = None, None
 
         if demande_id:
-            try:
-                demande = self.store.get_draft(demande_id, user_id)
-            except ValidationError:
-                demande = None
+            demande = self.store.get_draft(demande_id, user_id)
+        elif isinstance(user_id, str) and user_id.strip():
+            demande = self.store.create_draft(user_id)
+            demande_id = demande["id"]
 
         conversation += [{"role": m["role"], "content": m["content"]}
                          for m in messages[-MAX_MESSAGES:]]
@@ -175,7 +244,13 @@ class Agent:
             conversation.append({"role": "assistant", "content": message.get("content") or "",
                                  "tool_calls": tool_calls})
             for call in tool_calls:
-                outcome = self._execute_tool(call, trace, user_id=user_id)
+
+                outcome = self._execute_tool(
+                    call,
+                    trace,
+                    user_id=user_id,
+                    demande_id=demande_id,
+                )
                 demande = outcome.get("demande") or demande
                 recherche = outcome.get("recherche") or recherche
                 conversation.append({
@@ -231,7 +306,7 @@ class Agent:
     def _call_model(self, conversation, with_tools=True):
         payload = {"model": self.model, "messages": conversation}
         if with_tools:
-            payload["tools"] = [TOOL_DEFINITION]
+            payload["tools"] = [TOOL_DEFINITION, SAVE_DRAFT_TOOL]
             payload["tool_choice"] = "auto"
         request = urllib.request.Request(
             self.base_url,
@@ -262,12 +337,16 @@ class Agent:
         except (KeyError, IndexError, TypeError) as err:
             raise OpenRouterError("OpenRouter : réponse sans message exploitable.") from err
 
-    def _execute_tool(self, call, trace, user_id=""):
+    def _execute_tool(self, call, trace, user_id="", demande_id=None):
         function = call.get("function") or {}
         name = function.get("name")
         entry = {"outil": name, "statut": "refuse"}
-        if name != TOOL_NAME:
-            entry["erreur"] = f"Outil inconnu : {name}. Seul {TOOL_NAME} est autorisé."
+
+        if name not in {TOOL_NAME, "sauvegarder_brouillon"}:
+            entry["erreur"] = (
+                f"Outil inconnu : {name}. "
+                "Seuls les outils autorisés sont acceptés."
+            )
             trace["tool_calls"].append(entry)
             return {"payload": {"erreur": entry["erreur"]}}
         try:
@@ -278,10 +357,66 @@ class Agent:
             entry["erreur"] = "Arguments invalides : un objet JSON était attendu."
             trace["tool_calls"].append(entry)
             return {"payload": {"erreur": entry["erreur"]}}
+
         args.pop("user_id", None)
         args["user_id"] = user_id
+
+        if name == "sauvegarder_brouillon":
+            if not demande_id:
+                entry["statut"] = "invalide"
+                entry["erreur"] = "Aucun brouillon actif à mettre à jour."
+                trace["tool_calls"].append(entry)
+                return {"payload": {"erreur": entry["erreur"]}}
+
+            try:
+                record = self.store.update_draft_answers(
+                    demande_id,
+                    user_id,
+                    {key: value for key, value in args.items() if key != "user_id"},
+                )
+            except ValidationError as err:
+                entry["statut"] = "invalide"
+                entry["erreur"] = str(err)
+                trace["tool_calls"].append(entry)
+                return {"payload": {"erreur": f"Sauvegarde refusée : {err}"}}
+
+            entry["statut"] = "brouillon_mis_a_jour"
+            entry["demande_id"] = record["id"]
+            entry["arguments"] = {
+                key: value for key, value in args.items() if key != "user_id"
+            }
+            trace["tool_calls"].append(entry)
+            return {
+                "demande": record,
+                "payload": {
+                    "message": "Réponses enregistrées dans le brouillon.",
+                    "demande_id": record["id"],
+                },
+            }
+
+
         try:
-            record = self.store.creer(args)
+            if demande_id:
+                record = self.store.finaliser_brouillon(
+                    demande_id,
+                    user_id,
+                    {
+                        key: value
+                        for key, value in args.items()
+                        if key != "user_id"
+                    },
+                )
+            else:
+                record = self.store.creer(args)
+        except ValidationError as err:
+            entry["statut"] = "invalide"
+            entry["erreur"] = str(err)
+            trace["tool_calls"].append(entry)
+            return {"payload": {"erreur": f"Demande refusée : {err}"}}
+            entry["statut"] = "invalide"
+            entry["erreur"] = str(err)
+            trace["tool_calls"].append(entry)
+            return {"payload": {"erreur": f"Demande refusée : {err}"}}
         except ValidationError as err:
             entry["statut"] = "invalide"
             entry["erreur"] = str(err)

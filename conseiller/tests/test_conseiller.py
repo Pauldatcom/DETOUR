@@ -155,9 +155,9 @@ class TestDemandStore(unittest.TestCase):
             self.store.create_draft(
                 "client-2",
                 request_id=first["id"],
-            )    
+            )
 
-    
+
     def test_update_draft_answers_preserves_previous_answers(self):
         record = self.store.create_draft("client-1")
 
@@ -170,12 +170,36 @@ class TestDemandStore(unittest.TestCase):
         updated = self.store.update_draft_answers(
             record["id"],
             "client-1",
-            {"type_voyage": "aventure"},
+            {"type_voyage": "trek-randonnee"},
         )
 
         self.assertEqual(updated["demande"]["destination"], "Nantes")
-        self.assertEqual(updated["demande"]["type_voyage"], "aventure")
+        self.assertEqual(updated["demande"]["type_voyage"], "trek-randonnee")
 
+
+    def test_finaliser_brouillon_keeps_same_id(self):
+        record = self.store.create_draft("client-1")
+
+        answers = dict(VALIDE)
+        answers.pop("conseiller", None)
+        answers.pop("user_id", None)
+
+        finalized = self.store.finaliser_brouillon(
+            record["id"],
+            "client-1",
+            answers,
+        )
+
+        self.assertEqual(finalized["id"], record["id"])
+        self.assertNotEqual(finalized["statut"], "brouillon")
+        self.assertEqual(
+            finalized["demande"]["destination"],
+            "Nantes",
+        )
+        self.assertEqual(
+            self.store.obtenir(record["id"])["id"],
+            record["id"],
+        )
 
 class TestHttpApi(unittest.TestCase):
     @classmethod
@@ -845,7 +869,7 @@ class TestPropositionGeneration(unittest.TestCase):
         result = agent.generer_proposition(demande, recherche)
         self.assertEqual(result["titre"], "Généré")
         self.assertIsInstance(result["prestations"], list)
-        
+
 
 
 class TestAlignerSurServeur(unittest.TestCase):

@@ -151,8 +151,41 @@ class DemandStore:
             self.demandes[dem_id] = record
             self.save()
             return json.loads(json.dumps(record))
-    
-    
+
+
+
+    def finaliser_brouillon(self, request_id, user_id, answers):
+        """Validate and finalize an existing travel request draft."""
+        if not isinstance(user_id, str) or not user_id.strip():
+            raise ValidationError("user_id is required.")
+        if not isinstance(answers, dict):
+            raise ValidationError("Answers must be a dictionary.")
+
+        with self.lock:
+            record = self.demandes.get(request_id)
+            if not record:
+                raise ValidationError("Draft not found.")
+
+            demande_existante = record.get("demande", {})
+
+            if demande_existante.get("user_id") != user_id.strip():
+                raise ValidationError("This draft belongs to another client.")
+
+            if record.get("statut") != "brouillon":
+                raise ValidationError("This request is not a draft.")
+
+            donnees = {**demande_existante, **answers}
+            donnees["user_id"] = user_id.strip()
+
+            # Validate the complete request before changing the draft.
+            valide = valider_demande(donnees)
+
+            record["demande"] = valide
+            record["statut"] = STATUT_A_ANALYSER
+            self.save()
+
+            return json.loads(json.dumps(record))
+
     def create_draft(self, user_id, request_id=None):
         """Create or retrieve a client's travel request draft."""
         if not isinstance(user_id, str) or not user_id.strip():
@@ -222,7 +255,7 @@ class DemandStore:
             if record.get("statut") != "brouillon":
                 raise ValidationError("This request is not a draft.")
 
-            return json.loads(json.dumps(record))     
+            return json.loads(json.dumps(record))
 
     def mettre_a_jour(self, dem_id, **champs):
         with self.lock:
@@ -233,11 +266,11 @@ class DemandStore:
             self.save()
             return json.loads(json.dumps(record))
 
-    
+
     def update_draft_answers(self, request_id, user_id, answers):
-        """Save validated answers without overwriting unrelated fields."""
-        if not isinstance(answers, dict):
-            raise ValidationError("Answers must be a dictionary.")
+        """Save validated partial answers without overwriting unrelated fields."""
+        if not isinstance(answers, dict) or not answers:
+            raise ValidationError("Answers must be a non-empty dictionary.")
 
         if not isinstance(user_id, str) or not user_id.strip():
             raise ValidationError("user_id is required.")
@@ -258,8 +291,58 @@ class DemandStore:
             "souhaits",
         }
 
-        if not answers or not set(answers).issubset(allowed_fields):
-            raise ValidationError("Answers contain missing or unsupported fields.")
+        if not set(answers).issubset(allowed_fields):
+            raise ValidationError("Answers contain unsupported fields.")
+
+        # Validate supplied fields without requiring a complete request.
+        for field, value in answers.items():
+            if field == "type_voyage" and value not in TYPES_VOYAGE:
+                raise ValidationError("Invalid type_voyage.")
+
+            elif field == "destination":
+                if not isinstance(value, str) or not value.strip():
+                    raise ValidationError("destination is required.")
+                if value.strip() not in {"Nantes", "Lyon", "Lille"}:
+                    raise ValidationError("Invalid destination.")
+                answers[field] = value.strip()
+
+            elif field in {"date_depart", "date_retour"}:
+                if not _valid_date(value):
+                    raise ValidationError(f"{field} must use YYYY-MM-DD.")
+
+            elif field == "nombre_voyageurs":
+                if type(value) is not int or not 1 <= value <= 20:
+                    raise ValidationError("nombre_voyageurs must be between 1 and 20.")
+
+            elif field in {"has_enfants", "besoin_guide"}:
+                if type(value) is not bool:
+                    raise ValidationError(f"{field} must be a boolean.")
+
+            elif field == "nombre_enfants":
+                if type(value) is not int or not 0 <= value <= 20:
+                    raise ValidationError("nombre_enfants must be between 0 and 20.")
+
+            elif field == "budget_max_par_personne":
+                if type(value) is not int or not 1 <= value <= 100000:
+                    raise ValidationError("Invalid budget_max_par_personne.")
+
+            elif field == "niveau_aventure" and value not in NIVEAUX_AVENTURE:
+                raise ValidationError("Invalid niveau_aventure.")
+
+            elif field == "activites":
+                if not isinstance(value, list):
+                    raise ValidationError("activites must be a list.")
+                if any(
+                    not isinstance(activity, str)
+                    or activity not in ACTIVITES_POSSIBLES
+                    for activity in value
+                ):
+                    raise ValidationError("Invalid activity.")
+
+            elif field in {"contraintes", "souhaits"}:
+                if not isinstance(value, str):
+                    raise ValidationError(f"{field} must be a string.")
+                answers[field] = value.strip()
 
         with self.lock:
             record = self.demandes.get(request_id)
@@ -271,6 +354,26 @@ class DemandStore:
 
             if request_data.get("user_id") != user_id.strip():
                 raise ValidationError("This draft belongs to another client.")
+
+            if record.get("statut") != "brouillon":
+                raise ValidationError("This request is not a draft.")
+
+            # Check consistency when both dates are already available.
+            merged = {**request_data, **answers}
+            depart = merged.get("date_depart")
+            retour = merged.get("date_retour")
+            if depart and retour and retour < depart:
+                raise ValidationError(
+                    "date_retour must be on or after date_depart."
+                )
+
+            voyageurs = merged.get("nombre_voyageurs")
+            enfants = merged.get("nombre_enfants")
+            if voyageurs is not None and enfants is not None:
+                if enfants > voyageurs:
+                    raise ValidationError(
+                        "nombre_enfants cannot exceed nombre_voyageurs."
+                    )
 
             request_data.update(answers)
             record["demande"] = request_data
