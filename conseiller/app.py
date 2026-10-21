@@ -14,6 +14,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from http.cookies import SimpleCookie
 from pathlib import Path
@@ -21,6 +22,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 from agent import Agent, DEFAULT_MODEL, OpenRouterError
 from fournisseur import DEFAULT_URL, SupplierClient, SupplierError
+from horaires import est_ouvert, fenetre_reponse
 from lecture import (
     enrichir_propositions,
     marquer_a_revoir_si_ecart,
@@ -299,6 +301,15 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                         "agent_actif": bool(os.environ.get("OPENROUTER_API_KEY", "")),
                         "google_oauth": bool(os.environ.get("GOOGLE_CLIENT_ID", "")),
                         "model": os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL),
+                    })
+
+                # ---------- Advisor availability (#48, #53) ----------
+                if method == "GET" and path == "/api/disponibilite":
+                    maintenant = datetime.now(timezone.utc)
+                    return self.send_json(200, {
+                        "simulation": True,
+                        "ouvert": est_ouvert(maintenant),
+                        "fenetre": fenetre_reponse(maintenant),
                     })
 
                 # ---------- Authentification ----------
