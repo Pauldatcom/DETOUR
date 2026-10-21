@@ -1164,11 +1164,11 @@ class TestCorrectionRoute(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertEqual(data["erreur"]["code"], "validation_error")
 
-    def test_missing_motif_returns_400(self):
+    def test_missing_motif_is_accepted(self):
         status, data = self.patch(f"/api/demandes/{self.dem_id}/correction",
                                   {"champs": {"budget_max_par_personne": 600}})
-        self.assertEqual(status, 400)
-        self.assertEqual(data["erreur"]["code"], "validation_error")
+        self.assertEqual(status, 200)
+        self.assertEqual(data["demande"]["decisions"][-1]["motif"], "")
 
     def test_unknown_request_returns_404(self):
         status, _ = self.patch("/api/demandes/dem_abc123/correction",

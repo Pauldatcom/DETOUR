@@ -274,18 +274,17 @@ class PropositionStore:
             self.save()
             return json.loads(json.dumps(record))
 
-    def changer_statut(self, prop_id, statut, par, motif):
+    def changer_statut(self, prop_id, statut, par, motif=""):
         """Décision du conseiller sur le statut d'une proposition.
 
         La transition doit être autorisée et la décision est journalisée
-        (auteur, date, motif) dans l'historique de la proposition.
+        (auteur, date, motif) dans l'historique de la proposition. Le motif
+        est facultatif : il est enregistré quand le conseiller le fournit.
         """
         if statut not in PROP_STATUTS:
             raise PropositionError(f"statut doit être l'un de {', '.join(PROP_STATUTS)}.")
         if not isinstance(par, str) or not par.strip():
             raise PropositionError("Le nom du conseiller est obligatoire.")
-        if not isinstance(motif, str) or not motif.strip():
-            raise PropositionError("Le motif de la décision est obligatoire.")
         with self.lock:
             record = self.propositions.get(prop_id)
             if not record:
@@ -301,9 +300,11 @@ class PropositionStore:
                 "action": "statut",
                 "par": par.strip(),
                 "le": utc_now_iso(),
-                "motif": motif.strip(),
+                "motif": (motif or "").strip(),
                 "avant": actuel,
                 "apres": statut,
+                "version": record.get("version", 1),
+                "instructions": None,
             })
             record["decisions_statut"] = journal
             self.save()

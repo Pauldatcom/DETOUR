@@ -36,12 +36,10 @@ class ValidationError(ValueError):
     pass
 
 
-def _valider_decision(par, motif):
-    """Every advisor decision needs an author and a reason."""
+def _valider_auteur(par):
+    """Every advisor decision needs an author. The reason is optional."""
     if not isinstance(par, str) or not par.strip():
         raise ValidationError("Le nom du conseiller est obligatoire.")
-    if not isinstance(motif, str) or not motif.strip():
-        raise ValidationError("Le motif de la décision est obligatoire.")
 
 
 def _refuser_agent(identite):
@@ -55,13 +53,14 @@ def _journaliser(record, action, par, motif, avant=None, apres=None, champs=None
     """Append an advisor decision to the request journal.
 
     The journal is append-only: author, date and reason are kept for every
-    decision so the history stays auditable.
+    decision so the history stays auditable. The reason is optional but is
+    recorded whenever the advisor gives one.
     """
     entry = {
         "action": action,
         "par": par.strip(),
         "le": utc_now_iso(),
-        "motif": motif.strip(),
+        "motif": (motif or "").strip(),
         "avant": avant,
         "apres": apres,
         "champs": list(champs) if champs else None,
@@ -508,7 +507,7 @@ class DemandStore:
         if not isinstance(auteur, str) or not auteur.strip():
             raise ValidationError("author is required.")
         _refuser_agent(auteur)
-        _valider_decision(auteur, motif)
+        _valider_auteur(auteur)
         with self.lock:
             record = self.demandes.get(dem_id)
             if not record:
@@ -578,7 +577,7 @@ class DemandStore:
             raise ValidationError(
                 "Le conseiller peut renvoyer la demande en incomplet ou la valider pour proposition.")
         _refuser_agent(par)
-        _valider_decision(par, motif)
+        _valider_auteur(par)
         with self.lock:
             record = self.demandes.get(dem_id)
             if not record:
@@ -611,7 +610,7 @@ class DemandStore:
         if statut not in STATUTS:
             raise ValidationError(f"statut doit être l'un de {', '.join(STATUTS)}.")
         _refuser_agent(par)
-        _valider_decision(par, motif)
+        _valider_auteur(par)
         with self.lock:
             record = self.demandes.get(dem_id)
             if not record:

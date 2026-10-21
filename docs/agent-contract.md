@@ -200,8 +200,9 @@ A request keeps an append-only `decisions` journal. Each entry holds:
 A proposal keeps two append-only journals: `decisions` for the keep/replace/drop
 choice on a changed line, and `decisions_statut` for the status decision.
 
-The advisor name and the reason are mandatory. A status change that is not
-allowed by the transition table is refused and nothing is written.
+The advisor name is mandatory. The reason is optional for a plain status
+change and is recorded whenever the advisor gives one. A status change that is
+not allowed by the transition table is refused and nothing is written.
 
 ## Trace requirements
 

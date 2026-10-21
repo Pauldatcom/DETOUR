@@ -222,17 +222,14 @@ class TestTracabilite(BaseDecision):
         self.assertTrue(entree["le"])
         self.assertRegex(entree["le"], r"^\d{4}-\d{2}-\d{2}T")
 
-    def test_le_motif_est_obligatoire(self):
-        with self.assertRaises(ValidationError):
-            self.store.changer_statut(self.dem_id, STATUT_REFUSE, CONSEILLER, "")
-        with self.assertRaises(ValidationError):
-            self.store.changer_statut(self.dem_id, STATUT_REFUSE, CONSEILLER, "   ")
-        with self.assertRaises(ValidationError):
-            self.store.definir_qualification(
-                self.dem_id, QUALIF_PRET_PROPOSITION, acteur="conseiller",
-                par=CONSEILLER, motif="")
-        with self.assertRaises(ValidationError):
-            self.store.corriger(self.dem_id, {"destination": "Lyon"}, CONSEILLER, "")
+    def test_le_motif_est_optionnel_mais_conserve(self):
+        record = self.store.changer_statut(self.dem_id, STATUT_REFUSE, CONSEILLER, "")
+        self.assertEqual(record["decisions"][-1]["motif"], "")
+        self.assertEqual(record["decisions"][-1]["par"], CONSEILLER)
+        record = self.store.definir_qualification(
+            self.dem_id, QUALIF_PRET_PROPOSITION, acteur="conseiller",
+            par=CONSEILLER, motif="dossier complet")
+        self.assertEqual(record["decisions"][-1]["motif"], "dossier complet")
 
     def test_le_nom_du_conseiller_est_obligatoire(self):
         with self.assertRaises(ValidationError):
@@ -242,7 +239,7 @@ class TestTracabilite(BaseDecision):
 
     def test_une_decision_refusee_nest_pas_journalisee(self):
         with self.assertRaises(ValidationError):
-            self.store.changer_statut(self.dem_id, STATUT_REFUSE, CONSEILLER, "")
+            self.store.changer_statut(self.dem_id, STATUT_REFUSE, "", "budget")
         self.assertEqual(self.store.obtenir(self.dem_id).get("decisions") or [], [])
 
     def test_le_journal_survit_au_redemarrage(self):
