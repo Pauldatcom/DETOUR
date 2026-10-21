@@ -88,10 +88,12 @@ class TestPropositionStore(unittest.TestCase):
 
     def test_changer_statut(self):
         prop = self.store.creer("dem_abc", dict(PROPOSITION_VALIDE))
-        self.assertEqual(self.store.changer_statut(prop["id"], "envoyee")["statut"], "envoyee")
+        self.assertEqual(
+            self.store.changer_statut(prop["id"], "envoyee", "Nora", "envoi au voyageur")["statut"],
+            "envoyee")
         with self.assertRaises(PropositionError):
-            self.store.changer_statut(prop["id"], "inconnu")
-        self.assertIsNone(self.store.changer_statut("prop_inconnu", "envoyee"))
+            self.store.changer_statut(prop["id"], "inconnu", "Nora", "typo")
+        self.assertIsNone(self.store.changer_statut("prop_inconnu", "envoyee", "Nora", "envoi"))
 
     def test_prestation_invalide(self):
         with self.assertRaises(PropositionError):

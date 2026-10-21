@@ -250,7 +250,7 @@ class TestDemandStore(unittest.TestCase):
 
     def test_save_answers_clears_validation_and_records_history(self):
         record = self.store.creer(dict(VALIDE, user_id="u1"))
-        self.store.definir_qualification(record["id"], QUALIF_PRET_PROPOSITION)
+        self.store.definir_qualification(record["id"], QUALIF_PRET_PROPOSITION, par="Alice", motif="dossier complet")
         updated, mis = self.store.enregistrer_reponses(
             record["id"], {"budget_max_par_personne": 700}, user_id="u1")
         self.assertEqual(mis, ["budget_max_par_personne"])
@@ -700,7 +700,7 @@ class TestAgent(unittest.TestCase):
         self.assertEqual(result["demande"]["qualification"], "pret_relecture")
         self.assertIn("qualification_refusee", result["trace"]["tool_calls"][0])
         with self.assertRaises(ValidationError):
-            self.store.definir_qualification(result["demande"]["id"], "pret_proposition", acteur="agent")
+            self.store.definir_qualification(result["demande"]["id"], "pret_proposition", acteur="agent", par="agent", motif="je tranche")
 
     def test_invalid_value_does_not_confirm_save(self):
         bad = copy.deepcopy(TOOL_CALL_MESSAGE)
@@ -819,7 +819,7 @@ class TestMissingInfoConversationFlow(unittest.TestCase):
         self.assertIn("date_retour", draft["champs_manquants"])
         self.assertIn("budget_max_par_personne", draft["champs_manquants"])
         with self.assertRaises(ValidationError) as blocked:
-            self.store.definir_qualification(dem_id, QUALIF_PRET_PROPOSITION)
+            self.store.definir_qualification(dem_id, QUALIF_PRET_PROPOSITION, par="Alice", motif="dossier complet")
         self.assertIn("date_depart", str(blocked.exception))
         self.assertEqual(self.props.lister_par_demande(dem_id), [])
 
@@ -876,7 +876,7 @@ class TestMissingInfoConversationFlow(unittest.TestCase):
         tool_payload = json.loads(fake.requests[1]["body"]["messages"][-1]["content"])
         self.assertEqual(tool_payload["demande_id"], dem_id)
         with self.assertRaises(ValidationError):
-            self.store.definir_qualification(dem_id, QUALIF_PRET_PROPOSITION)
+            self.store.definir_qualification(dem_id, QUALIF_PRET_PROPOSITION, par="Alice", motif="dossier complet")
         self.assertEqual(self.props.lister_par_demande(dem_id), [])
         self.assertEqual(len(self.store.lister()), 1)
 
@@ -900,7 +900,7 @@ class TestMissingInfoConversationFlow(unittest.TestCase):
         self.assertEqual(self.props.lister_par_demande(dem_id), [])
         self.assertEqual(len(self.store.lister()), 1)
 
-        validated = self.store.definir_qualification(dem_id, QUALIF_PRET_PROPOSITION)
+        validated = self.store.definir_qualification(dem_id, QUALIF_PRET_PROPOSITION, par="Alice", motif="dossier complet")
         self.assertEqual(validated["qualification"], QUALIF_PRET_PROPOSITION)
 
     def test_complete_request_in_one_tool_call_still_not_a_proposal(self):
@@ -919,7 +919,8 @@ class TestMissingInfoConversationFlow(unittest.TestCase):
         self.assertEqual(self.props.lister_par_demande(result["demande"]["id"]), [])
         with self.assertRaises(ValidationError):
             self.store.definir_qualification(
-                result["demande"]["id"], QUALIF_PRET_PROPOSITION, acteur="agent")
+                result["demande"]["id"], QUALIF_PRET_PROPOSITION, acteur="agent",
+                par="agent", motif="je tranche")
 
 
 class TestChatRoute(unittest.TestCase):
@@ -1089,7 +1090,7 @@ class TestCorrigerDemande(unittest.TestCase):
         self.dem = self.store.creer(dict(VALIDE, user_id="client_1"))
 
     def test_correction_updates_field_and_records_history(self):
-        result = self.store.corriger(self.dem["id"], {"budget_max_par_personne": 600}, "Alice")
+        result = self.store.corriger(self.dem["id"], {"budget_max_par_personne": 600}, "Alice", "budget revise")
         self.assertEqual(result["demande"]["budget_max_par_personne"], 600)
         self.assertEqual(len(result["modifications"]), 1)
         entry = result["modifications"][0]
@@ -1100,31 +1101,31 @@ class TestCorrigerDemande(unittest.TestCase):
         self.assertTrue(entry["le"])
 
     def test_correction_clears_previous_validation(self):
-        self.store.definir_qualification(self.dem["id"], QUALIF_PRET_PROPOSITION)
-        result = self.store.corriger(self.dem["id"], {"destination": "Lyon"}, "Alice")
+        self.store.definir_qualification(self.dem["id"], QUALIF_PRET_PROPOSITION, par="Alice", motif="dossier complet")
+        result = self.store.corriger(self.dem["id"], {"destination": "Lyon"}, "Alice", "destination corrigee")
         self.assertIsNone(result["qualification_validee_par"])
         self.assertEqual(result["qualification"], QUALIF_PRET_RELECTURE)
 
     def test_same_value_records_nothing(self):
-        result = self.store.corriger(self.dem["id"], {"destination": "Nantes"}, "Alice")
+        result = self.store.corriger(self.dem["id"], {"destination": "Nantes"}, "Alice", "verifie")
         self.assertEqual(result["modifications"], [])
 
     def test_invalid_value_is_rejected_and_nothing_changes(self):
         with self.assertRaises(ValidationError):
-            self.store.corriger(self.dem["id"], {"budget_max_par_personne": -5}, "Alice")
+            self.store.corriger(self.dem["id"], {"budget_max_par_personne": -5}, "Alice", "budget revise")
         unchanged = self.store.obtenir(self.dem["id"])
         self.assertEqual(unchanged["demande"]["budget_max_par_personne"], 500)
 
     def test_user_id_cannot_be_changed(self):
         with self.assertRaises(ValidationError):
-            self.store.corriger(self.dem["id"], {"user_id": "someone_else"}, "Alice")
+            self.store.corriger(self.dem["id"], {"user_id": "someone_else"}, "Alice", "changement interdit")
 
     def test_author_is_required(self):
         with self.assertRaises(ValidationError):
-            self.store.corriger(self.dem["id"], {"destination": "Lyon"}, "  ")
+            self.store.corriger(self.dem["id"], {"destination": "Lyon"}, "  ", "destination corrigee")
 
     def test_unknown_request_returns_none(self):
-        self.assertIsNone(self.store.corriger("dem_unknown", {"destination": "Lyon"}, "Alice"))
+        self.assertIsNone(self.store.corriger("dem_unknown", {"destination": "Lyon"}, "Alice", "destination corrigee"))
 
 
 class TestCorrectionRoute(unittest.TestCase):
@@ -1150,20 +1151,29 @@ class TestCorrectionRoute(unittest.TestCase):
 
     def test_correction_route_updates_request(self):
         status, data = self.patch(f"/api/demandes/{self.dem_id}/correction",
-                                  {"champs": {"budget_max_par_personne": 600}})
+                                  {"champs": {"budget_max_par_personne": 600},
+                                   "motif": "budget revise par le conseiller"})
         self.assertEqual(status, 200)
         self.assertEqual(data["demande"]["demande"]["budget_max_par_personne"], 600)
         self.assertEqual(len(data["demande"]["modifications"]), 1)
 
     def test_invalid_value_returns_400(self):
         status, data = self.patch(f"/api/demandes/{self.dem_id}/correction",
-                                  {"champs": {"budget_max_par_personne": -5}})
+                                  {"champs": {"budget_max_par_personne": -5},
+                                   "motif": "budget revise"})
+        self.assertEqual(status, 400)
+        self.assertEqual(data["erreur"]["code"], "validation_error")
+
+    def test_missing_motif_returns_400(self):
+        status, data = self.patch(f"/api/demandes/{self.dem_id}/correction",
+                                  {"champs": {"budget_max_par_personne": 600}})
         self.assertEqual(status, 400)
         self.assertEqual(data["erreur"]["code"], "validation_error")
 
     def test_unknown_request_returns_404(self):
         status, _ = self.patch("/api/demandes/dem_abc123/correction",
-                               {"champs": {"destination": "Lyon"}})
+                               {"champs": {"destination": "Lyon"},
+                                "motif": "destination corrigee"})
         self.assertEqual(status, 404)
 
 
