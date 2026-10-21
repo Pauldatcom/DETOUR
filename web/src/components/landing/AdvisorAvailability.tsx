@@ -1,4 +1,7 @@
+import { useEffect, useState } from "react";
 import { CONSEILLERS } from "../../data/detourContent";
+import { api } from "../../lib/api";
+import type { Disponibilite } from "../../types";
 
 interface AdvisorAvailabilityProps {
   onDecrir: () => void;
@@ -6,6 +9,25 @@ interface AdvisorAvailabilityProps {
 
 /** Bloc disponibilité conseillers + engagements. */
 export function AdvisorAvailability({ onDecrir }: AdvisorAvailabilityProps) {
+  // #53 : the availability block reflects the advisor's real working hours.
+  const [dispo, setDispo] = useState<Disponibilite | null>(null);
+
+  useEffect(() => {
+    let annule = false;
+    api
+      .disponibilite()
+      .then((data) => {
+        if (!annule) setDispo(data);
+      })
+      .catch(() => {
+        /* Keep the static content in case the endpoint is unreachable. */
+      });
+    return () => {
+      annule = true;
+    };
+  }, []);
+
+  const fenetre = dispo?.fenetre;
   return (
     <section id="conseillers" className="scroll-mt-20 bg-[#0b2447] py-16 text-white lg:py-24">
       <div
@@ -26,19 +48,38 @@ export function AdvisorAvailability({ onDecrir }: AdvisorAvailabilityProps) {
 
           <div className="mt-8 grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl border border-white/15 bg-white/5 p-4 text-center">
-              <p className="text-xs text-[#7fd9d5]">Disponibles</p>
-              <p className="mt-1 text-sm font-bold">{CONSEILLERS.disponibilite.jours}</p>
+              <p className="text-xs text-[#7fd9d5]">Statut</p>
+              <p className="mt-1 text-sm font-bold">
+                {fenetre ? (fenetre.ouvert ? "Ouvert" : "Fermé") : "Disponibles"}
+              </p>
             </div>
             <div className="rounded-xl border border-white/15 bg-white/5 p-4 text-center">
               <p className="text-xs text-[#7fd9d5]">Horaires</p>
-              <p className="mt-1 text-sm font-bold">{CONSEILLERS.disponibilite.heures}</p>
+              <p className="mt-1 text-sm font-bold">
+                {fenetre?.prochaine_ouverture
+                  ? new Date(fenetre.prochaine_ouverture).toLocaleString("fr-FR", {
+                      weekday: "long",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : CONSEILLERS.disponibilite.heures}
+              </p>
             </div>
             <div className="rounded-xl border border-white/15 bg-white/5 p-4 text-center">
               <p className="text-xs text-[#7fd9d5]">Délai de réponse</p>
-              <p className="mt-1 text-sm font-bold">{CONSEILLERS.disponibilite.delai}</p>
+              <p className="mt-1 text-sm font-bold">
+                {fenetre?.echeance_cible
+                  ? new Date(fenetre.echeance_cible).toLocaleString("fr-FR", {
+                      dateStyle: "short",
+                      timeStyle: "short",
+                    })
+                  : CONSEILLERS.disponibilite.delai}
+              </p>
             </div>
           </div>
-          <p className="mt-4 text-sm text-[#afc4dc]">{CONSEILLERS.disponibilite.precision}</p>
+          <p className="mt-4 text-sm text-[#afc4dc]">
+            {fenetre?.promesse_delai || CONSEILLERS.disponibilite.precision}
+          </p>
         </div>
 
         <div>

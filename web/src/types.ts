@@ -11,6 +11,21 @@ export interface Config {
   model: string;
 }
 
+export interface DisponibiliteFenetre {
+  ouvert: boolean;
+  prochaine_ouverture: string;
+  echeance_cible: string;
+  echeance_max: string;
+  message: string;
+  promesse_delai: string;
+}
+
+export interface Disponibilite {
+  simulation: boolean;
+  ouvert: boolean;
+  fenetre: DisponibiliteFenetre;
+}
+
 export interface Stats {
   demandes_total: number;
   propositions_total: number;

@@ -1,6 +1,7 @@
 import type {
   Session,
   Config,
+  Disponibilite,
   Stats,
   Demande,
   Proposition,
@@ -29,6 +30,7 @@ export const api = {
   session: () => request<Session>("/api/session"),
   logout: () => request<{ deconnecte: boolean }>("/api/logout", { method: "POST" }),
   config: () => request<Config>("/api/config"),
+  disponibilite: () => request<Disponibilite>("/api/disponibilite"),
 
   login: (email: string, mot_de_passe: string) =>
     request<{ session: { role: string; nom: string } }>("/api/login", {
