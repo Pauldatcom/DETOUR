@@ -88,10 +88,41 @@ class TestPropositionStore(unittest.TestCase):
 
     def test_changer_statut(self):
         prop = self.store.creer("dem_abc", dict(PROPOSITION_VALIDE))
-        self.assertEqual(self.store.changer_statut(prop["id"], "envoyee")["statut"], "envoyee")
+        maj = self.store.changer_statut(prop["id"], "envoyee", auteur="Alice",
+                                        motif="Offre complète validée.")
+        self.assertEqual(maj["statut"], "envoyee")
+        historique = self.store.obtenir(prop["id"])["historique_statut"]
+        self.assertEqual(len(historique), 1)
+        self.assertEqual(historique[0]["statut"], "envoyee")
+        self.assertEqual(historique[0]["par"], "Alice")
+        self.assertEqual(historique[0]["motif"], "Offre complète validée.")
         with self.assertRaises(PropositionError):
-            self.store.changer_statut(prop["id"], "inconnu")
-        self.assertIsNone(self.store.changer_statut("prop_inconnu", "envoyee"))
+            self.store.changer_statut(prop["id"], "inconnu", auteur="Alice")
+        self.assertIsNone(self.store.changer_statut("prop_inconnu", "envoyee", auteur="Alice"))
+
+    def test_changer_statut_auteur_obligatoire(self):
+        prop = self.store.creer("dem_abc", dict(PROPOSITION_VALIDE))
+        with self.assertRaises(PropositionError):
+            self.store.changer_statut(prop["id"], "envoyee")
+        with self.assertRaises(PropositionError):
+            self.store.changer_statut(prop["id"], "envoyee", auteur="   ")
+        # Nothing was recorded and the status did not change.
+        fetched = self.store.obtenir(prop["id"])
+        self.assertEqual(fetched["statut"], "brouillon")
+        self.assertEqual(fetched.get("historique_statut"), [])
+
+    def test_changer_statut_historique_append(self):
+        prop = self.store.creer("dem_abc", dict(PROPOSITION_VALIDE))
+        self.store.changer_statut(prop["id"], "envoyee", auteur="Alice")
+        self.store.changer_statut(prop["id"], "refusee", auteur="Marc",
+                                  motif="Budget dépassé.")
+        historique = self.store.obtenir(prop["id"])["historique_statut"]
+        self.assertEqual(len(historique), 2)
+        self.assertEqual(historique[0]["statut"], "envoyee")
+        self.assertEqual(historique[0]["par"], "Alice")
+        self.assertEqual(historique[1]["statut"], "refusee")
+        self.assertEqual(historique[1]["par"], "Marc")
+        self.assertEqual(historique[1]["motif"], "Budget dépassé.")
 
     def test_prestation_invalide(self):
         with self.assertRaises(PropositionError):

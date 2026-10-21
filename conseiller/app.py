@@ -705,8 +705,12 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                 if method == "PATCH":
                     match = re.fullmatch(r"/api/propositions/(prop_[a-f0-9]+)/statut", path)
                     if match:
+                        session = admin_exige(self)
                         data = self.read_json()
-                        record = propositions.changer_statut(match.group(1), data.get("statut"))
+                        author = (session.get("nom") if isinstance(session, dict) else "") or "conseiller"
+                        record = propositions.changer_statut(
+                            match.group(1), data.get("statut"),
+                            auteur=author, motif=data.get("motif", ""))
                         if record is None:
                             raise ApiError(404, "proposition_not_found", "Proposition introuvable.")
                         return self.send_json(200, {"proposition": record, "simulation": True})

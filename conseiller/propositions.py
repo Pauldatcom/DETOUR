@@ -226,6 +226,7 @@ class PropositionStore:
                 "version": version,
                 "parente_id": parente_id,
                 "decisions": [],
+                "historique_statut": [],
                 **valide,
             }
             self.propositions[prop_id] = record
@@ -273,15 +274,32 @@ class PropositionStore:
             self.save()
             return json.loads(json.dumps(record))
 
-    def changer_statut(self, prop_id, statut):
+    def changer_statut(self, prop_id, statut, auteur="", motif=""):
+        """Change le statut d'une proposition. Retourne None si elle est inconnue.
+
+        The decision is traced: the author (from the advisor session), the date
+        (recorded automatically) and an optional reason are appended to the
+        record's status history. Line-level keep/replace/drop choices stay in
+        the separate `decisions` list handled by `enregistrer_decision`.
+        """
         if statut not in PROP_STATUTS:
             raise PropositionError(f"statut doit être l'un de {', '.join(PROP_STATUTS)}.")
+        if not isinstance(auteur, str) or not auteur.strip():
+            raise PropositionError("auteur est obligatoire pour tracer la décision.")
+        if not isinstance(motif, str):
+            raise PropositionError("motif doit être une chaîne de caractères.")
         with self.lock:
             record = self.propositions.get(prop_id)
             if not record:
                 return None
             record["statut"] = statut
             record["modifiee_le"] = utc_now_iso()
+            record.setdefault("historique_statut", []).append({
+                "statut": statut,
+                "par": auteur.strip(),
+                "le": utc_now_iso(),
+                "motif": motif.strip(),
+            })
             self.save()
             return json.loads(json.dumps(record))
 
