@@ -87,6 +87,17 @@ PROP_STATUT_LABELS = {
     STATUT_REFUSEE: "Refusée",
 }
 
+# Advisor decision on a changed proposal line (does not send or book).
+DECISION_KEEP = "keep"
+DECISION_REPLACE = "replace"
+DECISION_DROP = "drop"
+DECISIONS_PRESTATION = (DECISION_KEEP, DECISION_REPLACE, DECISION_DROP)
+DECISION_LABELS = {
+    DECISION_KEEP: "Garder",
+    DECISION_REPLACE: "Remplacer",
+    DECISION_DROP: "Retirer",
+}
+
 # Google OAuth (Authorization Code + PKCE).
 GOOGLE_OAUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
