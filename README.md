@@ -32,7 +32,7 @@ Copy `.env.example` to `.env` at the repository root:
 | Variable | Purpose |
 |---|---|
 | `OPENROUTER_API_KEY` | OpenRouter key for the conversational agent |
-| `OPENROUTER_MODEL` | Model (default: `openai/gpt-4o-mini`) |
+| `OPENROUTER_MODEL` | Model (default: `nvidia/nemotron-3.5-super-vl:free`, free) |
 | `TRAVEL_TEAM_KEY` | Team key for the supplier (demo: `demo-key`) |
 | `TRAVEL_API_URL` | Supplier URL (default: `http://127.0.0.1:8765`) |
 | `GOOGLE_CLIENT_ID` | Google OAuth (optional) |
