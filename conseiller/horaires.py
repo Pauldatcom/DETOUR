@@ -1,68 +1,68 @@
-"""Horaires du conseiller DÉTOUR : source unique de vérité de la disponibilité.
+"""DÉTOUR advisor working hours: single source of truth for availability.
 
-Centralise la configuration des horaires d'ouverture (issue #48) et les
-calculs liés au délai de réponse (issues #51 et #53) :
-- le conseiller répond du lundi au vendredi, de 09:00 à 18:00, fuseau métier ;
-- le samedi et le dimanche ne comptent pas ;
-- les demandes peuvent arriver à tout moment : hors ouverture, le compte
-  démarre à la prochaine période d'ouverture ;
-- le délai cible de réponse est de 24 heures ouvrées, le délai maximum de 48.
+Centralises the opening-hours configuration (issue #48) and the response
+deadline calculations (issues #51 and #53):
+- advisors respond Monday to Friday, 09:00 to 18:00, business timezone;
+- Saturday and Sunday do not count;
+- requests may arrive at any time: outside opening hours the count starts
+  at the next opening period;
+- target response time is 24 working hours, maximum 48.
 
-Les autres modules lisent cette configuration ici : aucun message du chatbot
-ne doit coder les horaires en dur.
+Other modules read this configuration here: no chatbot message may
+hard-code the hours.
 """
 
 from datetime import datetime, time, timedelta, timezone
 
 try:
     from zoneinfo import ZoneInfo
-except ImportError:  # pragma: no cover - Python < 3.9, CI tourne en 3.11+
+except ImportError:  # pragma: no cover - Python < 3.9, CI runs 3.11+
     ZoneInfo = None
 
-# Configuration des horaires (issue #48). Modifiable ici uniquement.
+# Opening-hours configuration (issue #48). Edit here only.
 FUSEAU_METIER = "Europe/Paris"
-JOURS_OUVRES = frozenset({0, 1, 2, 3, 4})  # weekday() : lundi=0 … vendredi=4
+JOURS_OUVRES = frozenset({0, 1, 2, 3, 4})  # weekday(): Monday=0 … Friday=4
 HEURE_OUVERTURE = time(9, 0)
 HEURE_FERMETURE = time(18, 0)
 
-# Délais de réponse (issues #51 et #53), en heures ouvrées.
+# Response delays (issues #51 and #53), in working hours.
 DELAI_CIBLE_HEURES_OUVREES = 24
 DELAI_MAX_HEURES_OUVREES = 48
 
-# Seuils d'affichage pour la file du conseiller (issue #51).
+# Display thresholds for the advisor queue (issue #51).
 ECHEANCE_DANS_DELAI = "dans_delai"
 ECHEANCE_APPROCHE = "approche"
 ECHEANCE_DEPASSEE = "depassee"
 
 
 def fuseau_metier():
-    """Retourne le fuseau métier (Europe/Paris), ou UTC en repli."""
+    """Return the business timezone (Europe/Paris), or UTC as fallback."""
     if ZoneInfo is None:
         return timezone.utc
     return ZoneInfo(FUSEAU_METIER)
 
 
 def vers_metier(moment):
-    """Convertit un instant (aware ou naïf, supposé UTC) vers le fuseau métier."""
+    """Convert an instant (aware or naive, assumed UTC) to the business timezone."""
     if not isinstance(moment, datetime):
-        raise ValueError("moment doit être un datetime.")
+        raise ValueError("moment must be a datetime.")
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=timezone.utc)
     return moment.astimezone(fuseau_metier())
 
 
 def _ouvert_a(copie):
-    """Vrai si ce moment métier tombe pendant l'ouverture (jours ouvrés, 9-18h)."""
+    """True if this business-timezone moment falls within opening hours (Mon-Fri, 9-18h)."""
     return copie.weekday() in JOURS_OUVRES and HEURE_OUVERTURE <= copie.time() < HEURE_FERMETURE
 
 
 def est_ouvert(moment=None):
-    """Vrai si le service est ouvert à ce moment (par défaut : maintenant)."""
+    """True if the service is open at this moment (default: now)."""
     return _ouvert_a(vers_metier(moment or datetime.now(timezone.utc)))
 
 
 def prochaine_ouverture(moment=None):
-    """Prochain instant d'ouverture, après le moment donné (défaut : maintenant)."""
+    """Next opening instant, after the given moment (default: now)."""
     courant = vers_metier(moment or datetime.now(timezone.utc))
     jour = courant.date()
     debut = datetime.combine(jour, HEURE_OUVERTURE, tzinfo=courant.tzinfo)
@@ -70,7 +70,7 @@ def prochaine_ouverture(moment=None):
         return courant
     if debut > courant and jour.weekday() in JOURS_OUVRES:
         return debut
-    # Avance jour par jour jusqu'au prochain jour ouvré.
+    # Advance day by day until the next working day.
     un_jour = timedelta(days=1)
     suivant = courant + un_jour
     while suivant.weekday() not in JOURS_OUVRES:
@@ -79,7 +79,7 @@ def prochaine_ouverture(moment=None):
 
 
 def _debut_jour_ouvrable_apres(copie):
-    """Retourne 09:00 du prochain jour ouvré strictement après le jour de `copie`."""
+    """Return 09:00 of the next working day strictly after the day of `copie`."""
     un_jour = timedelta(days=1)
     suivant = copie + un_jour
     while suivant.weekday() not in JOURS_OUVRES:
@@ -88,14 +88,14 @@ def _debut_jour_ouvrable_apres(copie):
 
 
 def avancer_heures_ouvrees(depart, heures):
-    """Avance `heures` comptées uniquement pendant l'ouverture.
+    """Advance `heures` counted only during opening hours.
 
-    Le départ peut tomber hors ouverture : le compte démarre à la prochaine
-    période d'ouverture. Les nuits et les week-ends ne comptent pas.
+    The departure may fall outside opening hours: the count starts at the
+    next opening period. Nights and weekends do not count.
     """
     heures = int(heures)
     if heures <= 0:
-        raise ValueError("heures doit être un entier strictement positif.")
+        raise ValueError("heures must be a strictly positive integer.")
     courant = vers_metier(depart)
     if not _ouvert_a(courant):
         courant = prochaine_ouverture(courant)
@@ -111,17 +111,17 @@ def avancer_heures_ouvrees(depart, heures):
 
 
 def echeance_reponse(soumis_le, heures=DELAI_CIBLE_HEURES_OUVREES):
-    """Date limite de réponse après `heures` ouvrées (défaut : cible 24h)."""
+    """Response deadline after `heures` working hours (default: 24h target)."""
     return avancer_heures_ouvrees(soumis_le, heures)
 
 
 def fenetre_reponse(soumis_le=None):
-    """Fenêtre de réponse attendue, à communiquer au voyageur (issue #53).
+    """Expected response window, to be communicated to the traveller (issue #53).
 
-    `soumis_le` est optionnel : par défaut le moment présent est utilisé.
-    Retourne un dict neutre : `ouvert`, `prochaine_ouverture`, `echeance_cible`,
-    `echeance_max`, et les libellés prêts à afficher. Le chatbot s'appuie sur
-    ces libellés — jamais sur des horaires codés en dur ailleurs.
+    `soumis_le` is optional: defaults to the current moment.
+    Returns a neutral dict: `ouvert`, `prochaine_ouverture`, `echeance_cible`,
+    `echeance_max`, and ready-to-display labels. The chatbot relies on these
+    labels — never on hours hard-coded elsewhere.
     """
     soumis = vers_metier(soumis_le or datetime.now(timezone.utc))
     ouvert = _ouvert_a(soumis)
@@ -150,11 +150,11 @@ def fenetre_reponse(soumis_le=None):
 
 
 def marquer_echeances(record, maintenant=None):
-    """Ajoute à un record de demande les échéances calculées (issue #51).
+    """Add computed deadlines to a request record (issue #51).
 
-    Ajoute `echeance_cible` (24h ouvrées), `echeance_max` (48h ouvrées) et
-    `echeance_statut` : dans_delai, approche (cible dépassée) ou depassee
-    (maximum dépassé). Ne modifie jamais la demande elle-même.
+    Adds `echeance_cible` (24h working hours), `echeance_max` (48h) and
+    `echeance_statut`: dans_delai, approche (target exceeded) or depassee
+    (maximum exceeded). Never modifies the request data itself.
     """
     if not isinstance(record, dict):
         return record
