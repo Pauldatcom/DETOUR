@@ -73,9 +73,7 @@ export default function App() {
       />
       <Route
         path="/propositions/:id"
-        element={
-          connecte ? <PropositionDetail /> : <Navigate to="/login" replace />
-        }
+        element={connecte ? <PropositionDetail /> : <Navigate to="/login" replace />}
       />
 
       {/* ── 404 → accueil ──────────────────────────────────────── */}

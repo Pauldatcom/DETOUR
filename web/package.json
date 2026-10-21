@@ -13,7 +13,12 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "prepare": "cd .. && husky web/.husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,css,json,md}": "prettier --write",
+    "*.{ts,tsx,js,jsx}": "eslint --fix"
   },
   "dependencies": {
     "react": "^19.1.0",
@@ -31,6 +36,8 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",
     "globals": "^17.13.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.10",
     "prettier": "^3.9.10",
     "prettier-plugin-tailwindcss": "^0.8.1",
     "tailwindcss": "^4.0.0",
