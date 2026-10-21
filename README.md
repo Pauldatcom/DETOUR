@@ -79,6 +79,9 @@ observability/    Grafana + Prometheus + Loki (+ Alloy for Grafana Cloud)
 | `/api/propositions/{id}` | GET | advisor/owner | Detail |
 | `/api/propositions/{id}` | PATCH | advisor | Update |
 | `/api/propositions/{id}/statut` | PATCH | advisor | Status |
+| `/api/propositions/{id}/accepter` | POST | advisor | Accept a proposal |
+| `/api/propositions/{id}/correction` | POST | advisor | Request a correction (reason + instructions) |
+| `/api/propositions/{id}/refuser` | POST | advisor | Reject a proposal (reason) |
 | `/api/mes-demandes` | GET | client | My demandes |
 | `/api/mes-propositions` | GET | client | My propositions |
 | `/api/stats` | GET | advisor | Statistics |
@@ -90,7 +93,7 @@ observability/    Grafana + Prometheus + Loki (+ Alloy for Grafana Cloud)
 
 ```bash
 python3 -m unittest discover -s server/tests -v          # 17 tests
-python3 -m unittest discover -s conseiller/tests -v      # 191 tests
+python3 -m unittest discover -s conseiller/tests -v      # 222 tests
 cd web && pnpm tsc --noEmit                              # TS typecheck
 cd web && pnpm build                                     # build (fails on TS errors)
 cd web && pnpm lint                                      # ESLint

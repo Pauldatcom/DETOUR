@@ -30,7 +30,8 @@ from propositions import PropositionError, PropositionStore
 
 from store import DemandStore, ValidationError, criteres_depuis_demande
 from users import UserStore, UserError
-from utils import (GOOGLE_OAUTH_URL, GOOGLE_TOKEN_URL, GOOGLE_USERINFO_URL,
+from utils import (DECISION_ACCEPTER, DECISION_CORRECTION, DECISION_REFUSER,
+                   GOOGLE_OAUTH_URL, GOOGLE_TOKEN_URL, GOOGLE_USERINFO_URL,
                    PROP_STATUTS, SESSION_COOKIE, SESSION_MAX)
 
 ROOT = Path(__file__).resolve().parent
@@ -346,6 +347,10 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                             r"/api/propositions/(prop_[a-f0-9]+)/decisions", path):
                         if not admin:
                             raise ApiError(401, "auth_requise", "Accès conseiller requis.")
+                    elif method == "POST" and re.fullmatch(
+                            r"/api/propositions/(prop_[a-f0-9]+)/(accepter|correction|refuser)", path):
+                        if not admin:
+                            raise ApiError(401, "auth_requise", "Accès conseiller requis.")
                     elif method == "PATCH":
                         if not admin:
                             raise ApiError(401, "auth_requise", "Accès conseiller requis.")
@@ -642,6 +647,30 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                         return self.send_json(200, {"proposition": enrichie, "simulation": True})
 
                 if method == "POST":
+                    # Advisor decision on a proposal: accept, ask for a correction
+                    # or reject. The reason is required for a correction and a
+                    # rejection; accepting may go without one.
+                    match_action = re.fullmatch(
+                        r"/api/propositions/(prop_[a-f0-9]+)/(accepter|correction|refuser)", path)
+                    if match_action:
+                        session = admin_exige(self)
+                        data = self.read_json()
+                        action = {
+                            "accepter": DECISION_ACCEPTER,
+                            "correction": DECISION_CORRECTION,
+                            "refuser": DECISION_REFUSER,
+                        }[match_action.group(2)]
+                        record = propositions.decider(
+                            match_action.group(1), action,
+                            _nom_conseiller(session),
+                            data.get("motif"), data.get("instructions"))
+                        if record is None:
+                            raise ApiError(404, "proposition_not_found", "Proposition introuvable.")
+                        dem = store.obtenir(record.get("demande_id", ""))
+                        recherches = (dem or {}).get("recherches") or []
+                        enrichie = proposition_avec_changements(record, recherches)
+                        return self.send_json(200, {"proposition": enrichie, "simulation": True})
+
                     # Advisor keep/replace/drop on a changed line — no send, no option call.
                     match_dec = re.fullmatch(
                         r"/api/propositions/(prop_[a-f0-9]+)/decisions", path)

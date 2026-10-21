@@ -198,11 +198,40 @@ A request keeps an append-only `decisions` journal. Each entry holds:
 | `champs` | the corrected fields, for a correction |
 
 A proposal keeps two append-only journals: `decisions` for the keep/replace/drop
-choice on a changed line, and `decisions_statut` for the status decision.
+choice on a changed line, and `decisions_statut` for the decision on the
+proposal itself.
 
 The advisor name is mandatory. The reason is optional for a plain status
 change and is recorded whenever the advisor gives one. A status change that is
 not allowed by the transition table is refused and nothing is written.
+
+## Advisor decision on a proposal
+
+The advisor decides on a proposal with one of three actions:
+
+| Action | Status reached | Reason |
+|---|---|---|
+| `accepter` | `envoyee` | optional |
+| `demander_correction` | `correction_requested` | required, with instructions |
+| `refuser` | `refusee` | required |
+
+A correction request and a rejection must carry a reason: an acceptance may
+go without one. The decision is stored in `decisions_statut` with the shared
+representation:
+
+| Field | Meaning |
+|---|---|
+| `action` | `accepter`, `demander_correction` or `refuser` |
+| `par` | the advisor who decided |
+| `le` | ISO-8601 UTC timestamp |
+| `motif` | the reason for the decision |
+| `instructions` | what must be corrected, for a correction request |
+| `avant` / `apres` | the status before and after the decision |
+| `proposition_id` | the proposal the decision applies to |
+| `version` | the proposal version the decision applies to |
+
+The decision only applies to the version it names: a correction request on v1
+leaves v2 untouched.
 
 ## Trace requirements
 
