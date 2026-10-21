@@ -303,7 +303,7 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                         "model": os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL),
                     })
 
-                # ---------- Disponibilité du conseiller (#48, #53) ----------
+                # ---------- Advisor availability (#48, #53) ----------
                 if method == "GET" and path == "/api/disponibilite":
                     maintenant = datetime.now(timezone.utc)
                     return self.send_json(200, {

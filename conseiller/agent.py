@@ -189,7 +189,7 @@ class Agent:
         if not self._api_key:
             raise OpenRouterError("Clé OpenRouter absente : définir OPENROUTER_API_KEY.", 503)
         trace = {"model": self.model, "tool_calls": [], "simulation": True}
-        # #53 : le chatbot connaît les horaires réels, jamais codés en dur.
+        # #53: the chatbot knows the real working hours, never hard-coded.
         fenetre = fenetre_reponse()
         system_prompt = SYSTEM_PROMPT + "\n\n" + (
             "AVAILABILITY\n"
