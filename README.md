@@ -47,9 +47,9 @@ server/          Supplier API (catalogue, search, dashboard) — :8765
 conseiller/       Portal (auth, chat, demandes, propositions, OAuth, /metrics) — :8766
   app.py          Stdlib HTTP server, API routes, serves web/dist in prod
   agent.py        OpenRouter agent (tool-calling, proposition generation)
-  propositions.py JSON store for propositions (CRUD, statuses)
+  propositions.py SQLite store for propositions (CRUD, statuses)
   users.py         Traveler accounts (PBKDF2) + Google OAuth
-  store.py         JSON store for demandes
+  store.py         SQLite store for demandes
   fournisseur.py   Supplier API client
 web/              React front (Vite + TS + Tailwind v4 + RR v7 + Recharts)
   src/pages/       Login, Dashboard, Demandes, Propositions, MesPropositions

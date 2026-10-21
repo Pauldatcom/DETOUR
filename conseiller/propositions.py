@@ -1,4 +1,4 @@
-"""JSON persistence for DÉTOUR travel propositions."""
+"""Persistence for DÉTOUR travel propositions (SQLite)."""
 
 import json
 import secrets
@@ -6,6 +6,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
+import db
 from utils import (
     DECISION_ACCEPTER,
     DECISION_ACTIONS,
@@ -195,23 +196,19 @@ def aligner_sur_serveur(data, resultats, source_label=None, consulte_le=None):
 
 class PropositionStore:
     def __init__(self, path=None):
+        """Open the propositions store backed by SQLite.
+
+        `path` is the SQLite database file (created on first use). Passing
+        None keeps a pure in-memory store, used by tests and tooling.
+        """
         self.path = Path(path) if path else None
         self.lock = threading.RLock()
-        self.propositions = {}
-        if self.path and self.path.exists():
-            try:
-                self.propositions = json.loads(self.path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                self.propositions = {}
+        self.conn = db.connect(self.path) if self.path else None
+        self.propositions = db.load_propositions(self.conn) if self.conn else {}
 
     def save(self):
-        if not self.path:
-            return
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.propositions, ensure_ascii=False, indent=2),
-                       encoding="utf-8")
-        tmp.replace(self.path)
+        if self.conn:
+            db.save_propositions(self.conn, self.propositions)
 
     def creer(self, demande_id, data, conseiller="", version=1, parente_id=None):
         valide = valider_proposition(data)
