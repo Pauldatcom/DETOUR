@@ -20,6 +20,7 @@ from lecture import (
 )
 from propositions import PropositionStore, PropositionError, aligner_sur_serveur
 from store import DemandStore
+from utils import QUALIF_PRET_PROPOSITION, STATUT_PROPOSE
 from test_conseiller import (
     VALIDE,
     FakeAgent,
@@ -323,6 +324,41 @@ class TestStatutARevoirApresChangement(unittest.TestCase):
         self.assertEqual(got["proposition"]["prestations"][0]["prix_unitaire_eur"], 48)
         self.assertEqual(got["proposition"]["changements"][0]["prix_avant"], 48)
         self.assertEqual(got["proposition"]["changements"][0]["prix_apres"], 62)
+
+    def test_propose_passe_a_revoir_si_prix_change_apres_envoi(self):
+        props = PropositionStore(None)
+        supplier = SequenceSupplier([
+            {"source_label": "Faux", "source_url": "http://faux",
+             "consulte_le": "2026-10-19T10:42:00+00:00",
+             "criteres": {}, "resultats": [
+                 {"id": "train-nantes-01", "nom": "Train", "type": "transport",
+                  "prix_unitaire_eur": 48, "disponible": True}]},
+            {"source_label": "Faux", "source_url": "http://faux",
+             "consulte_le": "2026-10-20T11:00:00+00:00",
+             "criteres": {}, "resultats": [
+                 {"id": "train-nantes-01", "nom": "Train", "type": "transport",
+                  "prix_unitaire_eur": 62, "disponible": True}]},
+        ])
+        store, base = self.serve(supplier, props)
+        dem_id = store.creer(dict(VALIDE))["id"]
+        post(f"{base}/api/demandes/{dem_id}/recherche")
+        prop = props.creer(dem_id, {
+            "titre": "Nantes", "description": "",
+            "prestations": [{
+                "id": "train-nantes-01", "nom": "Train Nantes", "type": "transport",
+                "prix_unitaire_eur": 48, "quantite": 2, "disponible": True,
+                "source": "Serveur fictif DÉTOUR",
+                "consulte_le": "2026-10-19T10:42:00+00:00",
+            }],
+        })
+        store.definir_qualification(dem_id, QUALIF_PRET_PROPOSITION, acteur="conseiller",
+                                    par="Nora", motif="dossier complet")
+        store.changer_statut(dem_id, STATUT_PROPOSE, "Nora", "envoyee au voyageur")
+        self.assertEqual(store.obtenir(dem_id)["statut"], STATUT_PROPOSE)
+        status, data = post(f"{base}/api/demandes/{dem_id}/recherche")
+        self.assertEqual(status, 201)
+        self.assertEqual(data["demande"]["statut"], "a_revoir")
+        self.assertEqual(store.obtenir(dem_id)["statut"], "a_revoir")
 
     def test_lecture_manquante_ne_passe_pas_a_revoir(self):
         props = PropositionStore(None)

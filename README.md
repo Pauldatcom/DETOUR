@@ -93,7 +93,7 @@ observability/    Grafana + Prometheus + Loki (+ Alloy for Grafana Cloud)
 
 ```bash
 python3 -m unittest discover -s server/tests -v          # 17 tests
-python3 -m unittest discover -s conseiller/tests -v      # 222 tests
+python3 -m unittest discover -s conseiller/tests -v      # 230 tests
 cd web && pnpm tsc --noEmit                              # TS typecheck
 cd web && pnpm build                                     # build (fails on TS errors)
 cd web && pnpm lint                                      # ESLint
