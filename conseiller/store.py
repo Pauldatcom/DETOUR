@@ -85,6 +85,24 @@ def champs_manquants(demande):
     return manquants
 
 
+def questions_conditionnelles(demande):
+    """Return the extra questions that apply to this request (#22).
+
+    Only relevant questions are returned: the agent must not ask the others.
+    """
+    if not isinstance(demande, dict):
+        return []
+    questions = []
+    type_voyage = demande.get("type_voyage")
+    if type_voyage in TYPES_ACTIVITE_PHYSIQUE:
+        questions.append("niveau_aventure")
+    if type_voyage in TYPES_AVEC_GUIDE:
+        questions.append("besoin_guide")
+    if demande.get("avec_voiture") is True:
+        questions.append("permis_conduire")
+    return questions
+
+
 def analyser_informations(demande):
     """Split required fields into provided vs missing for the agent.
 
@@ -569,24 +587,6 @@ class DemandStore:
             recalculer_qualification(record)
             self.save()
             return _publier(record)
-
-
-def questions_conditionnelles(demande):
-    """Return the extra questions that apply to this request (#22).
-
-    Only relevant questions are returned: the agent must not ask the others.
-    """
-    if not isinstance(demande, dict):
-        return []
-    questions = []
-    type_voyage = demande.get("type_voyage")
-    if type_voyage in TYPES_ACTIVITE_PHYSIQUE:
-        questions.append("niveau_aventure")
-    if type_voyage in TYPES_AVEC_GUIDE:
-        questions.append("besoin_guide")
-    if demande.get("avec_voiture") is True:
-        questions.append("permis_conduire")
-    return questions
 
 
 def criteres_depuis_demande(demande):
