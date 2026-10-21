@@ -9,6 +9,7 @@ import urllib.request
 from pathlib import Path
 
 from fournisseur import SupplierError
+from horaires import fenetre_reponse
 from propositions import PropositionError, aligner_sur_serveur
 from store import ValidationError, analyser_informations, criteres_depuis_demande
 from utils import (DEFAULT_MODEL, MAX_MESSAGES, MAX_TOOL_ITERATIONS,
@@ -188,7 +189,15 @@ class Agent:
         if not self._api_key:
             raise OpenRouterError("Clé OpenRouter absente : définir OPENROUTER_API_KEY.", 503)
         trace = {"model": self.model, "tool_calls": [], "simulation": True}
-        conversation: list = [{"role": "system", "content": SYSTEM_PROMPT}]
+        # #53 : le chatbot connaît les horaires réels, jamais codés en dur.
+        fenetre = fenetre_reponse()
+        system_prompt = SYSTEM_PROMPT + "\n\n" + (
+            "AVAILABILITY\n"
+            f"- {fenetre['message']}\n"
+            f"- {fenetre['promesse_delai']}\n"
+            "- Never promise an immediate answer when the service is closed.\n"
+            "- Never claim a reservation has been made.")
+        conversation: list = [{"role": "system", "content": system_prompt}]
         conversation += [{"role": m["role"], "content": m["content"]}
                          for m in messages[-MAX_MESSAGES:]]
         demande, recherche = None, None
