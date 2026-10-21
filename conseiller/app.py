@@ -27,6 +27,7 @@ from lecture import (
     proposition_avec_changements,
 )
 from propositions import PropositionError, PropositionStore
+
 from store import DemandStore, ValidationError, criteres_depuis_demande
 from users import UserStore, UserError
 from utils import (GOOGLE_OAUTH_URL, GOOGLE_TOKEN_URL, GOOGLE_USERINFO_URL,
@@ -650,13 +651,24 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                             data.get("choix"),
                             session.get("nom", ""),
                             data.get("motif"),
+                            remplacement_id=data.get("remplacement_id"),
                         )
                         if record is None:
                             raise ApiError(404, "proposition_not_found", "Proposition introuvable.")
                         dem = store.obtenir(record.get("demande_id", ""))
-                        enrichie = proposition_avec_changements(
-                            record, (dem or {}).get("recherches") or [])
-                        return self.send_json(200, {"proposition": enrichie, "simulation": True})
+                        recherches = (dem or {}).get("recherches") or []
+                        enrichie = proposition_avec_changements(record, recherches)
+                        # When every changed line has a decision, create draft v2.
+                        recherche = recherches[-1] if recherches else None
+                        prop_v2 = propositions.creer_v2_si_complet(
+                            record["id"], recherche, conseiller=session.get("nom", ""))
+                        payload = {"proposition": enrichie, "simulation": True}
+                        if prop_v2 is not None:
+                            payload["proposition_v2"] = prop_v2
+                            # v1 must still be readable with its original prices.
+                            payload["proposition"] = enrichir_propositions(
+                                [propositions.obtenir(record["id"])], store)[0]
+                        return self.send_json(200, payload)
 
                     match_gen = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/propositions/generer", path)
                     if match_gen:

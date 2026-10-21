@@ -5,7 +5,7 @@ Does not mutate stored proposals. A missing second reading is not a change.
 
 import json
 
-from propositions import VERIFICATION_VERIFIE
+from propositions import VERIFICATION_VERIFIE, parse_iso8601
 from utils import STATUT_A_REVOIR
 
 
@@ -65,19 +65,22 @@ def comparer_proposition(proposition, resultats):
 
 
 def lecture_plus_recente_que_proposition(proposition, recherche):
-    """True when the search was read after the proposal's verified lines."""
+    """True when the search was read after at least one verified proposal line.
+
+    Timestamps must be ISO-8601; raw string inequality is not enough.
+    """
     if not isinstance(recherche, dict):
         return False
-    lu = (recherche.get("consulte_le") or "").strip()
-    if not lu:
+    lu_dt = parse_iso8601(recherche.get("consulte_le"))
+    if lu_dt is None:
         return False
     for ligne in proposition.get("prestations") or []:
-        if (
-            isinstance(ligne, dict)
-            and ligne.get("verification") == VERIFICATION_VERIFIE
-            and (ligne.get("consulte_le") or "").strip()
-            and ligne.get("consulte_le") != lu
-        ):
+        if not isinstance(ligne, dict):
+            continue
+        if ligne.get("verification") != VERIFICATION_VERIFIE:
+            continue
+        ligne_dt = parse_iso8601(ligne.get("consulte_le"))
+        if ligne_dt is not None and lu_dt > ligne_dt:
             return True
     return False
 
