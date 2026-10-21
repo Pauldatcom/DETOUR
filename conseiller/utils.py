@@ -90,26 +90,55 @@ SESSION_COOKIE = "detour_portail"
 SESSION_MAX = 60_000
 
 # Proposition statuses.
+# A proposal waits for the advisor (pending), is accepted, sent back for a
+# correction, or rejected. "envoyee" means the advisor approved it and it
+# goes to the traveler; "validee" means the traveler confirmed it.
 STATUT_BROUILLON = "brouillon"
 STATUT_ENVOYEE = "envoyee"
 STATUT_VALIDEE = "validee"
 STATUT_REFUSEE = "refusee"
-PROP_STATUTS = (STATUT_BROUILLON, STATUT_ENVOYEE, STATUT_VALIDEE, STATUT_REFUSEE)
+STATUT_CORRECTION_DEMANDEE = "correction_requested"
+PROP_STATUTS = (
+    STATUT_BROUILLON,
+    STATUT_ENVOYEE,
+    STATUT_VALIDEE,
+    STATUT_REFUSEE,
+    STATUT_CORRECTION_DEMANDEE,
+)
 PROP_STATUT_LABELS = {
     STATUT_BROUILLON: "Brouillon",
     STATUT_ENVOYEE: "Envoyée",
     STATUT_VALIDEE: "Validée",
     STATUT_REFUSEE: "Refusée",
+    STATUT_CORRECTION_DEMANDEE: "Correction demandée",
 }
 
 # Transitions de statut autorisées pour une proposition. Validee et refusee
 # sont terminales : une proposition envoyée ne revient pas en brouillon.
+# Une correction demandée peut être reprise puis réexaminée.
 TRANSITIONS_PROPOSITION = {
-    STATUT_BROUILLON: frozenset({STATUT_ENVOYEE, STATUT_REFUSEE}),
+    STATUT_BROUILLON: frozenset({
+        STATUT_ENVOYEE, STATUT_REFUSEE, STATUT_CORRECTION_DEMANDEE}),
+    STATUT_CORRECTION_DEMANDEE: frozenset({
+        STATUT_BROUILLON, STATUT_ENVOYEE, STATUT_REFUSEE}),
     STATUT_ENVOYEE: frozenset({STATUT_VALIDEE, STATUT_REFUSEE}),
     STATUT_VALIDEE: frozenset(),
     STATUT_REFUSEE: frozenset(),
 }
+
+# Advisor decision on a proposal: the three actions the interface offers.
+DECISION_ACCEPTER = "accepter"
+DECISION_CORRECTION = "demander_correction"
+DECISION_REFUSER = "refuser"
+DECISION_ACTIONS = (DECISION_ACCEPTER, DECISION_CORRECTION, DECISION_REFUSER)
+# Status reached by each decision.
+STATUT_PAR_DECISION = {
+    DECISION_ACCEPTER: STATUT_ENVOYEE,
+    DECISION_CORRECTION: STATUT_CORRECTION_DEMANDEE,
+    DECISION_REFUSER: STATUT_REFUSEE,
+}
+# Decisions that must carry a reason. Accepting may go without one.
+DECISIONS_AVEC_MOTIF = (DECISION_CORRECTION, DECISION_REFUSER)
 
 # Advisor decision on a changed proposal line (does not send or book).
 DECISION_KEEP = "keep"

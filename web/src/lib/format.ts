@@ -12,6 +12,7 @@ export const PROP_STATUT_LABELS: Record<string, string> = {
   envoyee: "Envoyée",
   validee: "Validée",
   refusee: "Refusée",
+  correction_requested: "Correction demandée",
 };
 
 export const STATUT_COLORS: Record<string, string> = {
@@ -25,6 +26,7 @@ export const STATUT_COLORS: Record<string, string> = {
   envoyee: "text-accent",
   validee: "text-success",
   refusee: "text-danger",
+  correction_requested: "text-warning",
 };
 
 export function formatEuro(value: number): string {
