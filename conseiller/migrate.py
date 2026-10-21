@@ -46,7 +46,7 @@ def main():
     parser.add_argument("--demandes-json", default=str(ROOT / ".local" / "demandes.json"))
     parser.add_argument("--propositions-json",
                         default=str(ROOT / ".local" / "propositions.json"))
-    parser.add_argument("--seed-dataset", default=str(ROOT / "data" / "travel_agency_dataset.json"),
+    parser.add_argument("--seed-dataset", default=str(ROOT.parent / "data" / "travel_agency_dataset.json"),
                         help="Also seed the destinations table (idempotent).")
     args = parser.parse_args()
 

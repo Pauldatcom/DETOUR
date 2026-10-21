@@ -827,7 +827,7 @@ def main():
     propositions = PropositionStore(args.db_file)
     # The enriched dataset seeds the read-only destinations table (#88/#89).
     # Idempotent: re-running refreshes the rows without duplicating them.
-    dataset = ROOT / "data" / "travel_agency_dataset.json"
+    dataset = ROOT.parent / "data" / "travel_agency_dataset.json"
     if dataset.exists():
         db.seed_destinations(store.conn, dataset)
     team_key = os.environ.get("TRAVEL_TEAM_KEY", "demo-key")
