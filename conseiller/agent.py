@@ -15,6 +15,33 @@ from store import ValidationError, analyser_informations, criteres_depuis_demand
 from utils import (DEFAULT_MODEL, MAX_MESSAGES, MAX_TOOL_ITERATIONS,
                    OPENROUTER_URL, TOOL_NAME)
 
+
+def _rapport_erreur_fournisseur(err):
+    """Map SupplierError to a distinct trace statut + model consigne (#6).
+
+    The model must not invent a service when the server refused the call.
+    """
+    status = getattr(err, "status", 502)
+    base = (
+        "La demande est enregistrée mais le serveur de prestations a renvoyé "
+        "une erreur. Informe le voyageur sans inventer de prestation. "
+    )
+    if status in (401, 403):
+        return "auth_refusee", base + (
+            "Explique qu'il s'agit d'un problème d'authentification ou de permission."
+        )
+    if status == 404:
+        return "prestation_introuvable", base + (
+            "Explique qu'une prestation ou ressource est introuvable."
+        )
+    if status == 409:
+        return "prestation_indisponible", base + (
+            "Explique qu'une prestation est indisponible ou inutilisable."
+        )
+    return "serveur_indisponible", base + (
+        "Explique que le résultat n'a pas pu être vérifié (serveur injoignable)."
+    )
+
 # Arguments de décision : le modèle ne tranche jamais. Toute tentative est
 # refusée, tracée, puis ignorée. Seul le conseiller humain décide.
 DECISION_ARGS = (
@@ -409,17 +436,17 @@ class Agent:
             resultat = self.supplier.rechercher(criteres_depuis_demande(record))
             recherche = self.store.ajouter_recherche(record["id"], resultat)
         except SupplierError as err:
-            entry["statut"] = "serveur_indisponible"
+            statut, consigne = _rapport_erreur_fournisseur(err)
+            entry["statut"] = statut
             entry["erreur"] = str(err)
+            entry["http_status"] = getattr(err, "status", None)
             trace["tool_calls"].append(entry)
             return {"demande": record,
                     "payload": {
                         "confirmation": confirmation,
                         "erreur": str(err),
-                        "consigne": (
-                            "La demande est enregistrée mais le serveur de prestations "
-                            "est indisponible. Informe le voyageur sans inventer de prestation."
-                        ),
+                        "http_status": getattr(err, "status", None),
+                        "consigne": consigne,
                     }}
         entry["statut"] = "ok"
         trace["tool_calls"].append(entry)

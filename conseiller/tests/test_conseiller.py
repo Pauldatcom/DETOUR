@@ -548,7 +548,9 @@ class TestIntegrationServeurFictif(unittest.TestCase):
         client = SupplierClient(self.supplier_url, "mauvaise-cle")
         with self.assertRaises(SupplierError) as ctx:
             client.rechercher(criteres_depuis_demande(DemandStore(None).creer(dict(VALIDE))))
-        self.assertIn("refusé", str(ctx.exception))
+        self.assertIn("refus", str(ctx.exception).lower())
+        self.assertEqual(ctx.exception.status, 403)
+        self.assertIn("authentification", str(ctx.exception).lower())
 
 
 TOOL_CALL_MESSAGE = {
