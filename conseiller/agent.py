@@ -12,6 +12,7 @@ from fournisseur import SupplierError
 from horaires import fenetre_reponse
 from propositions import PropositionError, aligner_sur_serveur
 from store import ValidationError, analyser_informations, criteres_depuis_demande
+from traces import resume_reponse_serveur
 from utils import (DEFAULT_MODEL, MAX_MESSAGES, MAX_TOOL_ITERATIONS,
                    OPENROUTER_URL, TOOL_NAME)
 
@@ -231,12 +232,19 @@ class Agent:
         if demande_id:
             demande = self.store.obtenir(demande_id)
 
+        def _retour(reply):
+            # #5: contract fields before persistence (redaction happens in traces.py).
+            rid = demande_id or (demande or {}).get("id")
+            trace["request_id"] = rid
+            trace["reponse_finale"] = reply or ""
+            return {"reply": reply or "",
+                    "demande": demande, "recherche": recherche, "trace": trace}
+
         for _ in range(MAX_TOOL_ITERATIONS):
             message = self._call_model(conversation)
             tool_calls = message.get("tool_calls") or []
             if not tool_calls:
-                return {"reply": message.get("content") or "",
-                        "demande": demande, "recherche": recherche, "trace": trace}
+                return _retour(message.get("content") or "")
             conversation.append({"role": "assistant", "content": message.get("content") or "",
                                  "tool_calls": tool_calls})
             for call in tool_calls:
@@ -253,8 +261,7 @@ class Agent:
                 })
 
         message = self._call_model(conversation, with_tools=False)
-        return {"reply": message.get("content") or "",
-                "demande": demande, "recherche": recherche, "trace": trace}
+        return _retour(message.get("content") or "")
 
     def generer_proposition(self, demande_record, recherche):
         """Generate a structured proposition via OpenRouter (no tools)."""
@@ -342,6 +349,7 @@ class Agent:
         entry = {"outil": name, "statut": "refuse"}
         if name != TOOL_NAME:
             entry["erreur"] = f"Outil inconnu : {name}. Seul {TOOL_NAME} est autorisé."
+            entry["validation"] = "outil_inconnu"
             trace["tool_calls"].append(entry)
             return {"payload": {"erreur": entry["erreur"]}}
         try:
@@ -350,6 +358,7 @@ class Agent:
                 raise ValueError
         except (json.JSONDecodeError, ValueError):
             entry["erreur"] = "Arguments invalides : un objet JSON était attendu."
+            entry["validation"] = "arguments_invalides"
             trace["tool_calls"].append(entry)
             return {"payload": {"erreur": entry["erreur"]}}
         if args.get("qualification") == "pret_proposition":
@@ -367,12 +376,15 @@ class Agent:
             args.pop(cle, None)
         args.pop("user_id", None)
         args.pop("demande_id", None)
+        # #5: sanitized arguments (decision keys already stripped).
+        entry["arguments"] = dict(args)
 
         try:
             record, mis_a_jour = self.store.enregistrer_reponses(
                 demande_id, args, user_id=user_id)
         except ValidationError as err:
             entry["statut"] = "echec_mise_a_jour"
+            entry["validation"] = "echec"
             entry["erreur"] = str(err)
             trace["tool_calls"].append(entry)
             return {"payload": {
@@ -385,6 +397,7 @@ class Agent:
             }}
         if record is None:
             entry["statut"] = "echec_mise_a_jour"
+            entry["validation"] = "demande_introuvable"
             entry["erreur"] = "Demande introuvable."
             trace["tool_calls"].append(entry)
             return {"payload": {
@@ -402,6 +415,7 @@ class Agent:
             "fournis": analyse["fournis"],
             "manquants": analyse["manquants"],
         }
+        entry["validation"] = "ok"
         labels = analyse["labels"]
         confirmation = (
             f"Réponse enregistrée sur la demande {record['id']}."
@@ -410,6 +424,7 @@ class Agent:
         )
         if not analyse["complet"]:
             entry["statut"] = "informations_manquantes"
+            entry["http_status"] = None
             trace["tool_calls"].append(entry)
             manquants_lisible = [labels.get(c, c) for c in analyse["manquants"]]
             fournis_lisible = [labels.get(c, c) for c in analyse["fournis"]]
@@ -440,6 +455,7 @@ class Agent:
             entry["statut"] = statut
             entry["erreur"] = str(err)
             entry["http_status"] = getattr(err, "status", None)
+            entry["reponse_serveur"] = None
             trace["tool_calls"].append(entry)
             return {"demande": record,
                     "payload": {
@@ -449,6 +465,8 @@ class Agent:
                         "consigne": consigne,
                     }}
         entry["statut"] = "ok"
+        entry["http_status"] = 200
+        entry["reponse_serveur"] = resume_reponse_serveur(recherche)
         trace["tool_calls"].append(entry)
         payload = dict(recherche) if isinstance(recherche, dict) else {"recherche": recherche}
         payload["confirmation"] = confirmation
