@@ -7,6 +7,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
+from horaires import marquer_echeances
 from utils import (ACTIVITES_POSSIBLES, ACTEUR_AGENT, NIVEAUX_AVENTURE,
                    QUALIF_EN_COURS,
                    QUALIF_INCOMPLET, QUALIF_PRET_PROPOSITION, QUALIF_PRET_RELECTURE,
@@ -405,7 +406,8 @@ class DemandStore:
 
     def lister(self):
         with self.lock:
-            return [_publier(record) for record in self.demandes.values()]
+            # #51 : chaque demande affiche son échéance de réponse (24h/48h ouvrées).
+            return [marquer_echeances(_publier(record)) for record in self.demandes.values()]
 
     def obtenir(self, dem_id):
         with self.lock:

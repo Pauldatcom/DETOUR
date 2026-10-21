@@ -171,6 +171,17 @@ function dashRow(demande) {
   const tdCree = document.createElement("td");
   tdCree.textContent = formatDateTime(demande.cree_le);
 
+  const tdEcheance = document.createElement("td");
+  tdEcheance.className = "dash-echeance";
+  // #51 : deadline status (target 24h open hours, max 48h) drives the badge.
+  if (demande.echeance_statut === "depassee") {
+    tdEcheance.classList.add("echeance-depassee");
+  } else if (demande.echeance_statut === "approche") {
+    tdEcheance.classList.add("echeance-approche");
+  }
+  tdEcheance.textContent =
+    demande.echeance_cible ? formatDateTime(demande.echeance_cible) : "—";
+
   const tdQualification = document.createElement("td");
   tdQualification.append(blocQualification(demande));
 
@@ -216,7 +227,7 @@ function dashRow(demande) {
   detailButton.addEventListener("click", () => afficherDetail(demande.id));
   tdAction.append(detailButton);
 
-  tr.append(tdId, tdClient, tdVoyage, tdDates, tdBudget, tdCree, tdQualification, tdStatut, tdAction);
+  tr.append(tdId, tdClient, tdVoyage, tdDates, tdBudget, tdCree, tdEcheance, tdQualification, tdStatut, tdAction);
   return tr;
 }
 
@@ -407,7 +418,12 @@ async function chargerDemandes() {
   body.replaceChildren();
   try {
     const data = await apiJSON("/api/demandes");
-    const demandes = data.demandes || [];
+    // #51 : requests are displayed ordered by response deadline (most urgent first).
+    const JAMMAIS = new Date(8640000000000000).getTime();
+    const demandes = (data.demandes || []).sort(
+      (a, b) => new Date(a.echeance_cible || JAMMAIS).getTime()
+             - new Date(b.echeance_cible || JAMMAIS).getTime(),
+    );
     vide.hidden = demandes.length > 0;
     for (const demande of demandes) body.append(dashRow(demande));
   } catch (err) {
