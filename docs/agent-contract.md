@@ -291,13 +291,61 @@ The following features are not part of the first contract:
 - several tools called in parallel;
 - automatic decision without advisor validation.
 
-## Open questions
+## Decisions on the open questions
 
-- ? Should the agent receive the full traveler request or a structured object created by the application?
-- ? Which model will be used for the demonstration?
-- ? Who is allowed to expose the option and reservation tools in a later version?
-- ? What information must appear in the proposal shown to the traveler?
+The open questions of this contract were answered or deferred in issue #8.
+
+### 1. Does the agent receive the full traveler request or a structured object?
+
+Both, depending on the step:
+
+- **Conversation:** the model receives the conversation messages. It fills a structured tool call (`chercher_voyages`), and the program validates every argument before using it.
+- **Proposal:** the model receives the structured request built by the application (`DemandStore`) and the results returned by the fictional server.
+
+In both cases, the model never receives keys, cookies or account data. The request identifier comes from the server session, never from the model.
+
+### 2. Where does the application store the advisor's decision?
 
 Answered: the advisor's decision is stored in the append-only `decisions`
 journal of the request and in the `decisions_statut` journal of the proposal,
-with the author, the date and the reason.
+with the author, the date and the reason (see "Decision traceability").
+
+### 3. Which model will be used for the demonstration?
+
+`nvidia/nemotron-3.5-super-vl:free`, set by `OPENROUTER_MODEL` in the local `.env` file.
+
+The course requires a free model. Three free OpenRouter models with tool calling were tested on 2026-10-21 with the same scenarios:
+
+- **A:** "Week-end à Lyon pour 2 personnes, du 18 au 20 octobre 2026, 300 € par personne, une activité en extérieur";
+- **D:** "Réserve-moi l'hôtel".
+
+| Model | A | D | Reliability |
+|---|---|---|---|
+| `nvidia/nemotron-3.5-super-vl:free` | ✅ calls the tool, server prices, only the missing questions | ✅ refuses to book | ⚠️ one "Provider returned error", fine on retry |
+| `google/gemma-4-31b-it:free` | ❌ | ❌ | ❌ rate limit reached on every try |
+| Gemma 4 26B A4B (free) | ❌ | ❌ | ❌ rate limit reached on every try |
+
+Nemotron was the only free model that answered reliably, and the cost was 0 $.
+
+The default in the code (`DEFAULT_MODEL` in `conseiller/utils.py`, also in the README) is still `openai/gpt-4o-mini`, which is not free. Follow-up ticket: #93.
+
+The API key stays in `.env` (or in the repository secrets for CI) and is never committed, sent to the model or written to traces.
+
+### 4. Who is allowed to expose the option and reservation tools in a later version?
+
+Deferred: option and reservation tools stay disabled in V1.
+
+Rule for a later version: only the backend may call these routes, and only after an explicit action by a logged-in advisor. They are never exposed to the model as tools, and the model never receives `X-Approval-Key`.
+
+Follow-up ticket: #94.
+
+### 5. What information must appear in the proposal shown to the traveler?
+
+- the title and a short description of the trip;
+- each selected service: name, type, quantity, unit price and total price;
+- the total price and the price per person;
+- the constraints taken into account, and those not respected (#41, `verifier_contraintes`);
+- the source of the data (fictional DÉTOUR server) and the date it was retrieved;
+- a clear statement that no option or reservation has been made.
+
+Prices always come from the fictional server, never from the model (#60). Quantities (for example the number of hotel nights) are not computed by the program yet: the 2026-10-21 tests showed the hotel counted for one night instead of two. This is handled in #34.
