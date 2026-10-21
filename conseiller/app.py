@@ -547,8 +547,13 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
 
                     match = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/statut", path)
                     if match:
+                        # Only a logged-in advisor can change the status; the agent cannot.
+                        session = admin_exige(self)
                         data = self.read_json()
-                        record = store.changer_statut(match.group(1), data.get("statut"))
+                        author = (session.get("nom") if isinstance(session, dict) else "") or "conseiller"
+                        record = store.changer_statut(
+                            match.group(1), data.get("statut"),
+                            auteur=author, motif=data.get("motif", ""))
                         if record is None:
                             raise ApiError(404, "demande_not_found", "Demande introuvable.")
                         if users is not None:

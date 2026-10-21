@@ -105,13 +105,85 @@ class TestNouveauxChampsDemande(unittest.TestCase):
         store = DemandStore(None)
         dem_id = store.creer(dict(VALIDE))["id"]
         with self.assertRaises(ValidationError):
-            store.changer_statut(dem_id, "propose")
+            store.changer_statut(dem_id, "propose", auteur="conseiller")
         store.definir_qualification(dem_id, "pret_proposition", acteur="conseiller")
-        self.assertEqual(store.changer_statut(dem_id, "propose")["statut"], "propose")
+        self.assertEqual(
+            store.changer_statut(dem_id, "propose", auteur="conseiller")["statut"], "propose")
         self.assertEqual(store.obtenir(dem_id)["statut"], "propose")
-        self.assertIsNone(store.changer_statut("dem_inconnu", "propose"))
+        self.assertIsNone(store.changer_statut("dem_inconnu", "propose", auteur="conseiller"))
         with self.assertRaises(ValidationError):
-            store.changer_statut(dem_id, "nimporte")
+            store.changer_statut(dem_id, "nimporte", auteur="conseiller")
+
+
+class TestDecisionTrace(unittest.TestCase):
+    """The advisor's decision is recorded with author, date and reason (issue #7)."""
+
+    def setUp(self):
+        self.store = DemandStore(None)
+        self.dem_id = self.store.creer(dict(VALIDE))["id"]
+
+    def _preparer_pour_proposition(self):
+        self.store.definir_qualification(self.dem_id, "pret_proposition", acteur="conseiller")
+
+    def test_changer_statut_trace_auteur_date_motif(self):
+        self._preparer_pour_proposition()
+        record = self.store.changer_statut(
+            self.dem_id, "propose", auteur="Julie", motif="Première offre cohérente.")
+        self.assertEqual(record["statut"], "propose")
+        decisions = self.store.obtenir(self.dem_id)["decisions"]
+        self.assertEqual(len(decisions), 1)
+        decision = decisions[0]
+        self.assertEqual(decision["statut"], "propose")
+        self.assertEqual(decision["par"], "Julie")
+        self.assertEqual(decision["motif"], "Première offre cohérente.")
+        self.assertIn("le", decision)
+        self.assertRegex(decision["le"], r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
+
+    def test_changer_statut_refuse_traced(self):
+        decision = self.store.changer_statut(
+            self.dem_id, "refuse", auteur="Julie", motif="Budget insuffisant.")
+        self.assertEqual(decision["statut"], "refuse")
+        entry = self.store.obtenir(self.dem_id)["decisions"][0]
+        self.assertEqual(entry["statut"], "refuse")
+        self.assertEqual(entry["par"], "Julie")
+        self.assertEqual(entry["motif"], "Budget insuffisant.")
+
+    def test_changer_statut_valide_traced(self):
+        self._preparer_pour_proposition()
+        decision = self.store.changer_statut(self.dem_id, "valide", auteur="Julie")
+        self.assertEqual(decision["statut"], "valide")
+        entry = self.store.obtenir(self.dem_id)["decisions"][0]
+        self.assertEqual(entry["statut"], "valide")
+        self.assertEqual(entry["par"], "Julie")
+        self.assertEqual(entry["motif"], "")
+
+    def test_changer_statut_auteur_obligatoire(self):
+        self._preparer_pour_proposition()
+        with self.assertRaises(ValidationError):
+            self.store.changer_statut(self.dem_id, "propose")
+        with self.assertRaises(ValidationError):
+            self.store.changer_statut(self.dem_id, "propose", auteur="   ")
+        with self.assertRaises(ValidationError):
+            self.store.changer_statut(self.dem_id, "propose", auteur=None)
+        # Nothing was recorded and the status did not change.
+        self.assertEqual(self.store.obtenir(self.dem_id)["statut"], "a_analyser")
+        self.assertEqual(self.store.obtenir(self.dem_id).get("decisions"), [])
+
+    def test_changer_statut_motif_non_chaine_refuse(self):
+        with self.assertRaises(ValidationError):
+            self.store.changer_statut(self.dem_id, "refuse", auteur="Julie", motif=42)
+
+    def test_changer_statut_historique_append(self):
+        self._preparer_pour_proposition()
+        self.store.changer_statut(self.dem_id, "propose", auteur="Julie")
+        self.store.changer_statut(self.dem_id, "refuse", auteur="Marc", motif="Trop cher.")
+        decisions = self.store.obtenir(self.dem_id)["decisions"]
+        self.assertEqual(len(decisions), 2)
+        self.assertEqual(decisions[0]["statut"], "propose")
+        self.assertEqual(decisions[0]["par"], "Julie")
+        self.assertEqual(decisions[1]["statut"], "refuse")
+        self.assertEqual(decisions[1]["par"], "Marc")
+        self.assertEqual(decisions[1]["motif"], "Trop cher.")
 
 
 class TestQualification(unittest.TestCase):

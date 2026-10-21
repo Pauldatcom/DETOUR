@@ -360,6 +360,7 @@ class DemandStore:
                 "demande": valide,
                 "qualification_retenue": None,
                 "qualification_validee_par": None,
+                "decisions": [],
             }
             recalculer_qualification(record)
             self.demandes[dem_id] = record
@@ -549,13 +550,20 @@ class DemandStore:
             self.save()
             return _publier(record)
 
-    def changer_statut(self, dem_id, statut):
+    def changer_statut(self, dem_id, statut, auteur="", motif=""):
         """Change le statut de proposition. Retourne None si la demande est inconnue.
 
         Proposée ou validée seulement après validation explicite du conseiller.
+        The decision is traced: the author (from the advisor session), the date
+        (recorded automatically) and an optional reason are appended to the
+        record's decision history.
         """
         if statut not in STATUTS:
             raise ValidationError(f"statut doit être l'un de {', '.join(STATUTS)}.")
+        if not isinstance(auteur, str) or not auteur.strip():
+            raise ValidationError("auteur est obligatoire pour tracer la décision.")
+        if not isinstance(motif, str):
+            raise ValidationError("motif doit être une chaîne de caractères.")
         with self.lock:
             record = self.demandes.get(dem_id)
             if not record:
@@ -565,6 +573,12 @@ class DemandStore:
                 raise ValidationError(
                     "La demande ne peut partir en proposition que si le conseiller l'a validée.")
             record["statut"] = statut
+            record.setdefault("decisions", []).append({
+                "statut": statut,
+                "par": auteur.strip(),
+                "le": utc_now_iso(),
+                "motif": motif.strip(),
+            })
             self.save()
             return _publier(record)
 
