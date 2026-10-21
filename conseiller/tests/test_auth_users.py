@@ -105,13 +105,16 @@ class TestNouveauxChampsDemande(unittest.TestCase):
         store = DemandStore(None)
         dem_id = store.creer(dict(VALIDE))["id"]
         with self.assertRaises(ValidationError):
-            store.changer_statut(dem_id, "propose")
-        store.definir_qualification(dem_id, "pret_proposition", acteur="conseiller")
-        self.assertEqual(store.changer_statut(dem_id, "propose")["statut"], "propose")
+            store.changer_statut(dem_id, "propose", "Alice", "offre prete")
+        store.definir_qualification(dem_id, "pret_proposition", acteur="conseiller",
+                                    par="Alice", motif="dossier complet")
+        self.assertEqual(
+            store.changer_statut(dem_id, "propose", "Alice", "offre prete")["statut"],
+            "propose")
         self.assertEqual(store.obtenir(dem_id)["statut"], "propose")
-        self.assertIsNone(store.changer_statut("dem_inconnu", "propose"))
+        self.assertIsNone(store.changer_statut("dem_inconnu", "propose", "Alice", "offre"))
         with self.assertRaises(ValidationError):
-            store.changer_statut(dem_id, "nimporte")
+            store.changer_statut(dem_id, "nimporte", "Alice", "offre")
 
 
 class TestQualification(unittest.TestCase):
@@ -139,11 +142,13 @@ class TestQualification(unittest.TestCase):
     def test_conseiller_renvoie_en_incomplet_et_valide(self):
         store = DemandStore(None)
         dem_id = store.creer(dict(VALIDE))["id"]
-        renvoye = store.definir_qualification(dem_id, "incomplet", acteur="conseiller")
+        renvoye = store.definir_qualification(dem_id, "incomplet", acteur="conseiller",
+                                               par="Alice", motif="il manque la date de retour")
         self.assertEqual(renvoye["qualification"], "incomplet")
         encore = store.recalculer(dem_id)
         self.assertEqual(encore["qualification"], "incomplet")
-        validee = store.definir_qualification(dem_id, "pret_proposition", acteur="conseiller")
+        validee = store.definir_qualification(dem_id, "pret_proposition", acteur="conseiller",
+                                               par="Alice", motif="dossier complet")
         self.assertEqual(validee["qualification"], "pret_proposition")
         self.assertEqual(validee["qualification_validee_par"], "conseiller")
 
@@ -153,14 +158,16 @@ class TestQualification(unittest.TestCase):
         store.demandes[dem_id]["demande"]["budget_max_par_personne"] = 0
         store.recalculer(dem_id)
         with self.assertRaises(ValidationError):
-            store.definir_qualification(dem_id, "pret_proposition", acteur="conseiller")
+            store.definir_qualification(dem_id, "pret_proposition", acteur="conseiller",
+                                        par="Alice", motif="dossier complet")
         self.assertEqual(store.obtenir(dem_id)["qualification"], "incomplet")
 
     def test_agent_ne_valide_pas_pour_proposition(self):
         store = DemandStore(None)
         dem_id = store.creer(dict(VALIDE))["id"]
         with self.assertRaises(ValidationError):
-            store.definir_qualification(dem_id, "pret_proposition", acteur="agent")
+            store.definir_qualification(dem_id, "pret_proposition", acteur="agent",
+                                        par="agent", motif="je decide")
         self.assertEqual(store.obtenir(dem_id)["qualification"], "pret_relecture")
 
     def test_definir_messages(self):
@@ -328,25 +335,32 @@ class TestPortailAuth(unittest.TestCase):
         status, data, _ = conseiller.get("/api/demandes")
         self.assertEqual(status, 200)
         self.assertTrue(any(d["id"] == record["id"] for d in data["demandes"]))
-        status, data, _ = conseiller.patch(f"/api/demandes/{record['id']}/statut", {"statut": "propose"})
+        status, data, _ = conseiller.patch(f"/api/demandes/{record['id']}/statut",
+                                  {"statut": "propose", "motif": "offre prete"})
         self.assertEqual(status, 400)
         status, data, _ = conseiller.patch(
-            f"/api/demandes/{record['id']}/qualification", {"qualification": "pret_proposition"})
+            f"/api/demandes/{record['id']}/qualification",
+            {"qualification": "pret_proposition", "motif": "dossier complet"})
         self.assertEqual(status, 200)
         self.assertEqual(data["demande"]["qualification"], "pret_proposition")
-        status, data, _ = conseiller.patch(f"/api/demandes/{record['id']}/statut", {"statut": "propose"})
+        status, data, _ = conseiller.patch(f"/api/demandes/{record['id']}/statut",
+                                  {"statut": "propose", "motif": "offre prete"})
         self.assertEqual(status, 200)
         self.assertEqual(data["demande"]["statut"], "propose")
-        status, data, _ = conseiller.patch(f"/api/demandes/{record['id']}/statut", {"statut": "inconnu"})
+        status, data, _ = conseiller.patch(f"/api/demandes/{record['id']}/statut",
+                                  {"statut": "inconnu", "motif": "typo"})
         self.assertEqual(status, 400)
-        status, data, _ = conseiller.patch("/api/demandes/dem_inconnu999/statut", {"statut": "propose"})
+        status, data, _ = conseiller.patch("/api/demandes/dem_inconnu999/statut",
+                           {"statut": "propose", "motif": "offre prete"})
         self.assertEqual(status, 404)
 
         # 9. Le voyageur ne peut pas changer un statut ni la qualification.
-        status, data, _ = anonyme.patch(f"/api/demandes/{record['id']}/statut", {"statut": "valide"})
+        status, data, _ = anonyme.patch(f"/api/demandes/{record['id']}/statut",
+                              {"statut": "valide", "motif": "tentative"})
         self.assertEqual(status, 401)
         status, data, _ = anonyme.patch(
-            f"/api/demandes/{record['id']}/qualification", {"qualification": "pret_proposition"})
+            f"/api/demandes/{record['id']}/qualification",
+            {"qualification": "pret_proposition", "motif": "tentative"})
         self.assertEqual(status, 401)
 
         # 10. Connexion : mauvais identifiants refusés ; les bons acceptent.
@@ -386,12 +400,15 @@ class TestPortailSansUsers(unittest.TestCase):
         self.assertEqual(status, 201)
         # Un PATCH reste possible en mode ouvert (validation quand même).
         dem_id = data["demande"]["id"]
-        status, data, _ = client.patch(f"/api/demandes/{dem_id}/statut", {"statut": "valide"})
+        status, data, _ = client.patch(f"/api/demandes/{dem_id}/statut",
+                        {"statut": "valide", "motif": "offre acceptee"})
         self.assertEqual(status, 400)
         status, data, _ = client.patch(
-            f"/api/demandes/{dem_id}/qualification", {"qualification": "pret_proposition"})
+            f"/api/demandes/{dem_id}/qualification",
+            {"qualification": "pret_proposition", "motif": "dossier complet"})
         self.assertEqual(status, 200)
-        status, data, _ = client.patch(f"/api/demandes/{dem_id}/statut", {"statut": "valide"})
+        status, data, _ = client.patch(f"/api/demandes/{dem_id}/statut",
+                        {"statut": "valide", "motif": "offre acceptee"})
         self.assertEqual(status, 200)
 
 
@@ -519,10 +536,12 @@ class TestPropositionRoutes(unittest.TestCase):
         client.post("/api/login-conseiller", {"cle": self.team_key})
         _, data, _ = client.post(f"/api/demandes/{dem_id}/propositions", dict(PROPOSITION_VALIDE))
         prop_id = data["proposition"]["id"]
-        status, data, _ = client.patch(f"/api/propositions/{prop_id}/statut", {"statut": "envoyee"})
+        status, data, _ = client.patch(f"/api/propositions/{prop_id}/statut",
+                        {"statut": "envoyee", "motif": "envoi au voyageur"})
         self.assertEqual(status, 200)
         self.assertEqual(data["proposition"]["statut"], "envoyee")
-        status, _, _ = client.patch(f"/api/propositions/{prop_id}/statut", {"statut": "inconnu"})
+        status, _, _ = client.patch(f"/api/propositions/{prop_id}/statut",
+                        {"statut": "inconnu", "motif": "typo"})
         self.assertEqual(status, 400)
 
     def test_generer_proposition(self):

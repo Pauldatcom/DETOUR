@@ -187,11 +187,18 @@ function dashRow(demande) {
   }
   select.addEventListener("change", async () => {
     tdStatut.classList.remove("statut-erreur");
+    const motif = demanderMotif(
+      `Passer la demande en « ${STATUT_LABELS[select.value]} »`,
+    );
+    if (motif === null) {
+      select.value = demande.statut;
+      return;
+    }
     try {
       await apiJSON(`/api/demandes/${encodeURIComponent(demande.id)}/statut`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ statut: select.value }),
+        body: JSON.stringify({ statut: select.value, motif }),
       });
     } catch (err) {
       select.value = demande.statut;
@@ -245,12 +252,18 @@ function boutonQualification(demande, qualification, texte) {
 }
 
 async function changerQualification(demande, qualification, button) {
+  const motif = demanderMotif(
+    qualification === "pret_proposition"
+      ? "Valider la demande pour proposition"
+      : "Renvoyer la demande en incomplet",
+  );
+  if (motif === null) return;
   button.disabled = true;
   try {
     await apiJSON(`/api/demandes/${encodeURIComponent(demande.id)}/qualification`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ qualification }),
+      body: JSON.stringify({ qualification, motif }),
     });
     await chargerDemandes();
     const detail = document.getElementById("detail-section");
@@ -259,6 +272,22 @@ async function changerQualification(demande, qualification, button) {
     button.disabled = false;
     setError("demandes-error", err.message);
   }
+}
+
+/**
+ * Demande le motif d'une décision. Toute décision doit être motivée :
+ * l'auteur, la date et la raison sont conservés dans le journal.
+ * Renvoie null si le conseiller annule.
+ */
+function demanderMotif(question) {
+  const reponse = window.prompt(`${question}\nMotif (obligatoire) :`);
+  if (reponse === null) return null;
+  const motif = reponse.trim();
+  if (!motif) {
+    window.alert("Le motif de la décision est obligatoire.");
+    return demanderMotif(question);
+  }
+  return motif;
 }
 
 function detailChamp(label, valeur) {

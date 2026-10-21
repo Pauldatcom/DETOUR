@@ -59,10 +59,10 @@ export const api = {
     }),
   rechercher: (id: string) =>
     request<{ recherche: unknown }>(`/api/demandes/${id}/recherche`, { method: "POST" }),
-  changerStatut: (id: string, statut: string) =>
+  changerStatut: (id: string, statut: string, motif: string) =>
     request<{ demande: Demande }>(`/api/demandes/${id}/statut`, {
       method: "PATCH",
-      body: JSON.stringify({ statut }),
+      body: JSON.stringify({ statut, motif }),
     }),
 
   stats: () => request<Stats>("/api/stats"),
@@ -84,10 +84,10 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
-  changerStatutProposition: (id: string, statut: string) =>
+  changerStatutProposition: (id: string, statut: string, motif: string) =>
     request<{ proposition: Proposition }>(`/api/propositions/${id}/statut`, {
       method: "PATCH",
-      body: JSON.stringify({ statut }),
+      body: JSON.stringify({ statut, motif }),
     }),
 
   chat: (messages: ChatMessage[], demandeId?: string) =>

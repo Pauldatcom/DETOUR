@@ -44,7 +44,7 @@ Tests:
 
 ```
 python3 -m unittest discover -s server/tests -v          # 17 tests
-python3 -m unittest discover -s conseiller/tests -v      # 103 tests
+python3 -m unittest discover -s conseiller/tests -v      # 191 tests
 cd web && pnpm tsc --noEmit          # TypeScript typecheck
 cd web && pnpm build                 # Vite build (fails on type errors)
 cd web && pnpm lint                  # ESLint

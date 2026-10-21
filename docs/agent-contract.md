@@ -170,9 +170,39 @@ The agent cannot:
 - approve a reservation;
 - use the approval key;
 - confirm an option;
-- confirm a reservation.
+- confirm a reservation;
+- validate a request for proposal;
+- change the status of a request or of a proposal;
+- correct the fields of a request.
+
+Any decision argument the model tries to pass (`qualification`, `statut`,
+`motif`, `decisions`, …) is refused, traced as `decision_refusee` and ignored.
+The store refuses the agent as an author of a decision, whatever the entry
+point.
 
 Reservation tools remain disabled in V1.
+
+## Decision traceability
+
+Every advisor decision is recorded with its author, its date and its reason.
+
+A request keeps an append-only `decisions` journal. Each entry holds:
+
+| Field | Meaning |
+|---|---|
+| `action` | `qualification`, `statut` or `correction` |
+| `par` | the advisor who decided |
+| `le` | ISO-8601 UTC timestamp |
+| `motif` | the reason for the decision |
+| `avant` / `apres` | the state before and after the decision |
+| `champs` | the corrected fields, for a correction |
+
+A proposal keeps two append-only journals: `decisions` for the keep/replace/drop
+choice on a changed line, and `decisions_statut` for the status decision.
+
+The advisor name is mandatory. The reason is optional for a plain status
+change and is recorded whenever the advisor gives one. A status change that is
+not allowed by the transition table is refused and nothing is written.
 
 ## Trace requirements
 
@@ -235,7 +265,10 @@ The following features are not part of the first contract:
 ## Open questions
 
 - ? Should the agent receive the full traveler request or a structured object created by the application?
-- ? Where should the application store the advisor's decision?
 - ? Which model will be used for the demonstration?
 - ? Who is allowed to expose the option and reservation tools in a later version?
 - ? What information must appear in the proposal shown to the traveler?
+
+Answered: the advisor's decision is stored in the append-only `decisions`
+journal of the request and in the `decisions_statut` journal of the proposal,
+with the author, the date and the reason.

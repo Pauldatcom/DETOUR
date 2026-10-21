@@ -69,6 +69,17 @@ STATUT_LABELS = {
     STATUT_REFUSE: "Refusée",
 }
 
+# Transitions de statut autorisées pour une demande. Un statut absent de la
+# liste est terminal : aucune décision ne peut le faire bouger.
+TRANSITIONS_DEMANDE = {
+    STATUT_NOUVELLE: frozenset({STATUT_A_ANALYSER, STATUT_REFUSE}),
+    STATUT_A_ANALYSER: frozenset({STATUT_A_REVOIR, STATUT_PROPOSE, STATUT_VALIDE, STATUT_REFUSE}),
+    STATUT_A_REVOIR: frozenset({STATUT_A_ANALYSER, STATUT_PROPOSE, STATUT_VALIDE, STATUT_REFUSE}),
+    STATUT_PROPOSE: frozenset({STATUT_VALIDE, STATUT_REFUSE, STATUT_A_ANALYSER, STATUT_A_REVOIR}),
+    STATUT_VALIDE: frozenset(),
+    STATUT_REFUSE: frozenset(),
+}
+
 # Comptes voyageurs.
 ITERATIONS = 260_000
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -91,6 +102,15 @@ PROP_STATUT_LABELS = {
     STATUT_REFUSEE: "Refusée",
 }
 
+# Transitions de statut autorisées pour une proposition. Validee et refusee
+# sont terminales : une proposition envoyée ne revient pas en brouillon.
+TRANSITIONS_PROPOSITION = {
+    STATUT_BROUILLON: frozenset({STATUT_ENVOYEE, STATUT_REFUSEE}),
+    STATUT_ENVOYEE: frozenset({STATUT_VALIDEE, STATUT_REFUSEE}),
+    STATUT_VALIDEE: frozenset(),
+    STATUT_REFUSEE: frozenset(),
+}
+
 # Advisor decision on a changed proposal line (does not send or book).
 DECISION_KEEP = "keep"
 DECISION_REPLACE = "replace"
@@ -101,6 +121,9 @@ DECISION_LABELS = {
     DECISION_REPLACE: "Remplacer",
     DECISION_DROP: "Retirer",
 }
+
+# The agent is never an authorized actor for a human decision.
+ACTEUR_AGENT = "agent"
 
 # Google OAuth (Authorization Code + PKCE).
 GOOGLE_OAUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"

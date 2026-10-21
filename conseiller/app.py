@@ -522,10 +522,11 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                 if method == "PATCH":
                     match = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/qualification", path)
                     if match:
-                        admin_exige(self)
+                        session = admin_exige(self)
                         data = self.read_json()
                         record = store.definir_qualification(
-                            match.group(1), data.get("qualification"), acteur="conseiller")
+                            match.group(1), data.get("qualification"), acteur="conseiller",
+                            par=_nom_conseiller(session), motif=data.get("motif"))
                         if record is None:
                             raise ApiError(404, "demande_not_found", "Demande introuvable.")
                         if users is not None:
@@ -537,8 +538,8 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                         # Only a logged-in advisor can correct a request; the agent cannot.
                         session = admin_exige(self)
                         data = self.read_json()
-                        author = (session.get("nom") if isinstance(session, dict) else "") or "conseiller"
-                        record = store.corriger(match.group(1), data.get("champs"), author)
+                        record = store.corriger(match.group(1), data.get("champs"),
+                                                _nom_conseiller(session), data.get("motif"))
                         if record is None:
                             raise ApiError(404, "demande_not_found", "Request not found.")
                         if users is not None:
@@ -547,8 +548,10 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
 
                     match = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/statut", path)
                     if match:
+                        session = admin_exige(self)
                         data = self.read_json()
-                        record = store.changer_statut(match.group(1), data.get("statut"))
+                        record = store.changer_statut(match.group(1), data.get("statut"),
+                                                     _nom_conseiller(session), data.get("motif"))
                         if record is None:
                             raise ApiError(404, "demande_not_found", "Demande introuvable.")
                         if users is not None:
@@ -700,8 +703,11 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                 if method == "PATCH":
                     match = re.fullmatch(r"/api/propositions/(prop_[a-f0-9]+)/statut", path)
                     if match:
+                        session = admin_exige(self)
                         data = self.read_json()
-                        record = propositions.changer_statut(match.group(1), data.get("statut"))
+                        record = propositions.changer_statut(
+                            match.group(1), data.get("statut"),
+                            _nom_conseiller(session), data.get("motif"))
                         if record is None:
                             raise ApiError(404, "proposition_not_found", "Proposition introuvable.")
                         return self.send_json(200, {"proposition": record, "simulation": True})
@@ -734,6 +740,15 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                 self.send_json(500, {"erreur": {"code": "internal_error", "message": "Erreur interne."}})
 
     return Handler
+
+
+def _nom_conseiller(session):
+    """Nom du conseiller qui décide. Jamais vide : une décision est signée."""
+    if isinstance(session, dict):
+        nom = session.get("nom")
+        if isinstance(nom, str) and nom.strip():
+            return nom.strip()
+    return "conseiller"
 
 
 def _token_depuis_cookie(headers):

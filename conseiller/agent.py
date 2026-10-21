@@ -14,6 +14,18 @@ from store import ValidationError, analyser_informations, criteres_depuis_demand
 from utils import (DEFAULT_MODEL, MAX_MESSAGES, MAX_TOOL_ITERATIONS,
                    OPENROUTER_URL, TOOL_NAME)
 
+# Arguments de décision : le modèle ne tranche jamais. Toute tentative est
+# refusée, tracée, puis ignorée. Seul le conseiller humain décide.
+DECISION_ARGS = (
+    "qualification",
+    "statut",
+    "motif",
+    "raison",
+    "decisions",
+    "validee_par",
+    "proposition",
+)
+
 
 def _ssl_context():
     ctx = ssl.create_default_context()
@@ -307,8 +319,16 @@ class Agent:
         if args.get("qualification") == "pret_proposition":
             entry["qualification_refusee"] = (
                 "L'agent ne peut pas marquer une demande prête pour proposition.")
+        # The model never decides: any decision argument is refused and traced.
+        decisions_refusees = [k for k in DECISION_ARGS if k in args]
+        if decisions_refusees:
+            entry["decision_refusee"] = (
+                "L'agent ne prend pas de décision : "
+                + ", ".join(sorted(decisions_refusees))
+                + " ignorés. Seul le conseiller tranche.")
         # Never trust model-supplied ids; only the server thread id is used.
-        args.pop("qualification", None)
+        for cle in DECISION_ARGS:
+            args.pop(cle, None)
         args.pop("user_id", None)
         args.pop("demande_id", None)
 
