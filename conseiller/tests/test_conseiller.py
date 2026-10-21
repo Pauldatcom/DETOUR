@@ -1159,6 +1159,20 @@ class TestConditionalQuestions(unittest.TestCase):
         self.assertNotIn("avec_voiture", criteres)
         self.assertNotIn("permis_conduire", criteres)
 
+    def test_chat_answers_are_merged_into_the_request(self):
+        merged, updated = fusionner_reponses(
+            {"destination": "Lyon"}, {"avec_voiture": True, "permis_conduire": True})
+        self.assertEqual(updated, ["avec_voiture", "permis_conduire"])
+        self.assertTrue(merged["permis_conduire"])
+        self.assertEqual(merged["destination"], "Lyon")
+
+    def test_invalid_chat_answer_is_rejected(self):
+        with self.assertRaises(ValidationError):
+            fusionner_reponses({}, {"permis_conduire": "yes"})
+
+    def test_relevant_questions_are_sent_to_the_model(self):
+        info = analyser_informations(dict(VALIDE, type_voyage="lune-de-miel", avec_voiture=True))
+        self.assertEqual(info["questions_conditionnelles"], ["permis_conduire"])
 
 if __name__ == "__main__":
     unittest.main()

@@ -99,6 +99,7 @@ def analyser_informations(demande):
         "manquants": manquants,
         "complet": len(manquants) == 0,
         "labels": {c: CHAMPS_REQUIS_LABELS[c] for c in CHAMPS_REQUIS},
+        "questions_conditionnelles": questions_conditionnelles(demande),
     }
 
 
@@ -107,6 +108,7 @@ CHAMPS_REPONSE = (
     "type_voyage", "destination", "date_depart", "date_retour",
     "nombre_voyageurs", "has_enfants", "nombre_enfants",
     "budget_max_par_personne", "niveau_aventure", "besoin_guide",
+    "avec_voiture", "permis_conduire",
     "activites", "contraintes", "souhaits", "conseiller",
 )
 
@@ -146,6 +148,10 @@ def _normaliser_champ(key, value, contexte):
         return value
     if key == "besoin_guide":
         return bool(value)
+    if key in ("avec_voiture", "permis_conduire"):
+        if not isinstance(value, bool):
+            raise ValidationError(f"{key} must be true or false.")
+        return value
     if key == "activites":
         if not isinstance(value, list):
             raise ValidationError("activites must be a list.")
