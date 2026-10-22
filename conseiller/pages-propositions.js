@@ -21,6 +21,30 @@ const PROP_STATUT_LABELS = {
   correction_requested: "Correction demandée",
 };
 
+/** Service types shown to the advisor (#39). */
+const TYPE_LABELS = {
+  transport: "Transport",
+  hebergement: "Hébergement",
+  activite: "Activité",
+};
+
+/** Price summary of a proposal: total, per person and server reading time (#39). */
+function blocRecapitulatifPrix(recap) {
+  const bloc = document.createElement("div");
+  const voyageurs = recap.nombre_voyageurs;
+  bloc.append(Object.assign(document.createElement("strong"), {
+    textContent:
+      `Total : ${recap.prix_par_personne_eur} € par personne · ` +
+      `${recap.prix_total_eur} € pour ${voyageurs} voyageur${voyageurs > 1 ? "s" : ""}`,
+  }));
+  if (recap.consulte_le) {
+    bloc.append(Object.assign(document.createElement("div"), {
+      textContent: `Prix lus sur le serveur fictif DÉTOUR le ${formatDateTime(recap.consulte_le)}`,
+    }));
+  }
+  return bloc;
+}
+
 /** Décisions du conseiller sur une proposition (#28, #32, #36). */
 const DECISION_PROPOSITION = [
   { action: "accepter", route: "accepter", label: "Accepter", motif: false },
@@ -225,19 +249,30 @@ async function afficherPropositionsDemande(content, demId) {
       bloc.append(blocDecisionProposition(prop, demId));
       const liste = document.createElement("ul");
       liste.className = "detail-liste";
+      const recap = prop.recapitulatif_prix;
+      const parPersonne = {};
+      for (const ligne of (recap && recap.lignes) || []) {
+        parPersonne[ligne.id] = ligne.prix_par_personne_eur;
+      }
       for (const item of prop.prestations || []) {
         const li = document.createElement("li");
+        const type = TYPE_LABELS[item.type] || item.type;
         if (item.verification === "verifie") {
           const dispo = item.disponible ? "disponible" : "indisponible";
+          const prix = parPersonne[item.id] ?? item.prix_unitaire_eur;
           li.textContent =
-            `${item.nom} (${item.id}) — ${item.prix_unitaire_eur} €/pers · ${dispo}` +
+            `${item.nom} (${item.id}) · ${type} — ${prix} € par personne · ${dispo}` +
             ` · ${item.source} · ${formatDateTime(item.consulte_le)}`;
         } else {
-          li.textContent = `${item.nom} (${item.id}) — manquant`;
+          li.textContent = `${item.nom} (${item.id}) · ${type} — manquant`;
         }
         liste.append(li);
       }
       bloc.append(liste);
+      // #39: total, price per person and server reading time.
+      if (recap) {
+        bloc.append(blocRecapitulatifPrix(recap));
+      }
       // #41: constraints the program checked against this proposal.
       const contraintes = prop.contraintes_verifiees || [];
       if (contraintes.length) {
