@@ -125,12 +125,43 @@ jobs:
         working-directory: web
 
   # ==========================================
+  # WEB TESTS (Vitest, component tests)
+  # ==========================================
+  web-test:
+    name: Web Tests (Vitest)
+    runs-on: ubuntu-latest
+    needs: tests
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          cache: 'true'
+          cache_dependency_path: 'web/pnpm-lock.yaml'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: web
+
+      - name: Run Vitest
+        run: pnpm test
+        working-directory: web
+
+  # ==========================================
   # SECURITY AUDIT (never blocks the merge)
   # ==========================================
   security:
     name: Security Audit
     runs-on: ubuntu-latest
-    needs: lint
+    needs: [lint, web-test]
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
