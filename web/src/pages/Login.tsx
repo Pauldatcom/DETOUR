@@ -3,7 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { api } from "../lib/api";
 
 interface LoginProps {
-  onSession: () => void;
+  onSession: () => Promise<void>;
   googleOauth: boolean;
 }
 
@@ -23,15 +23,16 @@ export function Login({ onSession, googleOauth }: LoginProps) {
     setError("");
     setLoading(true);
     try {
+      let role: string;
       if (tab === "login") {
-        await api.login(email, password);
+        role = (await api.login(email, password)).session.role;
       } else if (tab === "register") {
-        await api.register(email, nom, password);
+        role = (await api.register(email, nom, password)).session.role;
       } else {
-        await api.loginConseiller(cle);
+        role = (await api.loginConseiller(cle)).session.role;
       }
-      onSession();
-      navigate("/mes-propositions");
+      await onSession();
+      navigate(role === "client" ? "/mon-compte" : "/accueil");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur");
     } finally {
@@ -63,7 +64,7 @@ export function Login({ onSession, googleOauth }: LoginProps) {
         <div className="w-full max-w-md rounded-2xl border border-[#e8eef6] bg-white p-8 shadow-lg">
           <h1 className="text-2xl font-bold">Bienvenue</h1>
           <p className="mt-1 text-sm text-[#4b6480]">
-            Connectez-vous pour accéder au chatbot et à vos propositions.
+            Connectez-vous pour accéder à vos demandes et gérer votre compte.
           </p>
 
           {/* Onglets */}

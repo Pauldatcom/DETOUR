@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FORMULAIRE } from "../../data/detourContent";
+import { api } from "../../lib/api";
 
 type Etat = "vide" | "en_cours" | "envoye" | "erreur";
 
@@ -9,27 +10,66 @@ interface TravelRequestFormProps {
   onClose: () => void;
 }
 
-/** Modal formulaire de demande de voyage — états vide / en cours / envoyé / erreur. */
+const TYPES_VOYAGE = [
+  ["trek-randonnee", "Trek et randonnée"],
+  ["lune-de-miel", "Lune de miel"],
+  ["voyage-familial", "Voyage en famille"],
+  ["autres", "Autre voyage"],
+] as const;
+
+/** Formulaire de demande de voyage persisté sur le compte du voyageur connecté. */
 export function TravelRequestForm({ isLoggedIn, onClose }: TravelRequestFormProps) {
   const navigate = useNavigate();
   const [etat, setEtat] = useState<Etat>("vide");
   const [destination, setDestination] = useState("");
-  const [dates, setDates] = useState("");
-  const [voyageurs, setVoyageurs] = useState("");
+  const [dateDepart, setDateDepart] = useState("");
+  const [dateRetour, setDateRetour] = useState("");
+  const [typeVoyage, setTypeVoyage] = useState<(typeof TYPES_VOYAGE)[number][0] | "">("");
+  const [voyageurs, setVoyageurs] = useState("2");
+  const [budget, setBudget] = useState("");
+  const [niveau, setNiveau] = useState("");
   const [envies, setEnvies] = useState("");
+  const [erreur, setErreur] = useState("");
+  const [demandeId, setDemandeId] = useState("");
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setErreur("");
     if (!isLoggedIn) {
       onClose();
       navigate("/login");
       return;
     }
+    if (dateRetour < dateDepart) {
+      setEtat("erreur");
+      setErreur("La date de retour doit être égale ou postérieure à la date de départ.");
+      return;
+    }
+
     setEtat("en_cours");
-    // Simulation locale — aucune API appelée
-    setTimeout(() => {
+    try {
+      const { demande } = await api.creerDemande({
+        type_voyage: typeVoyage,
+        destination,
+        date_depart: dateDepart,
+        date_retour: dateRetour,
+        nombre_voyageurs: Number(voyageurs),
+        has_enfants: false,
+        nombre_enfants: 0,
+        budget_max_par_personne: Number(budget),
+        niveau_aventure: niveau,
+        besoin_guide: false,
+        activites: [],
+        contraintes: "",
+        conseiller: "",
+        souhaits: envies,
+      });
+      setDemandeId(demande.id);
       setEtat("envoye");
-    }, 900);
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : FORMULAIRE.etatErreur);
+      setEtat("erreur");
+    }
   }
 
   return (
@@ -40,7 +80,7 @@ export function TravelRequestForm({ isLoggedIn, onClose }: TravelRequestFormProp
       aria-labelledby="form-titre"
     >
       <div className="absolute inset-0 bg-[#06101c]/75 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg overflow-auto rounded-2xl bg-white shadow-2xl">
+      <div className="relative max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl bg-white shadow-2xl">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 rounded-full p-2 text-[#4b6480] outline-none hover:bg-[#f2f7fc] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
@@ -78,10 +118,13 @@ export function TravelRequestForm({ isLoggedIn, onClose }: TravelRequestFormProp
               </h2>
               <p className="mt-3 leading-relaxed text-[#4b6480]">{FORMULAIRE.messageSucces}</p>
               <button
-                onClick={onClose}
+                onClick={() => {
+                  onClose();
+                  navigate(`/mon-compte/demandes/${demandeId}`);
+                }}
                 className="mt-6 rounded-full bg-[#0b2447] px-6 py-2.5 text-sm font-semibold text-white outline-none hover:bg-[#12335e] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
               >
-                Fermer
+                Voir ma demande
               </button>
             </div>
           ) : (
@@ -93,8 +136,7 @@ export function TravelRequestForm({ isLoggedIn, onClose }: TravelRequestFormProp
 
               {!isLoggedIn && (
                 <div className="mt-4 rounded-xl border border-[#e8d5ff] bg-[#f8f0ff] px-4 py-3 text-sm text-[#6b3e9e]">
-                  Vous n'êtes pas connecté. Un clic sur « Envoyer » vous redirigera vers la page de
-                  connexion pour finaliser votre demande.
+                  Connectez-vous pour enregistrer votre demande et la retrouver dans votre espace.
                 </div>
               )}
 
@@ -103,78 +145,139 @@ export function TravelRequestForm({ isLoggedIn, onClose }: TravelRequestFormProp
                   role="alert"
                   className="mt-3 rounded-xl border border-[#fce8e8] bg-[#fff0f0] px-4 py-2 text-sm text-[#b91c1c]"
                 >
-                  {FORMULAIRE.etatErreur}
+                  {erreur || FORMULAIRE.etatErreur}
                 </p>
               )}
 
-              <form onSubmit={handleSubmit} noValidate className="mt-5 space-y-4">
+              <form onSubmit={(event) => void handleSubmit(event)} className="mt-5 space-y-4">
                 <label className="block">
-                  <span className="text-sm font-medium text-[#0b2447]">
-                    {FORMULAIRE.champDestination}{" "}
-                    <span aria-hidden="true" className="text-[#b91c1c]">
-                      *
-                    </span>
+                  <span className="mb-1 block text-sm font-medium text-[#0b2447]">
+                    {FORMULAIRE.champDestination} <span className="text-[#b91c1c]">*</span>
                   </span>
                   <input
                     value={destination}
-                    onChange={(e) => setDestination(e.target.value)}
+                    onChange={(event) => setDestination(event.target.value)}
                     required
                     placeholder="Ex. : Norvège, côte amalfitaine…"
-                    className="mt-1 w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm text-[#0b2447] transition outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+                    className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm text-[#0b2447] outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
                   />
                 </label>
 
                 <label className="block">
-                  <span className="text-sm font-medium text-[#0b2447]">
-                    {FORMULAIRE.champDates}
+                  <span className="mb-1 block text-sm font-medium text-[#0b2447]">
+                    Type de voyage <span className="text-[#b91c1c]">*</span>
                   </span>
-                  <input
-                    value={dates}
-                    onChange={(e) => setDates(e.target.value)}
-                    placeholder="Ex. : début mai, 10 jours…"
-                    className="mt-1 w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm text-[#0b2447] transition outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
-                  />
+                  <select
+                    value={typeVoyage}
+                    onChange={(event) => setTypeVoyage(event.target.value as typeof typeVoyage)}
+                    required
+                    className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm text-[#0b2447] outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+                  >
+                    <option value="">Choisir un type de voyage</option>
+                    {TYPES_VOYAGE.map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
                 </label>
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="block">
-                    <span className="text-sm font-medium text-[#0b2447]">
-                      {FORMULAIRE.champVoyageurs}
+                    <span className="mb-1 block text-sm font-medium text-[#0b2447]">
+                      Date de départ <span className="text-[#b91c1c]">*</span>
+                    </span>
+                    <input
+                      type="date"
+                      value={dateDepart}
+                      onChange={(event) => setDateDepart(event.target.value)}
+                      required
+                      className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm text-[#0b2447] outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-medium text-[#0b2447]">
+                      Date de retour <span className="text-[#b91c1c]">*</span>
+                    </span>
+                    <input
+                      type="date"
+                      value={dateRetour}
+                      min={dateDepart || undefined}
+                      onChange={(event) => setDateRetour(event.target.value)}
+                      required
+                      className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm text-[#0b2447] outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+                    />
+                  </label>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-medium text-[#0b2447]">
+                      Voyageurs *
                     </span>
                     <select
                       value={voyageurs}
-                      onChange={(e) => setVoyageurs(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm text-[#0b2447] transition outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+                      onChange={(event) => setVoyageurs(event.target.value)}
+                      required
+                      className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-3 py-2.5 text-sm text-[#0b2447] outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
                     >
-                      <option value="">—</option>
-                      {[1, 2, 3, 4, 5, "6+"].map((n) => (
-                        <option key={n} value={n}>
-                          {n} voyageur{Number(n) > 1 ? "s" : ""}
+                      {[1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20].map((count) => (
+                        <option key={count} value={count}>
+                          {count}
                         </option>
                       ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-medium text-[#0b2447]">
+                      Budget / pers. *
+                    </span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100000}
+                      step={1}
+                      value={budget}
+                      onChange={(event) => setBudget(event.target.value)}
+                      required
+                      placeholder="1500 €"
+                      className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-3 py-2.5 text-sm text-[#0b2447] outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-medium text-[#0b2447]">
+                      Aventure *
+                    </span>
+                    <select
+                      value={niveau}
+                      onChange={(event) => setNiveau(event.target.value)}
+                      required
+                      className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-3 py-2.5 text-sm text-[#0b2447] outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+                    >
+                      <option value="">Choisir</option>
+                      <option value="calme">Calme</option>
+                      <option value="modere">Modéré</option>
+                      <option value="intense">Intense</option>
                     </select>
                   </label>
                 </div>
 
                 <label className="block">
-                  <span className="text-sm font-medium text-[#0b2447]">
-                    {FORMULAIRE.champEnvies}{" "}
-                    <span aria-hidden="true" className="text-[#b91c1c]">
-                      *
-                    </span>
+                  <span className="mb-1 block text-sm font-medium text-[#0b2447]">
+                    Vos envies et contraintes
                   </span>
                   <textarea
                     value={envies}
-                    onChange={(e) => setEnvies(e.target.value)}
-                    required
+                    onChange={(event) => setEnvies(event.target.value)}
                     rows={3}
-                    placeholder="Ex. : montagne, pas de foule, gastronomie locale, budget ~1 500 €/pers…"
-                    className="mt-1 w-full resize-none rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm text-[#0b2447] transition outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+                    placeholder="Ex. : montagne, pas de foule, gastronomie locale…"
+                    className="w-full resize-none rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm text-[#0b2447] outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
                   />
                 </label>
 
-                <p className="text-xs text-[#8ba8c4]">{FORMULAIRE.champsRequis}</p>
-
+                <p className="text-xs text-[#8ba8c4]">
+                  Les champs marqués d’un * sont obligatoires.
+                </p>
                 <button
                   type="submit"
                   disabled={etat === "en_cours"}

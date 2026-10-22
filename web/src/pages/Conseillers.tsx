@@ -4,18 +4,21 @@ import { Footer } from "../components/landing/Footer";
 import { TravelRequestForm } from "../components/landing/TravelRequestForm";
 import { ChatWidget } from "../components/landing/ChatWidget";
 import { CONSEILLERS, COMMENT_CA_MARCHE } from "../data/detourContent";
+import type { Session } from "../types";
 
 interface ConseillersPageProps {
   isLoggedIn: boolean;
+  session: Session | null;
+  onLogout: () => Promise<void>;
 }
 
 /** Page Conseillers — profils, disponibilité, fonctionnement, CTA. */
-export function ConseillersPage({ isLoggedIn }: ConseillersPageProps) {
+export function ConseillersPage({ isLoggedIn, session, onLogout }: ConseillersPageProps) {
   const [formOuvert, setFormOuvert] = useState(false);
 
   return (
     <div className="min-h-screen bg-white text-[#0b2447]">
-      <PublicNav />
+      <PublicNav session={session} onLogout={onLogout} />
       <main>
         {/* Hero page */}
         <section className="bg-[#0b2447] py-16 text-white lg:py-24">

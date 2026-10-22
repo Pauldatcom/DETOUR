@@ -158,7 +158,7 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
 
   return (
     <Link
-      to={`/propositions/${prop.id}`}
+      to={`/mon-compte/propositions/${prop.id}`}
       className="block rounded-2xl border border-[#e8eef6] bg-white p-5 shadow-sm transition outline-none hover:-translate-y-0.5 hover:shadow-lg focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
     >
       {body}

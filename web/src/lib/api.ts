@@ -1,5 +1,6 @@
 import type {
   Session,
+  Account,
   Config,
   Disponibilite,
   Stats,
@@ -29,6 +30,17 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 export const api = {
   session: () => request<Session>("/api/session"),
   logout: () => request<{ deconnecte: boolean }>("/api/logout", { method: "POST" }),
+  compte: () => request<{ compte: Account }>("/api/account"),
+  modifierCompte: (data: { email: string; nom: string; mot_de_passe_actuel?: string }) =>
+    request<{ compte: Account }>("/api/account", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  changerMotDePasse: (data: { mot_de_passe_actuel: string; nouveau_mot_de_passe: string }) =>
+    request<{ mot_de_passe_modifie: boolean }>("/api/account/password", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
   config: () => request<Config>("/api/config"),
   disponibilite: () => request<Disponibilite>("/api/disponibilite"),
 
