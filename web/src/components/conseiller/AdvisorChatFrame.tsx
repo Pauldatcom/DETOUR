@@ -53,7 +53,14 @@ export function AdvisorChatFrame({
         aria-expanded={open}
       >
         {open ? (
-          <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
+          <svg
+            className="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            aria-hidden="true"
+          >
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
           </svg>
         ) : (
@@ -71,7 +78,9 @@ export function AdvisorChatFrame({
             <div className="flex min-w-0 items-center gap-3">
               <BrandLogo width={40} variant="monogram" alt="" />
               <div className="min-w-0">
-                <p className="font-display truncate text-sm font-semibold tracking-tight">{title}</p>
+                <p className="truncate font-display text-sm font-semibold tracking-tight">
+                  {title}
+                </p>
                 {subtitle && <p className="truncate text-[10px] text-sky">{subtitle}</p>}
               </div>
             </div>
@@ -81,7 +90,14 @@ export function AdvisorChatFrame({
               className="rounded-lg p-1 text-chalk/70 outline-none hover:bg-chalk/10 hover:text-chalk"
               aria-label="Fermer"
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+                aria-hidden="true"
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
               </svg>
             </button>
@@ -113,7 +129,14 @@ export function AdvisorChatFrame({
               className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-full bg-ink text-chalk transition outline-none hover:bg-ink/90 disabled:opacity-50"
               aria-label="Envoyer"
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                aria-hidden="true"
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3 3l18 9-18 9 3-9Z" />
               </svg>
             </button>
