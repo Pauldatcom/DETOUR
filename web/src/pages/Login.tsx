@@ -16,6 +16,7 @@ export function Login({ onSession, googleOauth }: LoginProps) {
   const [nom, setNom] = useState("");
   const [password, setPassword] = useState("");
   const [cle, setCle] = useState("");
+  const [prenom, setPrenom] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -33,7 +34,12 @@ export function Login({ onSession, googleOauth }: LoginProps) {
         onSession();
         navigate("/mes-propositions");
       } else {
-        await api.loginConseiller(cle);
+        // #112: the first name signs the advisor's proposals for the traveler.
+        if (!prenom.trim()) {
+          setError("Indiquez votre prénom : il signe vos propositions.");
+          return;
+        }
+        await api.loginConseiller(cle, prenom.trim());
         onSession();
         navigate("/espace-conseiller");
       }
@@ -166,22 +172,42 @@ export function Login({ onSession, googleOauth }: LoginProps) {
                 </div>
               </>
             ) : (
-              <div>
-                <label htmlFor="login-cle" className="mb-1 block text-sm font-medium text-ink">
-                  Clé d'accès conseiller
-                </label>
-                <input
-                  id="login-cle"
-                  type="password"
-                  value={cle}
-                  onChange={(e) => setCle(e.target.value)}
-                  autoComplete="current-password"
-                  aria-invalid={Boolean(error)}
-                  aria-describedby={error ? errorId : undefined}
-                  className={champClasse}
-                  required
-                />
-              </div>
+              <>
+                <div>
+                  <label htmlFor="login-prenom" className="mb-1 block text-sm font-medium text-ink">
+                    Votre prénom
+                  </label>
+                  <input
+                    id="login-prenom"
+                    value={prenom}
+                    onChange={(e) => setPrenom(e.target.value)}
+                    autoComplete="given-name"
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={error ? errorId : "login-prenom-aide"}
+                    className={champClasse}
+                    required
+                  />
+                  <p id="login-prenom-aide" className="mt-1 text-xs text-ballast">
+                    Les voyageurs le verront en signature de vos propositions.
+                  </p>
+                </div>
+                <div>
+                  <label htmlFor="login-cle" className="mb-1 block text-sm font-medium text-ink">
+                    Clé d'accès conseiller
+                  </label>
+                  <input
+                    id="login-cle"
+                    type="password"
+                    value={cle}
+                    onChange={(e) => setCle(e.target.value)}
+                    autoComplete="current-password"
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={error ? errorId : undefined}
+                    className={champClasse}
+                    required
+                  />
+                </div>
+              </>
             )}
 
             {error && (
