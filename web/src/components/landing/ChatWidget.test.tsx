@@ -216,9 +216,7 @@ describe("ChatWidget", () => {
 
       // Resolve and confirm loading state clears
       resolveChat(makeResult("Réponse reçue."));
-      await waitFor(() =>
-        expect(screen.queryByRole("textbox")).not.toBeDisabled(),
-      );
+      await waitFor(() => expect(screen.queryByRole("textbox")).not.toBeDisabled());
     });
   });
 
@@ -273,8 +271,7 @@ describe("ChatWidget", () => {
       },
       {
         name: "advisor editing a draft",
-        reply:
-          "Le conseiller a mis à jour la proposition en tenant compte de vos retours.",
+        reply: "Le conseiller a mis à jour la proposition en tenant compte de vos retours.",
       },
       {
         name: "advisor confirmation",
