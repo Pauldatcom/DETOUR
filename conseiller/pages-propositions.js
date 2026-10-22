@@ -21,6 +21,30 @@ const PROP_STATUT_LABELS = {
   correction_requested: "Correction demandée",
 };
 
+/** Service types shown to the advisor (#39). */
+const TYPE_LABELS = {
+  transport: "Transport",
+  hebergement: "Hébergement",
+  activite: "Activité",
+};
+
+/** Price summary of a proposal: total, per person and server reading time (#39). */
+function blocRecapitulatifPrix(recap) {
+  const bloc = document.createElement("div");
+  const voyageurs = recap.nombre_voyageurs;
+  bloc.append(Object.assign(document.createElement("strong"), {
+    textContent:
+      `Total : ${recap.prix_par_personne_eur} € par personne · ` +
+      `${recap.prix_total_eur} € pour ${voyageurs} voyageur${voyageurs > 1 ? "s" : ""}`,
+  }));
+  if (recap.consulte_le) {
+    bloc.append(Object.assign(document.createElement("div"), {
+      textContent: `Prix lus sur le serveur fictif DÉTOUR le ${formatDateTime(recap.consulte_le)}`,
+    }));
+  }
+  return bloc;
+}
+
 /** Décisions du conseiller sur une proposition (#28, #32, #36). */
 const DECISION_PROPOSITION = [
   { action: "accepter", route: "accepter", label: "Accepter", motif: false },
@@ -67,7 +91,7 @@ function blocDecisionProposition(prop, demId) {
   wrap.className = "prop-decision";
 
   const statut = document.createElement("div");
-  statut.className = "prop-statut";
+  statut.className = `prop-statut prop-${prop.statut}`;
   statut.textContent = `Statut : ${PROP_STATUT_LABELS[prop.statut] || prop.statut}`;
 
   // #128 : badge de décision distinguant l'origine de la proposition.
@@ -100,15 +124,25 @@ function blocDecisionProposition(prop, demId) {
   const confirmation = document.createElement("div");
   confirmation.className = "prop-confirmation";
 
+  function marquerTerminal(libelle) {
+    actions.hidden = true;
+    const icone = libelle === "Validée" ? "✓" : libelle === "Refusée" ? "✗" : "•";
+    confirmation.textContent =
+      `${icone} Proposition ${libelle.toLowerCase()} — ${formatDateTime(new Date().toISOString())}`;
+  }
+
   async function envoyer(decision, bouton) {
     erreur.textContent = "";
     const corps = { motif: motif.value.trim() };
     if (decision.action === "demander_correction") {
       corps.instructions = instructions.value.trim();
     }
+    const labels = [];
     for (const autre of actions.querySelectorAll("button")) {
+      labels.push(autre.textContent);
       autre.disabled = true;
     }
+    if (bouton) bouton.textContent = "Envoi…";
     try {
       const data = await apiJSON(
         `/api/propositions/${encodeURIComponent(prop.id)}/${decision.route}`,
@@ -120,10 +154,11 @@ function blocDecisionProposition(prop, demId) {
       );
       const apres = (data.proposition || {}).statut;
       const libelle = PROP_STATUT_LABELS[apres] || apres;
+      statut.className = `prop-statut prop-${apres}`;
       statut.textContent = `Statut : ${libelle}`;
       // #128 : met à jour le badge de décision après l'action du conseiller.
       badge.replaceWith(badgeDecision(apres));
-      confirmation.textContent = `${decision.label} — nouveau statut : ${libelle}.`;
+      marquerTerminal(libelle);
       champs.hidden = true;
       // #113 : le conseiller confirme la réservation → le O saute une fois.
       // L'agent ne déclenche jamais cette animation.
@@ -132,8 +167,11 @@ function blocDecisionProposition(prop, demId) {
       }
     } catch (err) {
       erreur.textContent = err.message;
+      let i = 0;
       for (const autre of actions.querySelectorAll("button")) {
         autre.disabled = false;
+        if (autre === bouton && labels[i] !== undefined) autre.textContent = labels[i];
+        i++;
       }
     }
   }
@@ -158,6 +196,10 @@ function blocDecisionProposition(prop, demId) {
       void envoyer(decision, btn);
     });
     actions.append(btn);
+  }
+
+  if (prop.statut === "validee" || prop.statut === "refusee") {
+    marquerTerminal(PROP_STATUT_LABELS[prop.statut] || prop.statut);
   }
 
   wrap.append(statut, badge, actions, champs, confirmation, erreur);
@@ -254,6 +296,8 @@ async function afficherPropositionsDemande(content, demId, propsData) {
     for (const prop of props) {
       const bloc = document.createElement("div");
       bloc.className = "source-box";
+      if (prop.statut === "validee") bloc.classList.add("prop-acceptee");
+      else if (prop.statut === "refusee") bloc.classList.add("prop-refusee");
       const version = prop.version || 1;
       const lienParent = prop.parente_id ? ` · v${version} (depuis ${prop.parente_id})` : ` · v${version}`;
       bloc.append(Object.assign(document.createElement("div"), {
@@ -263,11 +307,30 @@ async function afficherPropositionsDemande(content, demId, propsData) {
       bloc.append(blocDecisionProposition(prop, demId));
       const liste = document.createElement("ul");
       liste.className = "detail-liste";
+      const recap = prop.recapitulatif_prix;
+      const parPersonne = {};
+      for (const ligne of (recap && recap.lignes) || []) {
+        parPersonne[ligne.id] = ligne.prix_par_personne_eur;
+      }
       for (const item of prop.prestations || []) {
-        // #127 : état de vérification explicite par ligne (vérifié / modifié / indisponible / manquant).
-        liste.append(lignePrestationVerifiee(item, true));
+        const li = document.createElement("li");
+        const type = TYPE_LABELS[item.type] || item.type;
+        if (item.verification === "verifie") {
+          const dispo = item.disponible ? "disponible" : "indisponible";
+          const prix = parPersonne[item.id] ?? item.prix_unitaire_eur;
+          li.textContent =
+            `${item.nom} (${item.id}) · ${type} — ${prix} € par personne · ${dispo}` +
+            ` · ${item.source} · ${formatDateTime(item.consulte_le)}`;
+        } else {
+          li.textContent = `${item.nom} (${item.id}) · ${type} — manquant`;
+        }
+        liste.append(li);
       }
       bloc.append(liste);
+      // #39: total, price per person and server reading time.
+      if (recap) {
+        bloc.append(blocRecapitulatifPrix(recap));
+      }
       // #41: constraints the program checked against this proposal.
       const contraintes = prop.contraintes_verifiees || [];
       if (contraintes.length) {
