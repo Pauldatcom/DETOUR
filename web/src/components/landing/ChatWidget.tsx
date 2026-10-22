@@ -68,7 +68,7 @@ export function ChatWidget({ isLoggedIn }: ChatWidgetProps) {
 
   return (
     <AdvisorChatFrame
-      title="Assistant DÉTOUR"
+      title="PROPO · Assistant DÉTOUR"
       subtitle="Exemple fictif — conseiller sous 24-48 h"
       open={open}
       onClose={() => setOpen(false)}
@@ -88,11 +88,19 @@ export function ChatWidget({ isLoggedIn }: ChatWidgetProps) {
           ouvrées.
         </ChatBubble>
       )}
+
       {messages.length === 0 && isLoggedIn && (
-        <ChatBubble role="system">
-          Décrivez votre voyage, l'assistant vous aide à préparer votre demande.
-        </ChatBubble>
+        <div className="flex justify-start">
+          <ChatBubble role="assistant">
+            <p>Bonjour, je suis PROPO.</p>
+            <p className="mt-2">
+              Dites-moi où, quand, à combien et votre budget par personne. Je vérifie les prix, et
+              un conseiller vous répond sous 24 à 48 h.
+            </p>
+          </ChatBubble>
+        </div>
       )}
+
       {messages.map((m, i) => (
         <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
           <ChatBubble role={m.role === "user" ? "advisor" : "assistant"}>{m.content}</ChatBubble>
