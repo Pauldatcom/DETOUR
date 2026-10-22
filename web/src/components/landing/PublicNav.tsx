@@ -50,10 +50,7 @@ export function PublicNav({ session, onLogout }: PublicNavProps) {
           className="flex min-w-0 items-center gap-2"
           onClick={() => setOpen(false)}
         >
-          <BrandLogo width={40} variant="monogram" alt="Détour Voyages" />
-          <span className="truncate font-display text-lg font-semibold tracking-tight text-ink">
-            DÉTOUR
-          </span>
+          <BrandLogo variant="color" width={105} alt="DÉTOUR" />
           <span className="hidden rounded-full bg-sky/50 px-2 py-0.5 text-xs font-semibold text-ink sm:inline">
             Projet fictif
           </span>

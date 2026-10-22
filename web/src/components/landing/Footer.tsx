@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { FOOTER } from "../../data/detourContent";
+import { BrandLogo } from "../conseiller/BrandLogo";
 
 /** Footer public DÉTOUR. */
 export function Footer() {
@@ -9,10 +10,7 @@ export function Footer() {
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr]">
           <div>
             <Link to="/accueil" className="flex items-center gap-2">
-              <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#0b2447] text-lg font-bold text-white">
-                D
-              </span>
-              <span className="text-lg font-bold text-white">DÉTOUR</span>
+              <BrandLogo variant="negative-transparent" width={105} alt="DÉTOUR" />
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-relaxed">{FOOTER.tagline}</p>
             <div className="mt-4 flex gap-3">

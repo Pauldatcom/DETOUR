@@ -40,6 +40,17 @@ from utils import (DECISION_ACCEPTER, DECISION_CORRECTION, DECISION_REFUSER,
 ROOT = Path(__file__).resolve().parent
 WEB_ROOT = ROOT.parent / "web" / "dist"
 
+# Logo officiel DÉTOUR : source unique, le kit brand-2026 à la racine du dépôt.
+DOSSIER_LOGOS = ROOT.parent / "brand-2026" / "logo"
+LOGOS_OFFICIELS = {
+    "detour-logo.svg",
+    "detour-logo-negatif.svg",
+    "detour-logo-negatif-transparent.svg",
+    "detour-logo-mono-encre.svg",
+    "detour-logo-mono-blanc.svg",
+    "detour-monogramme.svg",
+}
+
 
 def load_env_file(path=None):
     env_path = Path(path) if path else ROOT.parent / ".env"
@@ -186,6 +197,24 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
             self.end_headers()
             self.wfile.write(body)
 
+        def send_brand_asset(self, filename):
+            """Logo officiel (brand-2026) servi tel quel : ni déformé, ni recoloré.
+
+            `detour-logo-negatif-transparent.svg` est le négatif officiel sans le
+            fond Encre du kit, pour les surfaces sombres legacy (#07101E).
+            """
+            if filename not in LOGOS_OFFICIELS:
+                raise ApiError(404, "not_found", "Logo introuvable.")
+            body = (DOSSIER_LOGOS / filename).read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/svg+xml")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'self'; img-src 'self' data:; base-uri 'none'")
+            self.end_headers()
+            self.wfile.write(body)
+
         def read_json(self):
             length = int(self.headers.get("Content-Length", "0"))
             if not 0 < length <= 50000:
@@ -272,6 +301,9 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                         if not (session and session["role"] == "conseiller"):
                             return self.redirect("/login")
                     return self.send_static("conseiller.html")
+
+                if method == "GET" and path.startswith("/brand/"):
+                    return self.send_brand_asset(path.rsplit("/", 1)[-1])
 
                 # ---------- React SPA (web/dist) ----------
                 if method == "GET" and WEB_ROOT.exists() \

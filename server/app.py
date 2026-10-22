@@ -21,6 +21,18 @@ from catalogue import BY_ID, MIS_A_JOUR_LE_BASE, PRESTATIONS
 # un nom commun avec le portail (8766) ferait écraser une session par l'autre.
 DASHBOARD_COOKIE = "detour_dashboard"
 
+# Logo officiel DÉTOUR : source unique, le kit brand-2026 à la racine du dépôt.
+RACINE = Path(__file__).resolve().parent.parent
+DOSSIER_LOGOS = RACINE / "brand-2026" / "logo"
+LOGOS_OFFICIELS = {
+    "detour-logo.svg",
+    "detour-logo-negatif.svg",
+    "detour-logo-negatif-transparent.svg",
+    "detour-logo-mono-encre.svg",
+    "detour-logo-mono-blanc.svg",
+    "detour-monogramme.svg",
+}
+
 
 def utc_now():
     return datetime.now(timezone.utc)
@@ -302,6 +314,24 @@ def make_handler(store):
             self.end_headers()
             self.wfile.write(body)
 
+        def send_brand_asset(self, filename):
+            """Logo officiel (brand-2026) servi tel quel : ni déformé, ni recoloré.
+
+            `detour-logo-negatif-transparent.svg` est le négatif officiel sans le
+            fond Encre du kit, pour les surfaces sombres legacy (#07101E, #06101C).
+            """
+            if filename not in LOGOS_OFFICIELS:
+                raise ApiError(404, "not_found", "Logo introuvable.")
+            body = (DOSSIER_LOGOS / filename).read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/svg+xml")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'self'; img-src 'self' data:; base-uri 'none'")
+            self.end_headers()
+            self.wfile.write(body)
+
         def dashboard_cookie(self):
             try:
                 cookies = SimpleCookie()
@@ -330,6 +360,8 @@ def make_handler(store):
             }
             if self.command == "GET" and path in assets:
                 return self.send_dashboard_asset(*assets[path])
+            if self.command == "GET" and path.startswith("/dashboard/brand/"):
+                return self.send_brand_asset(path.rsplit("/", 1)[-1])
             if self.command == "POST" and path == "/dashboard/api/login":
                 self.require_same_origin()
                 supplied = self.read_json().get("team_key")
