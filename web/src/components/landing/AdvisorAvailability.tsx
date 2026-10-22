@@ -54,7 +54,7 @@ export function AdvisorAvailability({ onDecrir }: AdvisorAvailabilityProps) {
             </div>
             <div className="rounded-xl border border-white/15 bg-white/5 p-4 text-center">
               <p className="text-xs text-[#7fd9d5]">Horaires</p>
-              <p className="mt-1 text-sm font-bold">
+              <p className="meta-nowrap mt-1 text-sm font-bold">
                 {CONSEILLERS.disponibilite.jours}
                 <br />
                 {CONSEILLERS.disponibilite.heures}
@@ -62,7 +62,9 @@ export function AdvisorAvailability({ onDecrir }: AdvisorAvailabilityProps) {
             </div>
             <div className="rounded-xl border border-white/15 bg-white/5 p-4 text-center">
               <p className="text-xs text-[#7fd9d5]">Délai de réponse</p>
-              <p className="mt-1 text-sm font-bold">{CONSEILLERS.disponibilite.delai}</p>
+              <p className="meta-nowrap mt-1 text-sm font-bold">
+                {CONSEILLERS.disponibilite.delai}
+              </p>
             </div>
           </div>
           <p className="mt-4 text-sm text-[#afc4dc]">
@@ -98,7 +100,7 @@ export function AdvisorAvailability({ onDecrir }: AdvisorAvailabilityProps) {
           </ul>
           <button
             onClick={onDecrir}
-            className="mt-8 rounded-full bg-white px-8 py-3 font-semibold text-[#0b2447] text-base shadow-lg transition outline-none hover:bg-[#eaf4fb] focus-visible:ring-2 focus-visible:ring-[#38bdb8] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b2447]"
+            className="mt-8 rounded-full bg-white px-8 py-3 font-semibold text-[#0b2447] text-base shadow-lg transition outline-none hover:bg-[#eaf4fb]"
           >
             Décrire mon voyage
           </button>

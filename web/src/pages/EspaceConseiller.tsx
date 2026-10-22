@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { PublicNav } from "../components/landing/PublicNav";
+import { Footer } from "../components/landing/Footer";
+import type { Session } from "../types";
 import type {
   Demande,
   Proposition,
@@ -62,10 +65,11 @@ function demanderMotif(question: string): string | null {
 
 interface EspaceConseillerProps {
   nom?: string;
-  onLogout: () => void;
+  session?: Session | null;
+  onLogout: () => Promise<void>;
 }
 
-export function EspaceConseiller({ nom, onLogout }: EspaceConseillerProps) {
+export function EspaceConseiller({ nom, session, onLogout }: EspaceConseillerProps) {
   const [demandes, setDemandes] = useState<Demande[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -117,29 +121,7 @@ export function EspaceConseiller({ nom, onLogout }: EspaceConseillerProps) {
 
   return (
     <div className="min-h-screen bg-[#f7fafd] text-[#0b2447]">
-      {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-[#e8eef6] bg-white/90 backdrop-blur">
-        <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <div className="flex items-center gap-2">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#0b2447] text-lg font-bold text-white">
-              D
-            </span>
-            <span className="text-lg font-bold tracking-wide">DÉTOUR</span>
-            <span className="rounded-full bg-[#f0eefe] px-2 py-0.5 text-xs font-semibold text-[#7a5cd6]">
-              SIMULATION
-            </span>
-          </div>
-          <button
-            onClick={() => {
-              void api.logout();
-              onLogout();
-            }}
-            className="rounded-full border border-[#d5e0ee] px-4 py-2 text-sm font-semibold text-[#0b2447] transition outline-none hover:border-[#38bdb8] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
-          >
-            Déconnexion
-          </button>
-        </nav>
-      </header>
+      <PublicNav session={session ?? null} onLogout={onLogout} />
 
       {/* Hero */}
       <section className="bg-[#0b2447] py-10 text-white lg:py-14">
@@ -227,11 +209,8 @@ export function EspaceConseiller({ nom, onLogout }: EspaceConseillerProps) {
             onChanged={() => void charger()}
           />
         )}
-
-        <footer className="mt-12 border-t border-[#e8eef6] pt-6 text-center text-xs text-[#8ba8c4]">
-          DONNÉES FICTIVES • AUCUN ACHAT RÉEL • DÉCISION HUMAINE
-        </footer>
       </main>
+      <Footer />
     </div>
   );
 }

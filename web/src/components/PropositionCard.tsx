@@ -30,12 +30,12 @@ function PrestationLine({ item }: { item: Prestation }) {
     <li className="text-sm text-[#4b6480]">
       <span className="font-medium text-[#0b2447]">{item.nom}</span>
       <span className="text-[#8ba8c4]"> ({item.id})</span>
-      <span>
+      <span className="meta-nowrap">
         {" "}
         — {formatEuro(item.prix_unitaire_eur ?? 0)} / pers
         {item.disponible === false ? " · indisponible" : " · disponible"}
       </span>
-      <div className="mt-0.5 text-xs text-[#8ba8c4]">
+      <div className="meta-nowrap mt-0.5 text-xs text-[#8ba8c4]">
         {item.source} · {formatDateTime(item.consulte_le ?? "")}
         {item.copie_depuis_v1 && " · repris de v1 (non relu)"}
       </div>
@@ -122,8 +122,8 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
         </ul>
       )}
 
-      <div className="mt-4 flex items-center justify-between border-t border-[#e8eef6] pt-3">
-        <div className="flex flex-wrap gap-2 text-xs text-[#8ba8c4]">
+      <div className="mt-4 flex flex-col gap-3 border-t border-[#e8eef6] pt-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="meta-nowrap flex flex-wrap gap-2 text-xs text-[#8ba8c4]">
           <span>{prop.prestations.length} prestations</span>
           <span>·</span>
           <span>{formatDate(prop.cree_le)}</span>
@@ -134,8 +134,8 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
             </>
           )}
         </div>
-        <div className="text-right">
-          <span className="font-bold text-[#38bdb8]">{formatEuro(prop.prix_total_eur)}</span>
+        <div className="sm:text-right">
+          <span className="meta-nowrap font-bold text-ink">{formatEuro(prop.prix_total_eur)}</span>
           {manquantes > 0 && (
             <p className="mt-0.5 text-[10px] text-[#8ba8c4]">
               {manquantes > 1
@@ -158,8 +158,8 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
 
   return (
     <Link
-      to={`/propositions/${prop.id}`}
-      className="block rounded-2xl border border-[#e8eef6] bg-white p-5 shadow-sm transition outline-none hover:-translate-y-0.5 hover:shadow-lg focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+      to={`/mon-compte/propositions/${prop.id}`}
+      className="block rounded-2xl border border-[#e8eef6] bg-white p-5 shadow-sm transition outline-none hover:-translate-y-0.5 hover:shadow-lg"
     >
       {body}
     </Link>
