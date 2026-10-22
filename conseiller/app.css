@@ -602,3 +602,60 @@ footer span { color: var(--ink); }
   .chat-layout { grid-template-columns: 1fr; }
   .history { border-right: 0; padding-right: 0; border-bottom: 1px solid var(--line); padding-bottom: 16px; }
 }
+
+/* ── Réponse du conseiller (#52) ────────────────────────────── */
+.echeance-ok { color: var(--ink); font-weight: 700; }
+
+.reponse-bloc { margin-top: 8px; }
+.reponse-aide { color: var(--ballast); font-size: 13px; line-height: 1.5; margin: 0 0 14px; }
+.reponse-form { display: flex; flex-direction: column; gap: 10px; }
+.reponse-label {
+  color: var(--ballast);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.reponse-input {
+  width: 100%;
+  min-height: 120px;
+  background: var(--chalk);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.reponse-input:focus { outline: none; border-color: var(--ink); }
+.reponse-form .primary-button { align-self: flex-start; }
+.reponse-box {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.reponse-verdict { font-size: 14px; font-weight: 800; }
+.reponse-verdict.echeance-approche { color: var(--ink); }
+.reponse-verdict.echeance-depassee { color: var(--brick); }
+.reponse-verdict.echeance-ok { color: var(--ink); }
+.reponse-meta { color: var(--ballast); font-size: 12.5px; }
+.reponse-texte {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 8px 0 0;
+}
+.dash-echeance.dash-reponse {
+  white-space: normal;
+  min-width: 150px;
+  max-width: 220px;
+}
+
