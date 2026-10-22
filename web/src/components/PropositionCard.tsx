@@ -18,24 +18,26 @@ interface PropositionCardProps {
 function PrestationLine({ item }: { item: Prestation }) {
   if (item.verification !== "verifie") {
     return (
-      <li className="text-sm text-[#4b6480]">
-        <span className="font-medium text-[#0b2447]">{item.nom}</span>
-        <span className="text-[#8ba8c4]"> ({item.id})</span>
-        <span> — manquant</span>
-        {item.copie_depuis_v1 && <span className="text-[#8ba8c4]"> · repris de v1 (non relu)</span>}
+      <li className="text-sm text-ballast">
+        <span className="font-medium text-ink">{item.nom}</span>
+        <span className="text-ballast/60"> ({item.id})</span>
+        <span> — prix non vérifié</span>
+        {item.copie_depuis_v1 && (
+          <span className="text-ballast/60"> · repris de v1 (non relu)</span>
+        )}
       </li>
     );
   }
   return (
-    <li className="text-sm text-[#4b6480]">
-      <span className="font-medium text-[#0b2447]">{item.nom}</span>
-      <span className="text-[#8ba8c4]"> ({item.id})</span>
+    <li className="text-sm text-ballast">
+      <span className="font-medium text-ink">{item.nom}</span>
+      <span className="text-ballast/60"> ({item.id})</span>
       <span>
         {" "}
         — {formatEuro(item.prix_unitaire_eur ?? 0)} / pers
         {item.disponible === false ? " · indisponible" : " · disponible"}
       </span>
-      <div className="mt-0.5 text-xs text-[#8ba8c4]">
+      <div className="mt-0.5 text-xs text-ballast/60">
         {item.source} · {formatDateTime(item.consulte_le ?? "")}
         {item.copie_depuis_v1 && " · repris de v1 (non relu)"}
       </div>
@@ -52,7 +54,7 @@ const CONTRAINTE_MARQUE: Record<ContrainteVerifiee["statut"], string> = {
 /** One program-checked customer constraint (#41). */
 function ContrainteLine({ item }: { item: ContrainteVerifiee }) {
   return (
-    <li className="text-xs text-[#4b6480]">
+    <li className="text-xs text-ballast">
       {CONTRAINTE_MARQUE[item.statut]} {item.detail}
     </li>
   );
@@ -61,14 +63,15 @@ function ContrainteLine({ item }: { item: ContrainteVerifiee }) {
 /** Newer reading vs v1: previous/new price, unavailable, or unchanged. */
 function ChangementLine({ item }: { item: ChangementLecture }) {
   if (item.inchange) {
-    return <li className="text-xs text-[#8ba8c4]">{item.nom}: prix et disponibilité inchangés</li>;
+    return <li className="text-xs text-ballast/60">{item.nom}: prix et disponibilité inchangés</li>;
   }
   return (
-    <li className="text-xs text-[#4b6480]">
+    <li className="text-xs text-ballast">
       {item.nom}
       {item.prix_change && (
         <>
-          : {formatEuro(item.prix_avant)} → {formatEuro(item.prix_apres)}
+          : {formatEuro(item.prix_avant)} →{" "}
+          <span className="font-semibold text-brick">{formatEuro(item.prix_apres)}</span>
         </>
       )}
       {!item.disponible_apres && <> · indisponible</>}
@@ -84,12 +87,12 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
     <>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="font-bold text-[#0b2447]">{prop.titre}</h3>
-          <p className="mt-1 line-clamp-2 text-sm text-[#4b6480]">{prop.description}</p>
+          <h3 className="font-extrabold text-ink">{prop.titre}</h3>
+          <p className="mt-1 line-clamp-2 text-sm text-ballast">{prop.description}</p>
         </div>
         <span
-          className={`inline-flex items-center rounded-full border border-[#e8eef6] px-2.5 py-0.5 text-xs font-semibold ${
-            STATUT_COLORS[prop.statut] ?? "text-[#8ba8c4]"
+          className={`inline-flex items-center rounded-full border border-line px-2.5 py-0.5 text-xs font-semibold ${
+            STATUT_COLORS[prop.statut] ?? "text-ballast"
           }`}
         >
           {PROP_STATUT_LABELS[prop.statut] ?? prop.statut}
@@ -97,7 +100,7 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
       </div>
 
       {prop.prestations.length > 0 && (
-        <ul className="mt-4 space-y-2 border-t border-[#e8eef6] pt-3">
+        <ul className="mt-4 space-y-2 border-t border-line pt-3">
           {prop.prestations.map((item) => (
             <PrestationLine key={item.id} item={item} />
           ))}
@@ -105,8 +108,8 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
       )}
 
       {prop.contraintes_verifiees && prop.contraintes_verifiees.length > 0 && (
-        <ul className="mt-3 space-y-1 border-t border-dashed border-[#e8eef6] pt-3">
-          <li className="text-xs font-semibold text-[#0b2447]">Contraintes prises en compte</li>
+        <ul className="mt-3 space-y-1 border-t border-dashed border-line pt-3">
+          <li className="text-xs font-semibold text-ink">Contraintes prises en compte</li>
           {prop.contraintes_verifiees.map((item) => (
             <ContrainteLine key={item.contrainte} item={item} />
           ))}
@@ -114,16 +117,16 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
       )}
 
       {prop.changements && prop.changements.length > 0 && (
-        <ul className="mt-3 space-y-1 border-t border-dashed border-[#e8eef6] pt-3">
-          <li className="text-xs font-semibold text-[#0b2447]">Nouvelle lecture</li>
+        <ul className="mt-3 space-y-1 border-t border-dashed border-line pt-3">
+          <li className="text-xs font-semibold text-ink">Nouvelle lecture</li>
           {prop.changements.map((item) => (
             <ChangementLine key={item.id} item={item} />
           ))}
         </ul>
       )}
 
-      <div className="mt-4 flex items-center justify-between border-t border-[#e8eef6] pt-3">
-        <div className="flex flex-wrap gap-2 text-xs text-[#8ba8c4]">
+      <div className="mt-4 flex items-center justify-between border-t border-line pt-3">
+        <div className="flex flex-wrap gap-2 text-xs text-ballast/60">
           <span>{prop.prestations.length} prestations</span>
           <span>·</span>
           <span>{formatDate(prop.cree_le)}</span>
@@ -135,9 +138,9 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
           )}
         </div>
         <div className="text-right">
-          <span className="font-bold text-[#38bdb8]">{formatEuro(prop.prix_total_eur)}</span>
+          <span className="font-extrabold text-ink">{formatEuro(prop.prix_total_eur)}</span>
           {manquantes > 0 && (
-            <p className="mt-0.5 text-[10px] text-[#8ba8c4]">
+            <p className="mt-0.5 text-[10px] text-ballast/60">
               {manquantes > 1
                 ? `total vérifié · ${manquantes} lignes non vérifiées`
                 : "total vérifié · 1 ligne non vérifiée"}
@@ -150,16 +153,14 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
 
   if (!linked) {
     return (
-      <article className="rounded-2xl border border-[#e8eef6] bg-white p-5 shadow-sm">
-        {body}
-      </article>
+      <article className="rounded-2xl border border-line bg-card p-5 shadow-sm">{body}</article>
     );
   }
 
   return (
     <Link
       to={`/propositions/${prop.id}`}
-      className="block rounded-2xl border border-[#e8eef6] bg-white p-5 shadow-sm transition outline-none hover:-translate-y-0.5 hover:shadow-lg focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+      className="block rounded-2xl border border-line bg-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
     >
       {body}
     </Link>

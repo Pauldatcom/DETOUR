@@ -125,12 +125,42 @@ a {
   transform-origin: 50% 100%;
 }
 
-.o-move.play {
+.play .o-move {
   animation: var(--animate-saut);
 }
 
+/* Official logo: lettering follows the variant, the O keeps its brand fill. */
+.logo {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.logo .rest {
+  fill: var(--color-ink);
+}
+
+.logo .o-fill {
+  fill: var(--color-yellow);
+}
+
+.logo-negatif .rest {
+  fill: var(--color-chalk);
+}
+
+.logo-mono-encre .rest,
+.logo-mono-encre .o-fill {
+  fill: var(--color-ink);
+}
+
+.logo-mono-blanc .rest,
+.logo-mono-blanc .o-fill {
+  fill: var(--color-chalk);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .o-move.play {
+  .play .o-move {
     animation: none;
   }
 }

@@ -1,28 +1,26 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { Logo } from "../Logo";
 import { NAVIGATION } from "../../data/detourContent";
 
-/** Navigation publique DÉTOUR — palette nuit bleu / blanc / accents turquoise-violet. */
+/** Navigation publique DÉTOUR — 2026 brand: chalk bar, official wordmark, ink links. */
 export function PublicNav() {
   const [open, setOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-[#e8eef6] bg-white/90 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-line bg-chalk/90 backdrop-blur">
       <nav
         aria-label="Navigation principale"
         className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6"
       >
-        <Link to="/accueil" className="flex items-center gap-2" onClick={() => setOpen(false)}>
-          <span
-            aria-hidden="true"
-            className="grid h-9 w-9 place-items-center rounded-xl bg-[#0b2447] text-lg font-bold text-white"
-          >
-            D
-          </span>
-          <span className="text-lg font-bold tracking-wide text-[#0b2447]">DÉTOUR</span>
-          <span className="hidden rounded-full bg-[#f0eefe] px-2 py-0.5 text-xs font-semibold text-[#7a5cd6] sm:inline">
-            Projet fictif
-          </span>
+        <Link
+          to="/accueil"
+          className="flex w-28 items-center gap-2"
+          aria-label="DÉTOUR, accueil"
+          onClick={() => setOpen(false)}
+        >
+          <Logo variant="encre" width={112} />
+          <span className="sr-only">DÉTOUR</span>
         </Link>
 
         <ul className="hidden items-center gap-6 lg:flex">
@@ -30,7 +28,7 @@ export function PublicNav() {
             <li key={item.label}>
               <Link
                 to={item.href}
-                className="rounded-lg px-2 py-1 text-sm font-medium text-[#334d6b] transition outline-none hover:text-[#0b2447] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+                className="rounded-lg px-2 py-1 text-sm font-medium text-ink transition hover:text-ballast"
               >
                 {item.label}
               </Link>
@@ -41,14 +39,14 @@ export function PublicNav() {
         <div className="hidden items-center gap-3 lg:flex">
           <Link
             to="/login"
-            className="rounded-full border border-[#d5e0ee] px-4 py-2 text-sm font-semibold text-[#0b2447] transition outline-none hover:border-[#38bdb8] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+            className="rounded-full bg-ink px-4 py-2 text-sm font-semibold text-chalk transition hover:bg-ink/85"
           >
             Se connecter
           </Link>
         </div>
 
         <button
-          className="rounded-lg p-2 text-[#0b2447] outline-none focus-visible:ring-2 focus-visible:ring-[#38bdb8] lg:hidden"
+          className="rounded-lg p-2 text-ink lg:hidden"
           aria-label={open ? "Fermer le menu" : "Ouvrir le menu"}
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
@@ -75,13 +73,13 @@ export function PublicNav() {
       </nav>
 
       {open && (
-        <div className="border-t border-[#e8eef6] bg-white px-4 py-4 lg:hidden">
+        <div className="border-t border-line bg-chalk px-4 py-4 lg:hidden">
           <ul className="flex flex-col gap-1">
             {NAVIGATION.map((item) => (
               <li key={item.label}>
                 <Link
                   to={item.href}
-                  className="block rounded-lg px-3 py-2 text-sm font-medium text-[#334d6b] hover:bg-[#f2f7fc]"
+                  className="block rounded-lg px-3 py-2 text-sm font-medium text-ink hover:bg-sky/40"
                   onClick={() => setOpen(false)}
                 >
                   {item.label}
@@ -91,7 +89,7 @@ export function PublicNav() {
             <li>
               <Link
                 to="/login"
-                className="block rounded-lg px-3 py-2 text-sm font-semibold text-[#0b2447] hover:bg-[#f2f7fc]"
+                className="mt-2 block rounded-full bg-ink px-3 py-2 text-center text-sm font-semibold text-chalk"
                 onClick={() => setOpen(false)}
               >
                 Se connecter

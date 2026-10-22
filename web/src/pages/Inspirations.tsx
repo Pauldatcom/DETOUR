@@ -3,6 +3,7 @@ import { PublicNav } from "../components/landing/PublicNav";
 import { Footer } from "../components/landing/Footer";
 import { DestinationCard } from "../components/landing/DestinationCard";
 import { ChatWidget } from "../components/landing/ChatWidget";
+import { JumpingTitle } from "../lib/jumpingO";
 import { INSPIRATIONS } from "../data/detourContent";
 import type { Destination } from "../data/detourContent";
 
@@ -11,7 +12,7 @@ interface InspirationsPageProps {
   isLoggedIn: boolean;
 }
 
-/** Page Inspirations — toutes les destinations, filtre par ambiance. */
+/** Page Inspirations — toutes les destinations, filtre par ambiance (2026 brand). */
 export function InspirationsPage({ onDecrir, isLoggedIn }: InspirationsPageProps) {
   const ambiances = Array.from(new Set(INSPIRATIONS.destinations.map((d) => d.ambiance)));
   const [filtre, setFiltre] = useState<string | null>(null);
@@ -21,24 +22,26 @@ export function InspirationsPage({ onDecrir, isLoggedIn }: InspirationsPageProps
     : INSPIRATIONS.destinations;
 
   return (
-    <div className="min-h-screen bg-white text-[#0b2447]">
+    <div className="min-h-screen bg-chalk text-ink">
       <PublicNav />
       <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:py-20">
         <div className="max-w-2xl">
-          <p className="mb-2 text-sm font-semibold tracking-widest text-[#38bdb8] uppercase">
+          <p className="mb-2 font-mono text-xs font-semibold tracking-widest text-ballast uppercase">
             {INSPIRATIONS.surtitre}
           </p>
-          <h1 className="text-3xl font-bold sm:text-4xl">{INSPIRATIONS.titre}</h1>
-          <p className="mt-4 text-[#4b6480]">{INSPIRATIONS.texte}</p>
+          <h1 className="text-3xl font-extrabold sm:text-4xl">
+            <JumpingTitle text={INSPIRATIONS.titre} targetWord="inspirations" as="h1" />
+          </h1>
+          <p className="mt-4 text-ballast">{INSPIRATIONS.texte}</p>
         </div>
 
         <div className="mt-8 flex flex-wrap gap-2">
           <button
             onClick={() => setFiltre(null)}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium transition outline-none ${
+            className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
               filtre === null
-                ? "bg-[#0b2447] text-white"
-                : "border border-[#d5e0ee] text-[#4b6480] hover:bg-[#f2f7fc]"
+                ? "bg-ink text-chalk"
+                : "border border-ink/20 text-ballast hover:bg-sky/40"
             }`}
           >
             Toutes
@@ -47,10 +50,10 @@ export function InspirationsPage({ onDecrir, isLoggedIn }: InspirationsPageProps
             <button
               key={a}
               onClick={() => setFiltre(a)}
-              className={`rounded-full px-4 py-1.5 text-sm font-medium transition outline-none ${
+              className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
                 filtre === a
-                  ? "bg-[#0b2447] text-white"
-                  : "border border-[#d5e0ee] text-[#4b6480] hover:bg-[#f2f7fc]"
+                  ? "bg-ink text-chalk"
+                  : "border border-ink/20 text-ballast hover:bg-sky/40"
               }`}
             >
               {a}

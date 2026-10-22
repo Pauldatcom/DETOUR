@@ -11,7 +11,7 @@ interface MesPropositionsProps {
   onLogout: () => void;
 }
 
-/** Page Mes propositions — espace voyageur, design clair. */
+/** Page Mes propositions — espace voyageur, 2026 brand (chalk/ink). */
 export function MesPropositions({ nom, onLogout }: MesPropositionsProps) {
   const [props, setProps] = useState<Proposition[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,13 +26,13 @@ export function MesPropositions({ nom, onLogout }: MesPropositionsProps) {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#f7fafd] text-[#0b2447]">
+    <div className="min-h-screen bg-chalk text-ink">
       <PublicNav />
       <main className="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:py-16">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold sm:text-3xl">Mes propositions</h1>
-            <p className="mt-1 text-sm text-[#4b6480]">
+            <h1 className="text-3xl font-extrabold sm:text-4xl">Mes propositions</h1>
+            <p className="mt-1 text-sm text-ballast">
               {nom ? `Bonjour ${nom},` : "Bonjour,"} voici vos propositions de voyage.
             </p>
           </div>
@@ -41,25 +41,25 @@ export function MesPropositions({ nom, onLogout }: MesPropositionsProps) {
               void api.logout();
               onLogout();
             }}
-            className="rounded-full border border-[#d5e0ee] px-4 py-2 text-sm font-semibold text-[#0b2447] transition outline-none hover:border-[#38bdb8] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+            className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-ink transition hover:border-ink focus-visible:ring-2 focus-visible:ring-yellow focus-visible:ring-offset-2"
           >
             Déconnexion
           </button>
         </div>
 
-        {loading && <p className="mt-8 text-[#4b6480]">Chargement…</p>}
+        {loading && <p className="mt-8 text-ballast">Chargement…</p>}
 
         {error && (
-          <div className="mt-8 rounded-xl border border-[#fce8e8] bg-[#fff0f0] px-4 py-3 text-sm text-[#b91c1c]">
+          <div className="mt-8 rounded-xl border border-brick/30 bg-brick/5 px-4 py-3 text-sm text-brick">
             {error}
           </div>
         )}
 
         {!loading && !error && props.length === 0 && (
-          <div className="mt-8 rounded-2xl border border-[#e8eef6] bg-white p-12 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#f0eefe]">
+          <div className="mt-8 rounded-2xl border border-line bg-card p-12 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-sky/40">
               <svg
-                className="h-8 w-8 text-[#7a5cd6]"
+                className="h-8 w-8 text-ink"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -74,13 +74,13 @@ export function MesPropositions({ nom, onLogout }: MesPropositionsProps) {
               </svg>
             </div>
             <h2 className="text-lg font-bold">Aucune proposition pour le moment</h2>
-            <p className="mt-2 text-sm text-[#4b6480]">
+            <p className="mt-2 text-sm text-ballast">
               Décrivez votre voyage et un conseiller vous préparera une proposition sous 24 à 48
               heures ouvrées.
             </p>
             <Link
               to="/accueil"
-              className="mt-6 inline-block rounded-full bg-[#0b2447] px-6 py-2.5 text-sm font-semibold text-white transition outline-none hover:bg-[#12335e] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+              className="mt-6 inline-block rounded-full bg-ink px-6 py-2.5 text-sm font-semibold text-chalk transition hover:bg-ink/85 focus-visible:ring-2 focus-visible:ring-yellow focus-visible:ring-offset-2"
             >
               Décrire mon voyage
             </Link>
