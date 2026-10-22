@@ -107,6 +107,34 @@ class TestPropositionStore(unittest.TestCase):
         for ligne in updated["prestations"]:
             self.assertNotIn("copie_depuis_v1", ligne)
 
+    def test_mettre_a_jour_ignores_lines_on_a_sent_proposal(self):
+        """#111: a sent proposal keeps its server-stored lines, whatever the body says."""
+        prop = self.store.creer("dem_abc", dict(PROPOSITION_VALIDE))
+        self.store.changer_statut(prop["id"], "envoyee", "Nora", "envoi au voyageur")
+        avant = self.store.obtenir(prop["id"])["prestations"]
+        ligne_forgee = {
+            "id": "hotel-nantes-01", "nom": "Hôtel des Machines", "type": "hebergement",
+            "quantite": 2, "verification": "verifie", "prix_unitaire_eur": 1,
+            "disponible": True, "source": "Serveur fictif DÉTOUR",
+            "consulte_le": "2026-10-16T10:00:00+00:00",
+        }
+        updated = self.store.mettre_a_jour(prop["id"], {
+            "titre": "Nouveau titre", "description": "Nouveau message",
+            "prestations": [ligne_forgee]})
+        self.assertEqual(updated["titre"], "Nouveau titre")
+        self.assertEqual(updated["description"], "Nouveau message")
+        # Lines and total are unchanged: the browser cannot re-mark a price.
+        self.assertEqual(updated["prestations"], avant)
+        self.assertEqual(updated["prix_total_eur"],
+                         self.store.obtenir(prop["id"])["prix_total_eur"])
+
+    def test_mettre_a_jour_keeps_lines_editable_on_a_brouillon(self):
+        prop = self.store.creer("dem_abc", dict(PROPOSITION_VALIDE))
+        updated = self.store.mettre_a_jour(prop["id"], {
+            "titre": "Modifié", "description": "Nouvelle desc", "prestations": []})
+        self.assertEqual(updated["prestations"], [])
+        self.assertEqual(updated["prix_total_eur"], 0)
+
     def test_changer_statut(self):
         prop = self.store.creer("dem_abc", dict(PROPOSITION_VALIDE))
         self.assertEqual(

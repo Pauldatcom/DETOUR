@@ -18,6 +18,7 @@ from utils import (
     PROP_STATUTS,
     SOURCE_LABEL,
     STATUT_BROUILLON,
+    STATUT_CORRECTION_DEMANDEE,
     STATUT_PAR_DECISION,
     TRANSITIONS_PROPOSITION,
 )
@@ -308,10 +309,17 @@ class PropositionStore:
             if not record:
                 return None
             champs = valider_proposition(data)
+            # #111: prices are never edited by hand and lines must not be
+            # re-marked "verified" from the browser. Once a proposal is sent or
+            # decided, only the title and message may change: the prestations
+            # are kept as stored by the server.
+            modifiable = record.get("statut") in (
+                STATUT_BROUILLON, STATUT_CORRECTION_DEMANDEE)
             record["titre"] = champs["titre"]
             record["description"] = champs["description"]
-            record["prestations"] = champs["prestations"]
-            record["prix_total_eur"] = champs["prix_total_eur"]
+            if modifiable:
+                record["prestations"] = champs["prestations"]
+                record["prix_total_eur"] = champs["prix_total_eur"]
             record["modifiee_le"] = utc_now_iso()
             self.save()
             return json.loads(json.dumps(record))
