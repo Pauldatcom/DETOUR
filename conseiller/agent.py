@@ -43,6 +43,39 @@ def _rapport_erreur_fournisseur(err):
         "Explique que le résultat n'a pas pu être vérifié (serveur injoignable)."
     )
 
+
+def _contexte_reprise(demande_record):
+    """Build a short system note so the model resumes on missing fields (#23)."""
+    if not isinstance(demande_record, dict):
+        return None
+    dem_id = demande_record.get("id") or ""
+    corps = demande_record.get("demande") or {}
+    if not isinstance(corps, dict):
+        corps = {}
+    analyse = analyser_informations(corps)
+    labels = analyse.get("labels") or {}
+    fournis_cles = analyse.get("fournis") or []
+    manquants_cles = analyse.get("manquants") or []
+    if fournis_cles:
+        details = []
+        for cle in fournis_cles:
+            valeur = corps.get(cle)
+            details.append(f"{labels.get(cle, cle)}={valeur!r}")
+        fournis_txt = ", ".join(details)
+    else:
+        fournis_txt = "(aucun)"
+    manquants_txt = (
+        ", ".join(labels.get(c, c) for c in manquants_cles)
+        if manquants_cles else "(aucun — demande complète)"
+    )
+    return "\n".join([
+        f"DEMANDE EN COURS (id={dem_id}).",
+        f"Champs déjà enregistrés : {fournis_txt}",
+        f"Champs manquants : {manquants_txt}",
+        "Ne redemande pas les champs déjà enregistrés. "
+        "Pose la prochaine question uniquement sur les manquants.",
+    ])
+
 # Arguments de décision : le modèle ne tranche jamais. Toute tentative est
 # refusée, tracée, puis ignorée. Seul le conseiller humain décide.
 DECISION_ARGS = (
@@ -226,11 +259,15 @@ class Agent:
             "- Never promise an immediate answer when the service is closed.\n"
             "- Never claim a reservation has been made.")
         conversation: list = [{"role": "system", "content": system_prompt}]
-        conversation += [{"role": m["role"], "content": m["content"]}
-                         for m in messages[-MAX_MESSAGES:]]
         demande, recherche = None, None
         if demande_id:
-            demande = self.store.obtenir(demande_id)
+            # #23: strict load — unknown/foreign ids must not start a silent new thread.
+            demande = self.store.obtenir_pour_voyageur(demande_id, user_id)
+            reprise = _contexte_reprise(demande)
+            if reprise:
+                conversation.append({"role": "system", "content": reprise})
+        conversation += [{"role": m["role"], "content": m["content"]}
+                         for m in messages[-MAX_MESSAGES:]]
 
         def _retour(reply):
             # #5: contract fields before persistence (redaction happens in traces.py).
