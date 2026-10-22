@@ -100,6 +100,15 @@ export interface ChangementLecture {
   inchange: boolean;
 }
 
+/** One customer constraint checked against a proposal (#41). */
+export type StatutContrainte = "ok" | "a_verifier" | "non_respectee";
+
+export interface ContrainteVerifiee {
+  contrainte: string;
+  statut: StatutContrainte;
+  detail: string;
+}
+
 export interface Proposition {
   id: string;
   demande_id: string;
@@ -112,6 +121,8 @@ export interface Proposition {
   prestations: Prestation[];
   prix_total_eur: number;
   changements?: ChangementLecture[];
+  /** Program-checked constraints for the advisor (#41). */
+  contraintes_verifiees?: ContrainteVerifiee[];
 }
 
 /** One line in a proposal. Only "verifie" lines carry a real server price. */

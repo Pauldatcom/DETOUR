@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import type { ChangementLecture, Prestation, Proposition } from "../types";
+import type { ChangementLecture, ContrainteVerifiee, Prestation, Proposition } from "../types";
 import {
   PROP_STATUT_LABELS,
   STATUT_COLORS,
@@ -39,6 +39,21 @@ function PrestationLine({ item }: { item: Prestation }) {
         {item.source} · {formatDateTime(item.consulte_le ?? "")}
         {item.copie_depuis_v1 && " · repris de v1 (non relu)"}
       </div>
+    </li>
+  );
+}
+
+const CONTRAINTE_MARQUE: Record<ContrainteVerifiee["statut"], string> = {
+  ok: "✅",
+  a_verifier: "⚠️",
+  non_respectee: "❌",
+};
+
+/** One program-checked customer constraint (#41). */
+function ContrainteLine({ item }: { item: ContrainteVerifiee }) {
+  return (
+    <li className="text-xs text-[#4b6480]">
+      {CONTRAINTE_MARQUE[item.statut]} {item.detail}
     </li>
   );
 }
@@ -85,6 +100,15 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
         <ul className="mt-4 space-y-2 border-t border-[#e8eef6] pt-3">
           {prop.prestations.map((item) => (
             <PrestationLine key={item.id} item={item} />
+          ))}
+        </ul>
+      )}
+
+      {prop.contraintes_verifiees && prop.contraintes_verifiees.length > 0 && (
+        <ul className="mt-3 space-y-1 border-t border-dashed border-[#e8eef6] pt-3">
+          <li className="text-xs font-semibold text-[#0b2447]">Contraintes prises en compte</li>
+          {prop.contraintes_verifiees.map((item) => (
+            <ContrainteLine key={item.contrainte} item={item} />
           ))}
         </ul>
       )}

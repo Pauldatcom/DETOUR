@@ -5,6 +5,7 @@ Does not mutate stored proposals. A missing second reading is not a change.
 
 import json
 
+from contraintes import verifier_contraintes
 from propositions import VERIFICATION_VERIFIE, parse_iso8601
 from utils import STATUT_A_REVOIR
 
@@ -105,12 +106,20 @@ def a_des_ecarts(changements):
 
 
 def enrichir_propositions(props, demand_store):
-    """Attach price/availability deltas from the latest search; v1 lines stay intact."""
+    """Attach reading deltas and constraint checks; stored proposals stay intact.
+
+    #41: `contraintes_verifiees` lists each customer constraint with ok /
+    a_verifier / non_respectee so the advisor can see what was respected.
+    """
     enrichies = []
     for prop in props or []:
         dem = demand_store.obtenir(prop.get("demande_id", ""))
         recherches = (dem or {}).get("recherches") or []
-        enrichies.append(proposition_avec_changements(prop, recherches))
+        enrichie = proposition_avec_changements(prop, recherches)
+        resultats = (recherches[-1].get("resultats") if recherches else None) or []
+        enrichie["contraintes_verifiees"] = verifier_contraintes(
+            dem or {}, enrichie, resultats)
+        enrichies.append(enrichie)
     return enrichies
 
 
