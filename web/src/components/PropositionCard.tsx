@@ -32,12 +32,12 @@ function PrestationLine({ item }: { item: Prestation }) {
     <li className="text-sm text-ballast">
       <span className="font-medium text-ink">{item.nom}</span>
       <span className="text-ballast/60"> ({item.id})</span>
-      <span>
+      <span className="meta-nowrap">
         {" "}
         — {formatEuro(item.prix_unitaire_eur ?? 0)} / pers
         {item.disponible === false ? " · indisponible" : " · disponible"}
       </span>
-      <div className="mt-0.5 text-xs text-ballast/60">
+      <div className="meta-nowrap mt-0.5 text-xs text-ballast/60">
         {item.source} · {formatDateTime(item.consulte_le ?? "")}
         {item.copie_depuis_v1 && " · repris de v1 (non relu)"}
       </div>
@@ -125,8 +125,8 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
         </ul>
       )}
 
-      <div className="mt-4 flex items-center justify-between border-t border-line pt-3">
-        <div className="flex flex-wrap gap-2 text-xs text-ballast/60">
+      <div className="mt-4 flex flex-col gap-3 border-t border-line pt-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="meta-nowrap flex flex-wrap gap-2 text-xs text-ballast/60">
           <span>{prop.prestations.length} prestations</span>
           <span>·</span>
           <span>{formatDate(prop.cree_le)}</span>
@@ -137,8 +137,10 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
             </>
           )}
         </div>
-        <div className="text-right">
-          <span className="font-extrabold text-ink">{formatEuro(prop.prix_total_eur)}</span>
+        <div className="sm:text-right">
+          <span className="meta-nowrap font-extrabold text-ink">
+            {formatEuro(prop.prix_total_eur)}
+          </span>
           {manquantes > 0 && (
             <p className="mt-0.5 text-[10px] text-ballast/60">
               {manquantes > 1
@@ -159,8 +161,8 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
 
   return (
     <Link
-      to={`/propositions/${prop.id}`}
-      className="block rounded-2xl border border-line bg-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+      to={`/mon-compte/propositions/${prop.id}`}
+      className="block rounded-2xl border border-line bg-card p-5 shadow-sm transition outline-none hover:-translate-y-0.5 hover:shadow-lg"
     >
       {body}
     </Link>

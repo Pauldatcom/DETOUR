@@ -4,18 +4,21 @@ import { Footer } from "../components/landing/Footer";
 import { TravelRequestForm } from "../components/landing/TravelRequestForm";
 import { ChatWidget } from "../components/landing/ChatWidget";
 import { CONSEILLERS, COMMENT_CA_MARCHE } from "../data/detourContent";
+import type { Session } from "../types";
 
 interface ConseillersPageProps {
   isLoggedIn: boolean;
+  session: Session | null;
+  onLogout: () => Promise<void>;
 }
 
 /** Page Conseillers — profils, disponibilité, fonctionnement, CTA (2026 brand). */
-export function ConseillersPage({ isLoggedIn }: ConseillersPageProps) {
+export function ConseillersPage({ isLoggedIn, session, onLogout }: ConseillersPageProps) {
   const [formOuvert, setFormOuvert] = useState(false);
 
   return (
     <div className="min-h-screen bg-chalk text-ink">
-      <PublicNav />
+      <PublicNav session={session} onLogout={onLogout} />
       <main>
         {/* Hero page */}
         <section className="bg-ink py-16 text-chalk lg:py-24">
@@ -66,23 +69,18 @@ export function ConseillersPage({ isLoggedIn }: ConseillersPageProps) {
         <section className="bg-card py-16 lg:py-20">
           <div className="mx-auto max-w-6xl px-4 sm:px-6">
             <div className="grid gap-8 lg:grid-cols-3">
-              {(
-                [
-                  ["Disponibles", CONSEILLERS.disponibilite.jours],
-                  ["Horaires", CONSEILLERS.disponibilite.heures],
-                  ["Délai de réponse", CONSEILLERS.disponibilite.delai],
-                ] as const
-              ).map(([titre, valeur]) => (
-                <div
-                  key={titre}
-                  className="rounded-2xl border border-line bg-chalk p-6 text-center"
-                >
-                  <p className="font-mono text-xs font-semibold tracking-widest text-ballast uppercase">
-                    {titre}
-                  </p>
-                  <p className="mt-2 text-lg font-extrabold">{valeur}</p>
-                </div>
-              ))}
+              <div className="rounded-2xl border border-line bg-chalk p-6 text-center">
+                <p className="font-mono text-xs font-semibold tracking-widest text-ballast uppercase">
+                  Disponibles
+                </p>
+                <p className="mt-2 text-lg font-extrabold">{CONSEILLERS.disponibilite.jours}</p>
+              </div>
+              <div className="rounded-2xl border border-line bg-chalk p-6 text-center">
+                <p className="font-mono text-xs font-semibold tracking-widest text-ballast uppercase">
+                  Horaires
+                </p>
+                <p className="mt-2 text-lg font-extrabold">{CONSEILLERS.disponibilite.heures}</p>
+              </div>
             </div>
             <p className="mt-6 text-center text-sm text-ballast">
               {CONSEILLERS.disponibilite.precision}
@@ -115,10 +113,7 @@ export function ConseillersPage({ isLoggedIn }: ConseillersPageProps) {
         <section className="bg-ink py-16 text-chalk lg:py-20">
           <div className="mx-auto max-w-2xl px-4 text-center sm:px-6">
             <h2 className="text-2xl font-extrabold sm:text-3xl">Prêt à décrire votre voyage ?</h2>
-            <p className="mt-4 text-sky">
-              Un conseiller vous répond sous 24 à 48 heures ouvrées. Aucune réservation réelle —
-              vous gardez la main.
-            </p>
+            <p className="mt-4 text-sky">Aucune réservation réelle — vous gardez la main.</p>
             <button
               onClick={() => setFormOuvert(true)}
               className="mt-8 rounded-full bg-yellow px-8 py-3 font-semibold text-base text-ink shadow-lg transition hover:bg-yellow/90"

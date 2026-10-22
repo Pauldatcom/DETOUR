@@ -36,9 +36,12 @@ export function PropositionDetail() {
   const loading = Boolean(id) && readyFor !== id;
 
   return (
-    <main className="min-h-screen bg-chalk px-4 py-8">
+    <main id="contenu-principal" className="min-h-screen bg-chalk px-4 py-8">
       <div className="mx-auto max-w-2xl">
-        <Link to="/mes-propositions" className="text-sm font-medium text-ink hover:text-ballast">
+        <Link
+          to="/mon-compte/propositions"
+          className="text-sm font-medium text-ink hover:text-ballast"
+        >
           ← Mes propositions
         </Link>
         {loading && <p className="mt-8 text-sm text-ballast">Chargement…</p>}

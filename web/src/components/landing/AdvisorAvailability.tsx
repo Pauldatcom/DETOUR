@@ -54,15 +54,11 @@ export function AdvisorAvailability({ onDecrir }: AdvisorAvailabilityProps) {
             </div>
             <div className="rounded-xl border border-chalk/15 bg-chalk/5 p-4 text-center">
               <p className="font-mono text-xs text-sky">Horaires</p>
-              <p className="mt-1 text-sm font-bold">
+              <p className="meta-nowrap mt-1 text-sm font-bold">
                 {CONSEILLERS.disponibilite.jours}
                 <br />
                 {CONSEILLERS.disponibilite.heures}
               </p>
-            </div>
-            <div className="rounded-xl border border-chalk/15 bg-chalk/5 p-4 text-center">
-              <p className="font-mono text-xs text-sky">Délai de réponse</p>
-              <p className="mt-1 text-sm font-bold">{CONSEILLERS.disponibilite.delai}</p>
             </div>
           </div>
           <p className="mt-4 text-sm text-sky/80">
