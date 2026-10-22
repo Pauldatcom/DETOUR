@@ -227,6 +227,26 @@ class TestDemandStore(unittest.TestCase):
     def test_obtenir_inexistant(self):
         self.assertIsNone(self.store.obtenir("dem_inconnu"))
 
+    def test_obtenir_pour_voyageur_ok(self):
+        # #23: resume loads the traveler's own request.
+        record, _ = self.store.enregistrer_reponses(
+            None, {"destination": "Lyon"}, user_id="u1")
+        fetched = self.store.obtenir_pour_voyageur(record["id"], "u1")
+        self.assertEqual(fetched["id"], record["id"])
+        self.assertEqual(fetched["demande"]["destination"], "Lyon")
+
+    def test_obtenir_pour_voyageur_unknown(self):
+        with self.assertRaises(ValidationError) as ctx:
+            self.store.obtenir_pour_voyageur("dem_inconnu", "u1")
+        self.assertIn("introuvable", str(ctx.exception).lower())
+
+    def test_obtenir_pour_voyageur_rejects_other_traveler(self):
+        record, _ = self.store.enregistrer_reponses(
+            None, {"destination": "Lille"}, user_id="owner")
+        with self.assertRaises(ValidationError) as ctx:
+            self.store.obtenir_pour_voyageur(record["id"], "intrus")
+        self.assertIn("another traveler", str(ctx.exception).lower())
+
     def test_save_answers_creates_draft_then_completes(self):
         record, mis = self.store.enregistrer_reponses(None, {
             "type_voyage": "lune-de-miel",
@@ -766,6 +786,55 @@ class TestAgent(unittest.TestCase):
         self.assertIsNone(tool_payload["confirmation"])
         self.assertIn("échoué", tool_payload["consigne"])
 
+    def test_resume_injects_known_and_missing_fields(self):
+        # #23: on resume, the model sees already-saved answers and what is missing.
+        existing, _ = self.store.enregistrer_reponses(None, {
+            "type_voyage": "lune-de-miel",
+            "destination": "Nantes",
+            "date_depart": "2026-11-07",
+            "date_retour": "2026-11-09",
+            "nombre_voyageurs": 2,
+            "niveau_aventure": "calme",
+        }, user_id="u1")
+        agent, fake = self.make_agent([
+            {"message": {"role": "assistant", "content": "Quel est votre budget max par personne ?"}}])
+        result = agent.chat(
+            [{"role": "user", "content": "Je reprends"}],
+            user_id="u1",
+            demande_id=existing["id"],
+        )
+        self.assertEqual(result["demande"]["id"], existing["id"])
+        system_blob = "\n".join(
+            m["content"] for m in fake.requests[0]["body"]["messages"]
+            if m.get("role") == "system")
+        self.assertIn(existing["id"], system_blob)
+        self.assertIn("Nantes", system_blob)
+        self.assertIn("budget", system_blob.lower())
+        self.assertIn("manquants", system_blob.lower())
+        self.assertIn("Ne redemande pas", system_blob)
+
+    def test_resume_unknown_demande_id_raises(self):
+        agent, _ = self.make_agent([
+            {"message": {"role": "assistant", "content": "Bonjour"}}])
+        with self.assertRaises(ValidationError):
+            agent.chat(
+                [{"role": "user", "content": "Reprise"}],
+                user_id="u1",
+                demande_id="dem_inconnu000",
+            )
+
+    def test_resume_foreign_demande_id_raises(self):
+        existing, _ = self.store.enregistrer_reponses(
+            None, {"destination": "Lyon"}, user_id="owner")
+        agent, _ = self.make_agent([
+            {"message": {"role": "assistant", "content": "Bonjour"}}])
+        with self.assertRaises(ValidationError):
+            agent.chat(
+                [{"role": "user", "content": "Reprise"}],
+                user_id="intrus",
+                demande_id=existing["id"],
+            )
+
     def test_partial_draft_saved_without_reasking_provided_fields(self):
         partial = copy.deepcopy(TOOL_CALL_MESSAGE)
         arguments = json.loads(partial["tool_calls"][0]["function"]["arguments"])
@@ -1011,6 +1080,29 @@ class TestChatRoute(unittest.TestCase):
         })
         self.assertEqual(status, 200)
         self.assertEqual(agent.calls[0]["demande_id"], "dem_abcdef")
+
+    def test_chat_unknown_demande_id_returns_400(self):
+        # #23: unknown demande_id must not silently start a new request.
+        store = DemandStore(None)
+        fake = FakeOpenRouter([
+            {"message": {"role": "assistant", "content": "Bonjour"}}])
+        self.addCleanup(fake.stop)
+        agent = Agent(FakeSupplier(), store, api_key="cle-test",
+                      model="modele-test", base_url=fake.url, timeout=5)
+        server = ThreadingHTTPServer(
+            ("127.0.0.1", 0), make_handler(store, FakeSupplier(), agent))
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(lambda: (server.shutdown(), server.server_close()))
+        status, data = post(
+            f"http://127.0.0.1:{server.server_port}/api/chat",
+            {
+                "messages": [{"role": "user", "content": "Je reprends"}],
+                "demande_id": "dem_deadbeef",
+            },
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(data["erreur"]["code"], "validation_error")
+        self.assertIn("introuvable", data["erreur"]["message"].lower())
 
     def test_chat_transmet_demande_et_recherche(self):
         store = DemandStore(None)

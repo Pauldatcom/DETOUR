@@ -421,6 +421,28 @@ class DemandStore:
             # #50: same deadline fields as the advisor queue (lister).
             return marquer_echeances(_publier(record))
 
+    def obtenir_pour_voyageur(self, dem_id, user_id):
+        """Load a request for chat resume (#23). Unknown or foreign ids fail.
+
+        Unlike `obtenir`, this never returns None: the caller must not silently
+        start a new conversation when the client sent a demande_id.
+        """
+        if not isinstance(user_id, str):
+            user_id = ""
+        user_id = user_id.strip()
+        with self.lock:
+            record = self.demandes.get(dem_id)
+            if not record:
+                raise ValidationError("Demande introuvable.")
+            existant_uid = (record.get("demande") or {}).get("user_id", "")
+            if not isinstance(existant_uid, str):
+                existant_uid = ""
+            existant_uid = existant_uid.strip()
+            if existant_uid and existant_uid != user_id:
+                raise ValidationError(
+                    "This request belongs to another traveler.")
+            return _publier(record)
+
     def mettre_a_jour(self, dem_id, **champs):
         with self.lock:
             record = self.demandes.get(dem_id)
