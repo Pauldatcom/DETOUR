@@ -573,16 +573,19 @@ class TestRouteReponse(unittest.TestCase):
 class TestPersistanceReponse(unittest.TestCase):
     def test_la_reponse_survit_au_redemarrage(self):
         with tempfile.TemporaryDirectory() as tmp:
-            chemin = Path(tmp) / "demandes.json"
+            chemin = Path(tmp) / "demandes.db"
             store = DemandStore(chemin)
             dem_id = demande_soumise_le(store, metier(2026, 1, 6, 10, 0))
             store.repondre(dem_id, MESSAGE, CONSEILLER, maintenant=metier(2026, 1, 7, 10, 0))
 
-            relu = DemandStore(chemin).obtenir(dem_id)
+            store.conn.close()
+            relu_store = DemandStore(chemin)
+            relu = relu_store.obtenir(dem_id)
             self.assertEqual(relu["statut"], STATUT_REPONDUE)
             self.assertEqual(relu["reponse"]["par"], CONSEILLER)
             self.assertEqual(relu["reponse"]["delai_heures_ouvrees"], 9)
             self.assertEqual(relu["reponse"]["delai_statut"], ECHEANCE_DANS_DELAI)
+            relu_store.conn.close()
 
 
 if __name__ == "__main__":

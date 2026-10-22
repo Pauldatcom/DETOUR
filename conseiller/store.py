@@ -1,4 +1,4 @@
-"""Persistance JSON des demandes client de DÉTOUR."""
+"""Persistance des demandes client de DÉTOUR (SQLite)."""
 
 import json
 import re
@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from horaires import evaluer_delai_reponse, marquer_echeances
+import db
 from utils import (ACTIVITES_POSSIBLES, ACTEUR_AGENT, NIVEAUX_AVENTURE,
                    QUALIF_EN_COURS,
                    QUALIF_INCOMPLET, QUALIF_PRET_PROPOSITION, QUALIF_PRET_RELECTURE,
@@ -272,6 +273,22 @@ def _publier(record):
     return recalculer_qualification(copie)
 
 
+# Traveler approval of the request before an advisor gets it.
+APPROVAL_PENDING = "en_attente"
+APPROVAL_CONFIRMED = "confirmee"
+APPROVAL_DECLINED = "refusee"
+
+
+def traveler_approval(record):
+    """Return the traveler approval status. Older requests count as confirmed."""
+    approval = (record or {}).get("approbation_client") or {}
+    return approval.get("statut") or APPROVAL_CONFIRMED
+
+
+def _approval(status, at=None):
+    return {"statut": status, "le": at}
+
+
 def valider_demande(data):
     """Valide et normalise les champs d'une demande. Lève ValidationError si invalide."""
     if not isinstance(data, dict):
@@ -375,19 +392,19 @@ def valider_demande(data):
 
 class DemandStore:
     def __init__(self, path=None):
+        """Open the demandes store backed by SQLite.
+
+        `path` is the SQLite database file (created on first use). Passing
+        None keeps a pure in-memory store, used by tests and tooling.
+        """
         self.path = Path(path) if path else None
         self.lock = threading.RLock()
-        self.demandes = {}
-        if self.path and self.path.exists():
-            self.demandes = json.loads(self.path.read_text(encoding="utf-8"))
+        self.conn = db.connect(self.path) if self.path else None
+        self.demandes = db.load_demandes(self.conn) if self.conn else {}
 
     def save(self):
-        if not self.path:
-            return
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.demandes, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(self.path)
+        if self.conn:
+            db.save_demandes(self.conn, self.demandes)
 
     def creer(self, data):
         valide = valider_demande(data)
@@ -402,11 +419,42 @@ class DemandStore:
                 "demande": valide,
                 "qualification_retenue": None,
                 "qualification_validee_par": None,
+                # The traveler sent the form himself: the request is approved.
+                "approbation_client": _approval(APPROVAL_CONFIRMED, utc_now_iso()),
             }
             recalculer_qualification(record)
             self.demandes[dem_id] = record
             self.save()
             # #50: expose 24h/48h working-hour deadlines as soon as the request exists.
+            return marquer_echeances(_publier(record))
+
+    def list_for_advisor(self):
+        """Requests the advisor may work on: only the ones the traveler approved."""
+        return [record for record in self.lister()
+                if traveler_approval(record) == APPROVAL_CONFIRMED]
+
+    def approve_by_traveler(self, dem_id, user_id, confirmed):
+        """Record the traveler's yes or no on a request. Only the owner may answer.
+
+        Returns the updated request, or None if it does not exist.
+        """
+        if type(confirmed) is not bool:
+            raise ValidationError("confirme must be true or false.")
+        if not isinstance(user_id, str):
+            user_id = ""
+        with self.lock:
+            record = self.demandes.get(dem_id)
+            if not record:
+                return None
+            owner = (record.get("demande") or {}).get("user_id", "")
+            if owner and owner != user_id.strip():
+                raise ValidationError("This request belongs to another traveler.")
+            status = APPROVAL_CONFIRMED if confirmed else APPROVAL_DECLINED
+            now = utc_now_iso()
+            record["approbation_client"] = _approval(status, now)
+            record.setdefault("approbations_client", []).append(
+                {"statut": status, "par": user_id.strip() or "traveler", "le": now})
+            self.save()
             return marquer_echeances(_publier(record))
 
     def lister(self):
@@ -500,6 +548,8 @@ class DemandStore:
                         })
                     record["qualification_validee_par"] = None
                     record["qualification_validee_le"] = None
+                    # A changed request must be approved again by the traveler.
+                    record["approbation_client"] = _approval(APPROVAL_PENDING)
                 record["demande"] = merged
                 recalculer_qualification(record)
                 self.save()
@@ -520,6 +570,8 @@ class DemandStore:
                 "demande": merged,
                 "qualification_retenue": None,
                 "qualification_validee_par": None,
+                # Saved by the agent: the traveler must approve it first.
+                "approbation_client": _approval(APPROVAL_PENDING),
             }
             recalculer_qualification(record)
             self.demandes[dem_id] = record
