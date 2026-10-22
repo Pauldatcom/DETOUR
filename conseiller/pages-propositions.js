@@ -125,6 +125,11 @@ function blocDecisionProposition(prop, demId) {
       badge.replaceWith(badgeDecision(apres));
       confirmation.textContent = `${decision.label} — nouveau statut : ${libelle}.`;
       champs.hidden = true;
+      // #113 : le conseiller confirme la réservation → le O saute une fois.
+      // L'agent ne déclenche jamais cette animation.
+      if (apres === "validee" && typeof jouerSautLogo === "function") {
+        jouerSautLogo();
+      }
     } catch (err) {
       erreur.textContent = err.message;
       for (const autre of actions.querySelectorAll("button")) {

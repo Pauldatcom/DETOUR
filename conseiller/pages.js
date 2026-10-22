@@ -146,6 +146,25 @@ function formatDateTime(iso) {
     : date.toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
 }
 
+/**
+ * #113 : joue le saut du O une seule fois (1,15 s, pas de boucle).
+ * Utilise a l'ouverture de l'application et quand le conseiller confirme
+ * une reservation. L'agent ne declenche jamais cette animation.
+ * Respecte prefers-reduced-motion: reduce (etat final sans mouvement).
+ */
+function jouerSautLogo() {
+  var logo = document.querySelector(".brand .logo");
+  if (!logo) return;
+  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  logo.classList.remove("play");
+  void logo.getBoundingClientRect();
+  logo.classList.add("play");
+  setTimeout(function () { logo.classList.remove("play"); }, 1150);
+}
+
+// Saut du O a l'ouverture de l'application.
+jouerSautLogo();
+
 function dashRow(demande) {
   const d = demande.demande;
   const client = demande.client;
