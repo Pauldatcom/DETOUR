@@ -17,6 +17,7 @@ export function ParametresCompte() {
   const [sauvegardeProfil, setSauvegardeProfil] = useState(false);
   const [erreurProfil, setErreurProfil] = useState("");
   const [succesProfil, setSuccesProfil] = useState("");
+  const [motDePasseProfil, setMotDePasseProfil] = useState("");
   const [motDePasseActuel, setMotDePasseActuel] = useState("");
   const [nouveauMotDePasse, setNouveauMotDePasse] = useState("");
   const [confirmationMotDePasse, setConfirmationMotDePasse] = useState("");
@@ -52,10 +53,18 @@ export function ParametresCompte() {
     setSuccesProfil("");
     setSauvegardeProfil(true);
     try {
-      const { compte: updated } = await api.modifierCompte({ nom, email });
+      const payload: { email: string; nom: string; mot_de_passe_actuel?: string } = {
+        nom,
+        email,
+      };
+      if (compte?.mot_de_passe_defini) {
+        payload.mot_de_passe_actuel = motDePasseProfil;
+      }
+      const { compte: updated } = await api.modifierCompte(payload);
       setCompte(updated);
       setNom(updated.nom);
       setEmail(updated.email);
+      setMotDePasseProfil("");
       setSuccesProfil("Vos informations ont été mises à jour.");
       await onProfileUpdated();
     } catch (err) {
@@ -133,6 +142,22 @@ export function ParametresCompte() {
               className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
             />
           </label>
+          {compte?.mot_de_passe_defini && (
+            <label className="mt-4 block">
+              <span className="mb-1 block text-sm font-medium">Mot de passe actuel</span>
+              <input
+                type="password"
+                value={motDePasseProfil}
+                onChange={(event) => setMotDePasseProfil(event.target.value)}
+                autoComplete="current-password"
+                required
+                className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+              />
+              <span className="mt-1 block text-xs text-[#8ba8c4]">
+                Requis pour confirmer la modification de votre profil.
+              </span>
+            </label>
+          )}
           {erreurProfil && (
             <p role="alert" className="mt-4 text-sm text-[#b91c1c]">
               {erreurProfil}

@@ -31,7 +31,7 @@ export const api = {
   session: () => request<Session>("/api/session"),
   logout: () => request<{ deconnecte: boolean }>("/api/logout", { method: "POST" }),
   compte: () => request<{ compte: Account }>("/api/account"),
-  modifierCompte: (data: Pick<Account, "email" | "nom">) =>
+  modifierCompte: (data: { email: string; nom: string; mot_de_passe_actuel?: string }) =>
     request<{ compte: Account }>("/api/account", {
       method: "PATCH",
       body: JSON.stringify(data),
