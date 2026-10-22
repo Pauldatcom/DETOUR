@@ -10,6 +10,7 @@ from pathlib import Path
 
 from fournisseur import SupplierError
 from horaires import fenetre_reponse
+from no_result import analyze_no_result
 from propositions import PropositionError, aligner_sur_serveur, apply_quantities
 from store import ValidationError, analyser_informations, criteres_depuis_demande
 from traces import resume_reponse_serveur
@@ -169,7 +170,7 @@ RÈGLES ABSOLUES
 - Ne devine rien : si une information requise manque, pose la question (seulement pour les manquants).
 - N'invente jamais un prix, une disponibilité, une prestation ou une date de mise à jour : ils viennent uniquement de l'outil.
 - Tu ne prends aucune réservation et ne poses aucune option. Aucune réservation n'existe à l'issue de la conversation.
-- Si le voyageur veut une autre destination, explique que le catalogue est restreint pour le moment.
+- Si le voyageur veut une autre destination, dis-le simplement : « Nous ne proposons pas encore Strasbourg. Nos destinations du moment sont Nantes, Lyon et Lille. Voulez-vous que je regarde Lille ? »
 - Si l'outil renvoie une erreur, explique-la honnêtement au voyageur sans inventer de résultat.
 
 APRÈS L'OUTIL
@@ -177,6 +178,12 @@ APRÈS L'OUTIL
 - Précise que les prix et disponibilités ont été vérifiés auprès du serveur à la date indiquée ; la disponibilité est vérifiée à la date de départ uniquement.
 - Signale ce qui n'est pas vérifiable au catalogue : le niveau d'aventure, le besoin de guide et les allergies ne figurent pas dans le serveur.
 - Un conseiller humain préparera ensuite la proposition définitive.
+
+QUAND IL N'Y A PAS DE RÉSULTAT
+- L'outil renvoie `no_result` : `missing` (ce qui manque, avec la phrase à dire), `alternatives` (prestations vérifiées, avec la phrase à dire) et `instruction`. Suis `instruction`.
+- Dis d'abord ce qui manque, en une phrase claire. Ensuite, propose une ou deux alternatives de `alternatives`, jamais une autre. Termine par une question.
+- Si le voyageur a demandé quelque chose de précis qui n'est pas dans les résultats (un marché de Noël, un spa…), c'est aussi un manque : « Je n'ai pas de marché de Noël dans notre catalogue à Lyon. Je peux vous proposer à la place l'Enquête des traboules, à 29 € par personne, prix vérifié le 22/10 à 09:40. Ça vous irait ? »
+- Ne fais jamais comme si la prestation manquante existait. Pas de « Erreur : », pas d'humour sur un manque.
 
 STYLE
 - Réponses courtes, en français, une question à la fois quand tu collectes les informations.
@@ -523,4 +530,6 @@ class Agent:
         payload["champs_mis_a_jour"] = mis_a_jour
         payload["demande_id"] = record["id"]
         payload["informations"] = analyse
+        # #155: the program, not the model, lists what the search could not satisfy.
+        payload["no_result"] = analyze_no_result(record["demande"], recherche)
         return {"demande": record, "recherche": recherche, "payload": payload}
