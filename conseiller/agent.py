@@ -10,7 +10,7 @@ from pathlib import Path
 
 from fournisseur import SupplierError
 from horaires import fenetre_reponse
-from propositions import PropositionError, aligner_sur_serveur
+from propositions import PropositionError, aligner_sur_serveur, apply_quantities
 from store import ValidationError, analyser_informations, criteres_depuis_demande
 from traces import resume_reponse_serveur
 from utils import (DEFAULT_MODEL, MAX_MESSAGES, MAX_TOOL_ITERATIONS,
@@ -337,12 +337,14 @@ class Agent:
             raise OpenRouterError("Réponse du modèle invalide (objet attendu).")
         try:
             # Stamp source and consultation time from the search; never invent them.
-            return aligner_sur_serveur(
+            aligned = aligner_sur_serveur(
                 prop_data,
                 resultats,
                 source_label=(recherche or {}).get("source_label"),
                 consulte_le=(recherche or {}).get("consulte_le"),
             )
+            # The program sets quantities from the request, not the model (#34).
+            return apply_quantities(aligned, d)
         except PropositionError as err:
             raise OpenRouterError(f"Proposition refusée : {err}") from err
 
