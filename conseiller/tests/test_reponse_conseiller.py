@@ -9,7 +9,7 @@ Critères d'acceptation :
 - le conseiller voit si la réponse est partie dans les 24 h ou après le
   délai maximal de 48 h.
 """
-
+import secrets
 import sys
 import tempfile
 import unittest
@@ -17,11 +17,14 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
+from app import make_handler
 from horaires import (ECHEANCE_APPROCHE, ECHEANCE_DANS_DELAI, ECHEANCE_DEPASSEE,
                       fuseau_metier)
+from propositions import PropositionStore
 from store import DemandStore, ValidationError
 from test_conseiller import VALIDE
+from test_decision_flow import ClientHTTP, demarrer
+from users import UserStore
 from utils import (REPONSE_MAX_CARACTERES, STATUT_A_ANALYSER, STATUT_A_REVOIR,
                    STATUT_NOUVELLE, STATUT_PROPOSE, STATUT_REFUSE, STATUT_REPONDUE,
                    STATUT_VALIDE)
@@ -246,6 +249,325 @@ class TestStatutRepondueProtege(unittest.TestCase):
         self.assertEqual(record["statut"], STATUT_A_ANALYSER)
         with self.assertRaises(ValidationError):
             self.store.changer_statut(self.dem_id, STATUT_NOUVELLE, CONSEILLER, "retour")
+
+class TestRouteReponse(unittest.TestCase):
+    """POST /api/demandes/{id}/reponse : l'API que l'interface conseiller appelle."""
+
+    def setUp(self):
+        self.store = DemandStore(None)
+        self.users = UserStore(None)
+        self.team_key = "cle-" + secrets.token_urlsafe(12)
+
+        handler = make_handler(
+            self.store,
+            None,
+            None,
+            users=self.users,
+            team_key=self.team_key,
+            propositions=PropositionStore(None),
+        )
+
+        self.server, self.base = demarrer(handler)
+        self.addCleanup(
+            lambda: (self.server.shutdown(), self.server.server_close())
+        )
+
+        self.dem_id = self.store.creer(dict(VALIDE))["id"]
+        self.url = f"/api/demandes/{self.dem_id}/reponse"
+
+    def conseiller(self):
+        client = ClientHTTP(self.base)
+        status, _ = client.post(
+            "/api/login-conseiller",
+            {"cle": self.team_key},
+        )
+        self.assertEqual(status, 200)
+        return client
+
+    def test_le_conseiller_envoie_une_reponse(self):
+        status, data = self.conseiller().post(
+            self.url,
+            {"message": MESSAGE},
+        )
+
+        self.assertEqual(status, 201)
+
+        demande = data["demande"]
+        self.assertEqual(demande["statut"], STATUT_REPONDUE)
+
+        reponse = demande["reponse"]
+        self.assertEqual(reponse["message"], MESSAGE)
+        self.assertEqual(reponse["par"], "Conseiller DÉTOUR")
+        self.assertTrue(datetime.fromisoformat(reponse["le"]).tzinfo)
+
+        self.assertIn(
+            reponse["delai_statut"],
+            (
+                ECHEANCE_DANS_DELAI,
+                ECHEANCE_APPROCHE,
+                ECHEANCE_DEPASSEE,
+            ),
+        )
+
+        self.assertIsInstance(
+            reponse["delai_heures_ouvrees"],
+            (int, float),
+        )
+
+    def test_une_reponse_immediate_est_dans_le_delai(self):
+        _, data = self.conseiller().post(
+            self.url,
+            {"message": MESSAGE},
+        )
+
+        self.assertEqual(
+            data["demande"]["reponse"]["delai_statut"],
+            ECHEANCE_DANS_DELAI,
+        )
+        self.assertLess(
+            data["demande"]["reponse"]["delai_heures_ouvrees"],
+            1,
+        )
+        self.assertEqual(
+            data["demande"]["echeance_statut"],
+            ECHEANCE_DANS_DELAI,
+        )
+
+    def test_l_auteur_et_la_date_viennent_du_serveur_pas_du_client(self):
+        _, data = self.conseiller().post(
+            self.url,
+            {
+                "message": MESSAGE,
+                "par": "Quelqu'un d'autre",
+                "le": "2020-01-01T00:00:00+00:00",
+                "delai_statut": ECHEANCE_DEPASSEE,
+            },
+        )
+
+        reponse = data["demande"]["reponse"]
+        self.assertEqual(reponse["par"], "Conseiller DÉTOUR")
+        self.assertNotEqual(
+            reponse["le"],
+            "2020-01-01T00:00:00+00:00",
+        )
+        self.assertEqual(
+            reponse["delai_statut"],
+            ECHEANCE_DANS_DELAI,
+        )
+
+    def test_sans_connexion_acces_refuse(self):
+        status, _ = ClientHTTP(self.base).post(
+            self.url,
+            {"message": MESSAGE},
+        )
+
+        self.assertEqual(status, 401)
+        self.assertNotIn(
+            "reponse",
+            self.store.obtenir(self.dem_id),
+        )
+
+    def test_un_voyageur_ne_peut_pas_repondre(self):
+        voyageur = ClientHTTP(self.base)
+
+        voyageur.post(
+            "/api/register",
+            {
+                "email": "zoe@exemple.fr",
+                "nom": "Zoé",
+                "mot_de_passe": "motdepasse",
+            },
+        )
+
+        status, _ = voyageur.post(
+            self.url,
+            {"message": MESSAGE},
+        )
+
+        self.assertEqual(status, 401)
+        self.assertEqual(
+            self.store.obtenir(self.dem_id)["statut"],
+            STATUT_NOUVELLE,
+        )
+
+    def test_demande_inconnue(self):
+        status, data = self.conseiller().post(
+            "/api/demandes/dem_abcdef012345/reponse",
+            {"message": MESSAGE},
+        )
+
+        self.assertEqual(status, 404)
+        self.assertEqual(
+            data["erreur"]["code"],
+            "demande_not_found",
+        )
+
+    def test_reponse_vide_ou_absente_refusee(self):
+        conseiller = self.conseiller()
+
+        for corps in (
+            {"message": ""},
+            {"message": "   "},
+            {"message": None},
+            {"autre": 1},
+        ):
+            status, data = conseiller.post(self.url, corps)
+
+            self.assertEqual(status, 400)
+            self.assertEqual(
+                data["erreur"]["code"],
+                "validation_error",
+            )
+
+        self.assertEqual(
+            self.store.obtenir(self.dem_id)["statut"],
+            STATUT_NOUVELLE,
+        )
+
+    def test_reponse_trop_longue_refusee(self):
+        status, _ = self.conseiller().post(
+            self.url,
+            {"message": "x" * (REPONSE_MAX_CARACTERES + 1)},
+        )
+
+        self.assertEqual(status, 400)
+
+    def test_une_seule_reponse(self):
+        conseiller = self.conseiller()
+
+        self.assertEqual(
+            conseiller.post(self.url, {"message": MESSAGE})[0],
+            201,
+        )
+
+        status, data = conseiller.post(
+            self.url,
+            {"message": "Une autre"},
+        )
+
+        self.assertEqual(status, 400)
+        self.assertIn(
+            "déjà reçu une réponse",
+            data["erreur"]["message"],
+        )
+        self.assertEqual(
+            self.store.obtenir(self.dem_id)["reponse"]["message"],
+            MESSAGE,
+        )
+
+    def test_le_menu_de_statut_ne_peut_pas_poser_repondue(self):
+        status, data = self.conseiller().patch(
+            f"/api/demandes/{self.dem_id}/statut",
+            {"statut": STATUT_REPONDUE, "motif": "test"},
+        )
+
+        self.assertEqual(status, 400)
+        self.assertIn(
+            "envoyant une réponse",
+            data["erreur"]["message"],
+        )
+        self.assertNotIn(
+            "reponse",
+            self.store.obtenir(self.dem_id),
+        )
+
+    def test_le_conseiller_voit_la_reponse_dans_la_file_et_le_detail(self):
+        conseiller = self.conseiller()
+
+        conseiller.post(
+            self.url,
+            {"message": MESSAGE},
+        )
+
+        _, liste = conseiller.get("/api/demandes")
+        ligne = next(
+            d for d in liste["demandes"]
+            if d["id"] == self.dem_id
+        )
+
+        self.assertEqual(ligne["statut"], STATUT_REPONDUE)
+        self.assertEqual(
+            ligne["reponse"]["par"],
+            "Conseiller DÉTOUR",
+        )
+        self.assertEqual(
+            ligne["reponse"]["delai_statut"],
+            ECHEANCE_DANS_DELAI,
+        )
+
+        _, detail = conseiller.get(
+            f"/api/demandes/{self.dem_id}"
+        )
+
+        self.assertEqual(
+            detail["demande"]["reponse"]["message"],
+            MESSAGE,
+        )
+
+    def test_le_voyageur_proprietaire_lit_la_reponse_a_sa_demande(self):
+        compte = self.users.creer(
+            "zoe@exemple.fr",
+            "Zoé",
+            "motdepasse",
+        )
+
+        self.store.demandes[self.dem_id]["demande"]["user_id"] = compte["id"]
+
+        self.conseiller().post(
+            self.url,
+            {"message": MESSAGE},
+        )
+
+        voyageur = ClientHTTP(self.base)
+
+        voyageur.post(
+            "/api/login",
+            {
+                "email": "zoe@exemple.fr",
+                "mot_de_passe": "motdepasse",
+            },
+        )
+
+        status, detail = voyageur.get(
+            f"/api/demandes/{self.dem_id}"
+        )
+
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            detail["demande"]["statut"],
+            STATUT_REPONDUE,
+        )
+        self.assertEqual(
+            detail["demande"]["reponse"]["message"],
+            MESSAGE,
+        )
+
+    def test_mode_developpement_sans_comptes(self):
+        # users=None : aucune authentification, le conseiller par défaut signe la réponse.
+        handler = make_handler(
+            self.store,
+            None,
+            None,
+            users=None,
+            propositions=PropositionStore(None),
+        )
+
+        server, base = demarrer(handler)
+
+        self.addCleanup(
+            lambda: (server.shutdown(), server.server_close())
+        )
+
+        status, data = ClientHTTP(base).post(
+            self.url,
+            {"message": MESSAGE},
+        )
+
+        self.assertEqual(status, 201)
+        self.assertEqual(
+            data["demande"]["reponse"]["par"],
+            "Conseiller DÉTOUR",
+        )
 
 
 class TestPersistanceReponse(unittest.TestCase):

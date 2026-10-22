@@ -344,6 +344,11 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                     elif path in ("/api/stats", "/api/propositions") and method == "GET":
                         if not admin:
                             raise ApiError(401, "auth_requise", "Accès conseiller requis.")
+                    elif method == "POST" and re.fullmatch(
+                            r"/api/demandes/(dem_[a-f0-9]+)/reponse", path):
+                        # #52: only an advisor answers a customer request.
+                        if not admin:
+                            raise ApiError(401, "auth_requise", "Accès conseiller requis.")    
                     elif method == "GET" and (m := re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)", path)):
                         if not (admin or (client and _proprietaire(store, m.group(1), session))):
                             raise ApiError(404, "demande_not_found", "Demande introuvable.")
@@ -536,6 +541,20 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                             "demande": dem,
                             "simulation": True,
                         })
+                if method == "POST":
+                    # #52: the advisor sends a written response to the customer request.
+                    # Author, date and time are set by the server, never by the client.
+                    match = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/reponse", path)
+                    if match:
+                        session = admin_exige(self)
+                        data = self.read_json()
+                        record = store.repondre(match.group(1), data.get("message"),
+                                                _nom_conseiller(session))
+                        if record is None:
+                            raise ApiError(404, "demande_not_found", "Demande introuvable.")
+                        if users is not None:
+                            record["client"] = users.obtenir(record.get("demande", {}).get("user_id", ""))
+                        return self.send_json(201, {"demande": record, "simulation": True})   
 
                 if method == "PATCH":
                     match = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/qualification", path)
