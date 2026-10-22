@@ -54,8 +54,7 @@ export function Login({ onSession, googleOauth }: LoginProps) {
       <header className="sticky top-0 z-40 border-b border-ink/10 bg-chalk/90 backdrop-blur">
         <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
           <Link to="/accueil" className="flex items-center gap-2">
-            <BrandLogo width={40} variant="monogram" alt="Détour Voyages" />
-            <span className="font-display text-lg font-semibold tracking-tight">DÉTOUR</span>
+            <BrandLogo variant="color" width={105} alt="DÉTOUR" />
           </Link>
           <Link
             to="/accueil"
