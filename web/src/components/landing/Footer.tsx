@@ -10,7 +10,7 @@ export function Footer() {
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr]">
           <div>
             <Link to="/accueil" className="flex items-center gap-2">
-              <BrandLogo variant="negative" width={105} alt="DÉTOUR" />
+              <BrandLogo variant="negative-transparent" width={105} alt="DÉTOUR" />
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-relaxed">{FOOTER.tagline}</p>
             <div className="mt-4 flex gap-3">

@@ -27,6 +27,7 @@ DOSSIER_LOGOS = RACINE / "brand-2026" / "logo"
 LOGOS_OFFICIELS = {
     "detour-logo.svg",
     "detour-logo-negatif.svg",
+    "detour-logo-negatif-transparent.svg",
     "detour-logo-mono-encre.svg",
     "detour-logo-mono-blanc.svg",
     "detour-monogramme.svg",
@@ -314,14 +315,18 @@ def make_handler(store):
             self.wfile.write(body)
 
         def send_brand_asset(self, filename):
-            """Logo officiel (brand-2026) servi tel quel : ni déformé, ni recoloré."""
+            """Logo officiel (brand-2026) servi tel quel : ni déformé, ni recoloré.
+
+            `detour-logo-negatif-transparent.svg` est le négatif officiel sans le
+            fond Encre du kit, pour les surfaces sombres legacy (#07101E, #06101C).
+            """
             if filename not in LOGOS_OFFICIELS:
                 raise ApiError(404, "not_found", "Logo introuvable.")
             body = (DOSSIER_LOGOS / filename).read_bytes()
             self.send_response(200)
             self.send_header("Content-Type", "image/svg+xml")
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
+            self.send_header("Cache-Control", "public, max-age=3600")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'self'; img-src 'self' data:; base-uri 'none'")
             self.end_headers()

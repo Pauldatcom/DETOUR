@@ -23,10 +23,13 @@ TEAMS = {"demo": {"key": "demo-key", "approval_key": "demo-approval"}}
 LOGOS = [
     "detour-logo.svg",
     "detour-logo-negatif.svg",
+    "detour-logo-negatif-transparent.svg",
     "detour-logo-mono-encre.svg",
     "detour-logo-mono-blanc.svg",
     "detour-monogramme.svg",
 ]
+# Fond Encre du kit, présent dans le négatif officiel et absent de sa version transparente.
+FOND_NEGATIF = '<rect x="-132" y="-1184" width="4018" height="1378" fill="#16233F"/>'
 
 
 class TestDashboardBrandAssets(unittest.TestCase):
@@ -62,6 +65,18 @@ class TestDashboardBrandAssets(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as ctx:
             urllib.request.urlopen(f"{base}/dashboard/brand/app.py")
         self.assertEqual(ctx.exception.code, 404)
+
+    def test_negatif_transparent_derive_du_fichier_officiel(self):
+        """La version transparente est le négatif officiel moins son fond Encre.
+
+        Aucune couleur, aucune forme n'est modifiée : seul le rectangle de fond
+        est retiré, pour les surfaces sombres legacy (#07101E, #06101C).
+        """
+        kit = Path(__file__).resolve().parent.parent.parent / "brand-2026" / "logo"
+        officiel = (kit / "detour-logo-negatif.svg").read_text(encoding="utf-8")
+        derive = (kit / "detour-logo-negatif-transparent.svg").read_text(encoding="utf-8")
+        self.assertIn(FOND_NEGATIF, officiel)
+        self.assertEqual(derive, officiel.replace(FOND_NEGATIF, ""))
 
 
 if __name__ == "__main__":
