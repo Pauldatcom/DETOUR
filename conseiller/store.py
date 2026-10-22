@@ -1,4 +1,4 @@
-"""Persistance JSON des demandes client de DÉTOUR."""
+"""Persistance des demandes client de DÉTOUR (SQLite)."""
 
 import json
 import re
@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from horaires import evaluer_delai_reponse, marquer_echeances
+import db
 from utils import (ACTIVITES_POSSIBLES, ACTEUR_AGENT, NIVEAUX_AVENTURE,
                    QUALIF_EN_COURS,
                    QUALIF_INCOMPLET, QUALIF_PRET_PROPOSITION, QUALIF_PRET_RELECTURE,
@@ -375,19 +376,19 @@ def valider_demande(data):
 
 class DemandStore:
     def __init__(self, path=None):
+        """Open the demandes store backed by SQLite.
+
+        `path` is the SQLite database file (created on first use). Passing
+        None keeps a pure in-memory store, used by tests and tooling.
+        """
         self.path = Path(path) if path else None
         self.lock = threading.RLock()
-        self.demandes = {}
-        if self.path and self.path.exists():
-            self.demandes = json.loads(self.path.read_text(encoding="utf-8"))
+        self.conn = db.connect(self.path) if self.path else None
+        self.demandes = db.load_demandes(self.conn) if self.conn else {}
 
     def save(self):
-        if not self.path:
-            return
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.demandes, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(self.path)
+        if self.conn:
+            db.save_demandes(self.conn, self.demandes)
 
     def creer(self, data):
         valide = valider_demande(data)
