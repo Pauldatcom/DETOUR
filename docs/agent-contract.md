@@ -373,3 +373,27 @@ Follow-up ticket: #94.
 - a clear statement that no option or reservation has been made.
 
 Prices always come from the fictional server, never from the model (#60). Quantities (for example the number of hotel nights) are not computed by the program yet: the 2026-10-21 tests showed the hotel counted for one night instead of two. This is handled in #34.
+
+## Advisor assistant (#115)
+
+`POST /api/conseiller/chat` (advisor session only) runs a second assistant
+that talks to the advisor, not to the traveler. It has its own system prompt
+(`ADVISOR_SYSTEM_PROMPT` in `conseiller/agent.py`) and its own tool:
+
+```text
+verifier_prestations(destination, date_depart, date_retour, participants,
+                     budget_max_par_personne?, type_voyage?, activites?)
+```
+
+- Read-only: it calls `GET /api/v1/recherche` and returns the verified
+  results. It never writes on a request, never places an option, never books,
+  never changes a status and never sends anything to the traveler.
+- The program validates every argument before the server call; invalid values
+  make the assistant ask the advisor instead.
+- When a request id is given, the program adds the request fields and the last
+  server reading to the context, so the assistant can say what was checked and
+  what is missing or outdated.
+- Supplier or model errors are explained in plain words; raw provider errors
+  never reach the advisor interface.
+- The traveler route `POST /api/chat` and its `chercher_voyages` tool are
+  unchanged.
