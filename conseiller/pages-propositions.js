@@ -121,6 +121,11 @@ function blocDecisionProposition(prop, demId) {
       statut.textContent = `Statut : ${libelle}`;
       confirmation.textContent = `${decision.label} — nouveau statut : ${libelle}.`;
       champs.hidden = true;
+      // #113 : la confirmation explicite du conseiller fait sauter le O.
+      // Un seul passage de 1,15 s ; l'agent ne déclenche jamais ce geste.
+      if (decision.action === "accepter" && typeof jouerSautLogo === "function") {
+        jouerSautLogo();
+      }
     } catch (err) {
       erreur.textContent = err.message;
       for (const autre of actions.querySelectorAll("button")) {
