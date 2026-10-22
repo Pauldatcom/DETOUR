@@ -4,12 +4,15 @@ from httpd.errors import ApiError
 from httpd.sessions import nom_conseiller
 
 from lecture import enrichir_propositions, proposition_avec_changements
+from propositions import visible_par_voyageur
 from utils import DECISION_ACCEPTER, DECISION_CORRECTION, DECISION_REFUSER
 
 
 def mes_propositions(req):
     session = req.client_exige()
-    props = req.ctx.propositions.lister_par_user(session.get("user_id", ""), req.ctx.store)
+    # #112: a traveler only sees what an advisor sent, never a draft.
+    props = [p for p in req.ctx.propositions.lister_par_user(session.get("user_id", ""), req.ctx.store)
+             if visible_par_voyageur(p)]
     props = enrichir_propositions(props, req.ctx.store)
     props.sort(key=lambda p: p.get("cree_le", ""), reverse=True)
     req.send_json(200, {"propositions": props, "simulation": True})
@@ -24,7 +27,9 @@ def lister(req):
 
 def obtenir(req, id):
     record = req.ctx.propositions.obtenir(id)
-    if not record:
+    session = req.session
+    est_conseiller = isinstance(session, dict) and session.get("role") == "conseiller"
+    if not record or (not est_conseiller and not visible_par_voyageur(record)):
         raise ApiError(404, "proposition_not_found", "Proposition introuvable.")
     enrichie = enrichir_propositions([record], req.ctx.store)[0]
     req.send_json(200, {"proposition": enrichie, "simulation": True})

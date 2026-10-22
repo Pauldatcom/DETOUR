@@ -10,7 +10,8 @@ import time
 import urllib.parse
 import urllib.request
 
-from utils import GOOGLE_OAUTH_URL, GOOGLE_TOKEN_URL, GOOGLE_USERINFO_URL
+from utils import (GOOGLE_OAUTH_URL, GOOGLE_TOKEN_URL, GOOGLE_USERINFO_URL,
+                   valider_prenom_conseiller)
 
 from httpd.errors import ApiError
 
@@ -83,8 +84,13 @@ def login_conseiller(req):
     if not isinstance(cle, str) or not cle or \
             not secrets.compare_digest(cle, req.ctx.team_key or ""):
         raise ApiError(401, "cle_invalide", "Clé d'accès incorrecte.")
-    token = req.ctx.sessions.creer("conseiller", nom="Conseiller DÉTOUR")
-    req.send_json(200, {"session": {"role": "conseiller", "nom": "Conseiller DÉTOUR"}},
+    # #112: the first name signs the advisor's proposals and decisions.
+    try:
+        nom = valider_prenom_conseiller(data.get("prenom"))
+    except ValueError as err:
+        raise ApiError(400, "prenom_invalide", str(err)) from err
+    token = req.ctx.sessions.creer("conseiller", nom=nom)
+    req.send_json(200, {"session": {"role": "conseiller", "nom": nom}},
                   extra_headers=req.session_cookie(token))
 
 

@@ -7,6 +7,7 @@ restent dans l'environnement ou `.env`, jamais ici.
 """
 
 import re
+import unicodedata
 
 # Fournisseur de prestations (surchargeable par TRAVEL_API_URL).
 DEFAULT_URL = "http://127.0.0.1:8765"
@@ -170,3 +171,27 @@ ACTEUR_AGENT = "agent"
 GOOGLE_OAUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+
+# Advisor first name (#112): it signs proposals and decisions for travelers.
+PRENOM_CONSEILLER_DEFAUT = "Conseiller DÉTOUR"
+PRENOM_MAX = 40
+_PRENOM_RE = re.compile(r"[^\W\d_]+(?:[ '’-][^\W\d_]+)*")
+
+
+def valider_prenom_conseiller(valeur):
+    """Return a clean first name, the default when absent, or raise ValueError.
+
+    NFC normalization first, so an accent typed as a separate combining
+    character ("e" + U+0301) is accepted like "é".
+    """
+    if valeur is None:
+        return PRENOM_CONSEILLER_DEFAUT
+    if not isinstance(valeur, str):
+        raise ValueError("Le prénom doit être un texte.")
+    prenom = " ".join(unicodedata.normalize("NFC", valeur).split())
+    if not prenom:
+        return PRENOM_CONSEILLER_DEFAUT
+    if len(prenom) > PRENOM_MAX or not _PRENOM_RE.fullmatch(prenom):
+        raise ValueError(
+            "Le prénom ne doit contenir que des lettres, espaces, tirets ou apostrophes.")
+    return prenom

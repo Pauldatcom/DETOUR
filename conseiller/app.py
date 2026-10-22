@@ -36,7 +36,7 @@ from traces import finaliser_et_persister
 from users import UserStore, UserError
 from utils import (DECISION_ACCEPTER, DECISION_CORRECTION, DECISION_REFUSER,
                    GOOGLE_OAUTH_URL, GOOGLE_TOKEN_URL, GOOGLE_USERINFO_URL,
-                   PROP_STATUTS, SESSION_COOKIE, SESSION_MAX)
+                   PROP_STATUTS, SESSION_COOKIE, SESSION_MAX, valider_prenom_conseiller)
 
 ROOT = Path(__file__).resolve().parent
 WEB_ROOT = ROOT.parent / "web" / "dist"
@@ -944,21 +944,12 @@ def _proprietaire(store, dem_id, session):
     return bool(record) and record.get("demande", {}).get("user_id") == session.get("user_id")
 
 
-PRENOM_CONSEILLER_DEFAUT = "Conseiller DÉTOUR"
-PRENOM_MAX = 40
-
-
 def _prenom_conseiller(valeur):
-    """Advisor first name from the login form, or the default when absent."""
-    if valeur is None:
-        return PRENOM_CONSEILLER_DEFAUT
-    prenom = " ".join(valeur.split()) if isinstance(valeur, str) else ""
-    if not prenom:
-        return PRENOM_CONSEILLER_DEFAUT
-    if len(prenom) > PRENOM_MAX or not re.fullmatch(r"[^\W\d_]+(?:[ '’-][^\W\d_]+)*", prenom):
-        raise ApiError(400, "prenom_invalide",
-                       "Le prénom ne doit contenir que des lettres, espaces, tirets ou apostrophes.")
-    return prenom
+    """Advisor first name from the login form, as an API error when invalid."""
+    try:
+        return valider_prenom_conseiller(valeur)
+    except ValueError as err:
+        raise ApiError(400, "prenom_invalide", str(err)) from err
 
 
 def _proprietaire_proposition(prop_store, demand_store, prop_id, session):
