@@ -15,7 +15,7 @@ export function PublicNav({ session, onLogout }: PublicNavProps) {
   const [profileOpen, setProfileOpen] = useState(false);
   const connecte = session?.connecte ?? false;
   const conseiller = session?.role === "conseiller";
-  const destinationCompte = conseiller ? "/conseiller" : "/mon-compte";
+  const destinationCompte = conseiller ? "/espace-conseiller" : "/mon-compte";
 
   async function deconnecter() {
     setOpen(false);

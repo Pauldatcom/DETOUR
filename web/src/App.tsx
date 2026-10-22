@@ -9,16 +9,18 @@ import { CompteLayout } from "./pages/CompteLayout";
 import { MesDemandes } from "./pages/MesDemandes";
 import { MesPropositions } from "./pages/MesPropositions";
 import { PropositionDetail } from "./pages/PropositionDetail";
+import { EspaceConseiller } from "./pages/EspaceConseiller";
 import { DemandeDetail } from "./pages/DemandeDetail";
 import { ParametresCompte } from "./pages/ParametresCompte";
 import { api } from "./lib/api";
 import type { Config } from "./types";
 
 /**
- * Routage DÉTOUR — pas de dashboard.
+ * Routage DÉTOUR.
  *
  * Public : / → /accueil, /inspirations, /conseillers, /login
  * Voyageur connecté : /mon-compte/*
+ * Conseiller connecté : /espace-conseiller
  */
 export default function App() {
   const { session, loading, refresh } = useSession();
@@ -49,6 +51,7 @@ export default function App() {
   }
 
   const connecte = session?.connecte ?? false;
+  const estConseiller = connecte && session?.role === "conseiller";
   const clientConnecte = connecte && session?.role === "client";
 
   return (
@@ -80,7 +83,12 @@ export default function App() {
         path="/login"
         element={
           connecte ? (
-            <Navigate to={clientConnecte ? "/mon-compte" : "/accueil"} replace />
+            <Navigate
+              to={
+                estConseiller ? "/espace-conseiller" : clientConnecte ? "/mon-compte" : "/accueil"
+              }
+              replace
+            />
           ) : (
             <Login onSession={refresh} googleOauth={config?.google_oauth ?? false} />
           )
@@ -110,6 +118,18 @@ export default function App() {
         />
         <Route path="/propositions/:id" element={<PropositionDetail />} />
       </Route>
+
+      {/* ── Conseiller authentifié ─────────────────────────────── */}
+      <Route
+        path="/espace-conseiller"
+        element={
+          estConseiller ? (
+            <EspaceConseiller nom={session?.nom} session={session} onLogout={deconnecter} />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
 
       {/* ── 404 → accueil ──────────────────────────────────────── */}
       <Route path="*" element={<Navigate to="/accueil" replace />} />

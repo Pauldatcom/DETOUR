@@ -78,6 +78,16 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ statut, motif }),
     }),
+  changerQualification: (id: string, qualification: string, motif: string) =>
+    request<{ demande: Demande }>(`/api/demandes/${id}/qualification`, {
+      method: "PATCH",
+      body: JSON.stringify({ qualification, motif }),
+    }),
+  corrigerDemande: (id: string, champs: Record<string, unknown>, motif: string) =>
+    request<{ demande: Demande }>(`/api/demandes/${id}/correction`, {
+      method: "PATCH",
+      body: JSON.stringify({ champs, motif }),
+    }),
 
   stats: () => request<Stats>("/api/stats"),
   propositions: () => request<{ propositions: Proposition[] }>("/api/propositions"),
@@ -103,6 +113,35 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ statut, motif }),
     }),
+  deciderProposition: (
+    id: string,
+    action: "accepter" | "correction" | "refuser",
+    motif: string,
+    instructions?: string,
+  ) =>
+    request<{ proposition: Proposition }>(`/api/propositions/${id}/${action}`, {
+      method: "POST",
+      body: JSON.stringify({ motif, ...(instructions ? { instructions } : {}) }),
+    }),
+  decisionsPrestation: (
+    id: string,
+    prestationId: string,
+    choix: "keep" | "replace" | "drop",
+    motif: string,
+    remplacementId?: string,
+  ) =>
+    request<{ proposition: Proposition; proposition_v2?: Proposition }>(
+      `/api/propositions/${id}/decisions`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          prestation_id: prestationId,
+          choix,
+          motif,
+          ...(remplacementId ? { remplacement_id: remplacementId } : {}),
+        }),
+      },
+    ),
 
   chat: (messages: ChatMessage[], demandeId?: string) =>
     request<ChatResult>("/api/chat", {

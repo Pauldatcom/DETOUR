@@ -26,13 +26,17 @@ export function Login({ onSession, googleOauth }: LoginProps) {
     try {
       if (tab === "login") {
         await api.login(email, password);
+        onSession();
+        navigate("/mes-propositions");
       } else if (tab === "register") {
         await api.register(email, nom, password);
+        onSession();
+        navigate("/mes-propositions");
       } else {
         await api.loginConseiller(cle);
+        onSession();
+        navigate("/espace-conseiller");
       }
-      onSession();
-      navigate("/mes-propositions");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur");
     } finally {
