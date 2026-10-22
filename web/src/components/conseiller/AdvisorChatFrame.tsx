@@ -78,10 +78,8 @@ export function AdvisorChatFrame({
             <div className="flex min-w-0 items-center gap-3">
               <BrandLogo width={40} variant="monogram" alt="" />
               <div className="min-w-0">
-                <p className="truncate font-display text-sm font-semibold tracking-tight">
-                  {title}
-                </p>
-                {subtitle && <p className="truncate text-[10px] text-sky">{subtitle}</p>}
+                <p className="font-display text-sm font-semibold tracking-tight">{title}</p>
+                {subtitle && <p className="meta-nowrap text-[10px] text-sky">{subtitle}</p>}
               </div>
             </div>
             <button
@@ -106,7 +104,7 @@ export function AdvisorChatFrame({
           <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-card px-4 py-3">
             {children}
             {error && (
-              <p role="alert" className="text-xs text-brick">
+              <p id="chat-error" role="alert" className="text-xs text-brick">
                 {error}
               </p>
             )}
@@ -116,12 +114,18 @@ export function AdvisorChatFrame({
             onSubmit={onSubmit}
             className="flex items-center gap-2 border-t border-ink/10 bg-chalk px-3 py-2.5"
           >
+            <label htmlFor="chat-input" className="sr-only">
+              Message
+            </label>
             <input
+              id="chat-input"
               value={input}
               onChange={(e) => onInputChange(e.target.value)}
               placeholder={inputPlaceholder}
               disabled={loading}
-              className="flex-1 rounded-full bg-white px-4 py-2 text-sm text-ink outline-none placeholder:text-ballast focus-visible:outline focus-visible:outline-3 focus-visible:outline-offset-1 focus-visible:outline-yellow"
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? "chat-error" : undefined}
+              className="flex-1 rounded-full bg-white px-4 py-2 text-sm text-ink outline-none placeholder:text-ballast"
             />
             <button
               type="submit"

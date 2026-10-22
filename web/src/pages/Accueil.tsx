@@ -22,7 +22,7 @@ export function Accueil({ isLoggedIn, session, onLogout }: AccueilProps) {
   return (
     <div className="min-h-screen bg-white text-[#0b2447]">
       <PublicNav session={session} onLogout={onLogout} />
-      <main>
+      <main id="contenu-principal">
         <Hero onDecrir={() => setFormOuvert(true)} />
         <Inspirations onDecrir={() => setFormOuvert(true)} />
         <HowItWorks />
