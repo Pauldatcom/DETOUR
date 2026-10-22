@@ -1,0 +1,273 @@
+#!/usr/bin/env python3
+"""Tests for the advisor chat route and its assistant (#115)."""
+
+import json
+import secrets
+import shutil
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+CONSEILLER_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(CONSEILLER_ROOT))
+
+from agent import (ADVISOR_SYSTEM_PROMPT, ADVISOR_TOOL_DEFINITION, ADVISOR_TOOL_NAME,
+                   ASSISTANT_INDISPONIBLE, Agent, OpenRouterError, criteres_conseiller)
+from app import make_handler
+from fournisseur import SupplierError
+from propositions import PropositionStore
+from store import DemandStore
+from users import UserStore
+
+from test_auth_users import VALIDE, ClientHTTP, FakeSupplier, demarrer
+
+SEARCH = {
+    "source_label": "Serveur fictif DÉTOUR",
+    "consulte_le": "2026-10-22T07:40:00+00:00",
+    "resultats": [{
+        "id": "hotel-lyon-01", "nom": "Hôtel des Lumières", "type": "hebergement",
+        "prix_unitaire_eur": 88, "prix_total_eur": 176, "disponible": True,
+        "places_restantes": 8,
+    }],
+}
+
+ARGS = {"destination": "Lyon", "date_depart": "2026-12-12",
+        "date_retour": "2026-12-13", "participants": 2}
+
+
+class RecordingSupplier:
+    def __init__(self, error=None):
+        self.error = error
+        self.calls = []
+
+    def rechercher(self, criteres):
+        self.calls.append(criteres)
+        if self.error:
+            raise self.error
+        return json.loads(json.dumps(SEARCH))
+
+
+def _tool_call(arguments, name=ADVISOR_TOOL_NAME):
+    return {"role": "assistant", "content": None, "tool_calls": [{
+        "id": "call_1", "type": "function",
+        "function": {"name": name, "arguments": json.dumps(arguments)}}]}
+
+
+def _scripted(agent, messages):
+    """Replace the model with scripted messages; record what it was sent."""
+    sent = []
+
+    def fake(conversation, with_tools=True, tools=None):
+        sent.append({"conversation": list(conversation), "with_tools": with_tools,
+                     "tools": tools})
+        return messages.pop(0)
+
+    agent._call_model = fake
+    return sent
+
+
+class TestAdvisorPrompt(unittest.TestCase):
+
+    def test_tone_rules(self):
+        for rule in ("Précis d'abord, chaleureux ensuite",
+                     "« nous » pour l'agence, « je » pour le conseiller",
+                     "pas de « ! » en série",
+                     "Aucune plaisanterie sur un prix, une indisponibilité ou une erreur"):
+            self.assertIn(rule, ADVISOR_SYSTEM_PROMPT)
+
+    def test_explains_what_was_checked_and_what_is_missing(self):
+        self.assertIn("CE QUI A ÉTÉ VÉRIFIÉ", ADVISOR_SYSTEM_PROMPT)
+        self.assertIn("l'heure de la vérification", ADVISOR_SYSTEM_PROMPT)
+        self.assertIn("demande-les au conseiller", ADVISOR_SYSTEM_PROMPT)
+        self.assertIn("plus de 24 h", ADVISOR_SYSTEM_PROMPT)
+
+    def test_never_decides_and_never_shows_raw_errors(self):
+        self.assertIn("confirmer une réservation, signer une proposition, changer un statut",
+                      ADVISOR_SYSTEM_PROMPT)
+        self.assertIn("Jamais de « Erreur : … » brut", ADVISOR_SYSTEM_PROMPT)
+
+    def test_tool_is_read_only(self):
+        self.assertIn("Lecture seule", ADVISOR_TOOL_DEFINITION["function"]["description"])
+
+
+class TestAdvisorCriteria(unittest.TestCase):
+
+    def test_valid_minimum(self):
+        criteres = criteres_conseiller(ARGS)
+        self.assertEqual(criteres["participants"], 2)
+        self.assertIsNone(criteres["budget_max"])
+
+    def test_invalid_values(self):
+        for change in ({"destination": ""}, {"date_depart": "12/12/2026"},
+                       {"date_retour": "2026-12-01"}, {"participants": 0},
+                       {"participants": "2"}, {"budget_max_par_personne": -5},
+                       {"type_voyage": "croisiere"}, {"activites": "jeu"}):
+            with self.assertRaises(ValueError, msg=change):
+                criteres_conseiller({**ARGS, **change})
+
+
+class TestChatConseiller(unittest.TestCase):
+
+    def setUp(self):
+        self.store = DemandStore(None)
+        self.supplier = RecordingSupplier()
+        self.agent = Agent(self.supplier, self.store, api_key="cle", model="m")
+
+    def test_search_is_verified_and_returned(self):
+        sent = _scripted(self.agent, [_tool_call(ARGS),
+                                      {"role": "assistant", "content": "Voici ce que j'ai vérifié."}])
+        result = self.agent.chat_conseiller([{"role": "user", "content": "Lyon le 12/12 pour 2"}])
+        self.assertEqual(result["reply"], "Voici ce que j'ai vérifié.")
+        self.assertEqual(result["recherche"]["resultats"][0]["id"], "hotel-lyon-01")
+        self.assertEqual(self.supplier.calls[0]["destination"], "Lyon")
+        self.assertEqual(result["trace"]["tool_calls"][0]["statut"], "ok")
+        self.assertEqual(sent[0]["tools"], [ADVISOR_TOOL_DEFINITION])
+        self.assertEqual(sent[0]["conversation"][0]["content"], ADVISOR_SYSTEM_PROMPT)
+
+    def test_never_writes_a_request(self):
+        dem = self.store.creer(dict(VALIDE))
+        before = json.dumps(self.store.obtenir(dem["id"]), sort_keys=True)
+        _scripted(self.agent, [_tool_call(ARGS), {"role": "assistant", "content": "ok"}])
+        self.agent.chat_conseiller([{"role": "user", "content": "Vérifie"}], demande_id=dem["id"])
+        self.assertEqual(json.dumps(self.store.obtenir(dem["id"]), sort_keys=True), before)
+        self.assertEqual(len(self.store.lister()), 1)
+
+    def test_request_context_is_given_to_the_model(self):
+        dem = self.store.creer(dict(VALIDE))
+        sent = _scripted(self.agent, [{"role": "assistant", "content": "ok"}])
+        self.agent.chat_conseiller([{"role": "user", "content": "Résume"}], demande_id=dem["id"])
+        contexte = sent[0]["conversation"][1]["content"]
+        self.assertIn(f"DOSSIER EN COURS (id={dem['id']})", contexte)
+        self.assertIn("Aucune lecture du serveur", contexte)
+
+    def test_traveler_tool_is_refused(self):
+        _scripted(self.agent, [_tool_call(ARGS, name="chercher_voyages"),
+                               {"role": "assistant", "content": "ok"}])
+        result = self.agent.chat_conseiller([{"role": "user", "content": "x"}])
+        self.assertEqual(result["trace"]["tool_calls"][0]["statut"], "refuse")
+        self.assertEqual(self.supplier.calls, [])
+
+    def test_invalid_arguments_ask_the_advisor(self):
+        sent = _scripted(self.agent, [_tool_call({**ARGS, "participants": 0}),
+                                      {"role": "assistant", "content": "Combien de voyageurs ?"}])
+        self.agent.chat_conseiller([{"role": "user", "content": "x"}])
+        self.assertEqual(self.supplier.calls, [])
+        payload = json.loads(sent[1]["conversation"][-1]["content"])
+        self.assertIn("Demande au conseiller", payload["consigne"])
+
+    def test_supplier_error_is_explained_not_raw(self):
+        self.supplier.error = SupplierError("HTTP 502 upstream", status=502)
+        sent = _scripted(self.agent, [_tool_call(ARGS), {"role": "assistant", "content": "ok"}])
+        result = self.agent.chat_conseiller([{"role": "user", "content": "x"}])
+        payload = json.loads(sent[1]["conversation"][-1]["content"])
+        self.assertEqual(payload["erreur"], "La vérification n'a pas abouti.")
+        self.assertNotIn("HTTP 502", json.dumps(payload))
+        self.assertIsNone(result["recherche"])
+
+    def test_requires_an_api_key(self):
+        agent = Agent(self.supplier, self.store, api_key="", model="m")
+        with self.assertRaises(OpenRouterError):
+            agent.chat_conseiller([{"role": "user", "content": "x"}])
+
+
+class FakeAdvisorAgent:
+    def __init__(self, error=None):
+        self.error = error
+        self.calls = []
+
+    def chat_conseiller(self, messages, demande_id=None):
+        self.calls.append((messages, demande_id))
+        if self.error:
+            raise self.error
+        return {"reply": "Voici ce que j'ai vérifié.", "recherche": SEARCH,
+                "demande": None, "trace": {"model": "m", "tool_calls": []}}
+
+
+class TestAdvisorChatRoute(unittest.TestCase):
+
+    def _serve(self, agent):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        self.team_key = "cle-" + secrets.token_urlsafe(12)
+        self.store = DemandStore(Path(tmp) / "demandes.json")
+        handler = make_handler(self.store, FakeSupplier(), agent,
+                               users=UserStore(Path(tmp) / "users.json"),
+                               team_key=self.team_key,
+                               propositions=PropositionStore(Path(tmp) / "propositions.json"))
+        server, base = demarrer(handler)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return base
+
+    def _advisor(self, base):
+        client = ClientHTTP(base)
+        client.post("/api/login-conseiller", {"cle": self.team_key, "prenom": "Camille"})
+        return client
+
+    def test_requires_an_advisor_session(self):
+        base = self._serve(FakeAdvisorAgent())
+        traveler = ClientHTTP(base)
+        traveler.post("/api/register", {"email": "v@test.fr", "nom": "V",
+                                        "mot_de_passe": "motdepasse"})
+        status, _, _ = traveler.post("/api/conseiller/chat",
+                                     {"messages": [{"role": "user", "content": "x"}]})
+        self.assertEqual(status, 401)
+        status, _, _ = ClientHTTP(base).post("/api/conseiller/chat",
+                                             {"messages": [{"role": "user", "content": "x"}]})
+        self.assertEqual(status, 401)
+
+    def test_advisor_gets_reply_and_verified_search(self):
+        agent = FakeAdvisorAgent()
+        base = self._serve(agent)
+        dem_id = self.store.creer(dict(VALIDE))["id"]
+        status, data, _ = self._advisor(base).post("/api/conseiller/chat", {
+            "messages": [{"role": "user", "content": "Vérifie Lyon"}], "demande_id": dem_id})
+        self.assertEqual(status, 200)
+        self.assertEqual(data["reply"], "Voici ce que j'ai vérifié.")
+        self.assertEqual(data["recherche"]["resultats"][0]["id"], "hotel-lyon-01")
+        self.assertEqual(agent.calls[0][1], dem_id)
+
+    def test_unknown_request_is_404(self):
+        base = self._serve(FakeAdvisorAgent())
+        status, _, _ = self._advisor(base).post("/api/conseiller/chat", {
+            "messages": [{"role": "user", "content": "x"}], "demande_id": "dem_000000"})
+        self.assertEqual(status, 404)
+
+    def test_invalid_messages_are_400(self):
+        base = self._serve(FakeAdvisorAgent())
+        status, _, _ = self._advisor(base).post("/api/conseiller/chat", {"messages": []})
+        self.assertEqual(status, 400)
+
+    def test_provider_error_is_never_raw(self):
+        base = self._serve(FakeAdvisorAgent(OpenRouterError("OpenRouter : HTTP 500 raw", 502)))
+        status, data, _ = self._advisor(base).post("/api/conseiller/chat",
+                                                   {"messages": [{"role": "user", "content": "x"}]})
+        self.assertEqual(status, 503)
+        self.assertEqual(data["erreur"]["message"], ASSISTANT_INDISPONIBLE)
+        self.assertNotIn("HTTP 500", json.dumps(data))
+
+    def test_agent_not_configured_is_503(self):
+        base = self._serve(None)
+        status, data, _ = self._advisor(base).post("/api/conseiller/chat",
+                                                   {"messages": [{"role": "user", "content": "x"}]})
+        self.assertEqual(status, 503)
+        self.assertEqual(data["erreur"]["code"], "agent_not_configured")
+
+    def test_traveler_chat_route_is_untouched(self):
+        base = self._serve(FakeAdvisorAgent())
+        status, _, _ = self._advisor(base).post("/api/chat",
+                                                {"messages": [{"role": "user", "content": "x"}]})
+        self.assertEqual(status, 401)
+
+
+class TestRouterRegistration(unittest.TestCase):
+
+    def test_route_is_registered(self):
+        from routes import creer_router
+        func, _ = creer_router().resoudre("POST", "/api/conseiller/chat")
+        self.assertEqual(func.__name__, "conseiller_chat")
+
+
+if __name__ == "__main__":
+    unittest.main()

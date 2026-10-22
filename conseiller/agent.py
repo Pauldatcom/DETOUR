@@ -6,6 +6,7 @@ import os
 import ssl
 import urllib.error
 import urllib.request
+from datetime import date
 from pathlib import Path
 
 from fournisseur import SupplierError
@@ -102,6 +103,159 @@ def _ssl_context():
             except (OSError, ssl.SSLError):
                 pass
     return ctx
+
+
+# ---------------------------------------------------------------------------
+# Advisor chat (#115): the assistant helps a human advisor, it never decides.
+# ---------------------------------------------------------------------------
+
+ADVISOR_TOOL_NAME = "verifier_prestations"
+
+ADVISOR_SYSTEM_PROMPT = """Tu es l'assistant des conseillers DÉTOUR. Tu parles à un conseiller humain, pas au voyageur. Tu l'aides à vérifier des prestations et à préparer sa réponse ; c'est lui qui décide, signe et envoie.
+
+CE QUE TU FAIS
+- Chercher et vérifier des prestations du catalogue fictif (Nantes, Lyon, Lille) avec l'outil verifier_prestations.
+- Comparer, résumer, suggérer, et rédiger un brouillon de message quand le conseiller le demande.
+
+CE QUE TU NE FAIS JAMAIS
+- Réserver, poser une option, confirmer une réservation, signer une proposition, changer un statut ou envoyer quoi que ce soit au voyageur.
+- Présenter un prix non vérifié comme sûr, ou une prestation indisponible comme disponible.
+- Cacher une information manquante ou ancienne.
+
+TON
+- Précis d'abord, chaleureux ensuite, légèrement malicieux seulement en fin de message.
+- « nous » pour l'agence, « je » pour le conseiller dans les brouillons destinés au voyageur.
+- Jamais pressé, jamais criard : pas de « ! » en série.
+- Aucune plaisanterie sur un prix, une indisponibilité ou une erreur.
+
+CE QUI A ÉTÉ VÉRIFIÉ
+- Pour chaque prestation : prix par personne, total du groupe, disponibilité à la date de départ, et l'heure de la vérification (consulte_le).
+- Dis clairement ce qui n'est pas vérifiable au catalogue : horaires, niveau d'aventure, besoin de guide, allergies.
+- Si la dernière lecture du dossier date de plus de 24 h, dis qu'elle est ancienne et propose de revérifier.
+
+INFORMATIONS MANQUANTES
+- S'il manque la destination, les dates, le nombre de voyageurs ou le budget pour vérifier, demande-les au conseiller avant d'appeler l'outil.
+- N'invente jamais une valeur manquante et ne présente pas une hypothèse comme un fait.
+
+ERREURS
+- Si l'outil renvoie une erreur, explique simplement ce qui n'a pas pu être vérifié et ce que le conseiller peut faire. Jamais de « Erreur : … » brut.
+
+STYLE
+- Réponses courtes, en français, en listes quand tu compares des prestations."""
+
+ADVISOR_TOOL_DEFINITION = {
+    "type": "function",
+    "function": {
+        "name": ADVISOR_TOOL_NAME,
+        "description": (
+            "Vérifie auprès du serveur fictif DÉTOUR les prix et disponibilités des "
+            "prestations (transport, hébergement, activité) pour une destination et des "
+            "dates. Lecture seule : ne modifie aucune demande et ne réserve rien."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "destination": {"type": "string", "enum": ["Nantes", "Lyon", "Lille"]},
+                "date_depart": {"type": "string", "description": "Format AAAA-MM-JJ."},
+                "date_retour": {"type": "string", "description": "Format AAAA-MM-JJ."},
+                "participants": {"type": "integer", "description": "De 1 à 20."},
+                "budget_max_par_personne": {"type": "integer",
+                                            "description": "Euros par personne (facultatif)."},
+                "type_voyage": {"type": "string",
+                                "enum": ["trek-randonnee", "lune-de-miel",
+                                         "voyage-familial", "autres"]},
+                "activites": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["destination", "date_depart", "date_retour", "participants"],
+        },
+    },
+}
+
+TYPES_VOYAGE = ("trek-randonnee", "lune-de-miel", "voyage-familial", "autres")
+
+
+def criteres_conseiller(args):
+    """Validate the advisor search arguments; raise ValueError in French."""
+    if not isinstance(args, dict):
+        raise ValueError("Arguments invalides : un objet JSON était attendu.")
+    destination = args.get("destination")
+    if not isinstance(destination, str) or not destination.strip():
+        raise ValueError("La destination est obligatoire.")
+    depart, retour = args.get("date_depart"), args.get("date_retour")
+    try:
+        jour_depart = date.fromisoformat(depart)
+        jour_retour = date.fromisoformat(retour)
+    except (TypeError, ValueError):
+        raise ValueError("Les dates doivent suivre le format AAAA-MM-JJ.") from None
+    if jour_retour < jour_depart:
+        raise ValueError("La date de retour doit suivre la date de départ.")
+    participants = args.get("participants")
+    if type(participants) is not int or not 1 <= participants <= 20:
+        raise ValueError("Le nombre de voyageurs doit être un entier de 1 à 20.")
+    budget = args.get("budget_max_par_personne")
+    if budget is not None and (type(budget) is not int or budget <= 0):
+        raise ValueError("Le budget doit être un entier positif, en euros par personne.")
+    type_voyage = args.get("type_voyage")
+    if type_voyage is not None and type_voyage not in TYPES_VOYAGE:
+        raise ValueError("Type de voyage inconnu.")
+    activites = args.get("activites") or []
+    if not isinstance(activites, list) or not all(isinstance(a, str) for a in activites):
+        raise ValueError("Les activités doivent être une liste de textes.")
+    return {
+        "destination": destination.strip(),
+        "date_depart": depart,
+        "date_retour": retour,
+        "participants": participants,
+        "budget_max": budget,
+        "type_voyage": type_voyage,
+        "activites": [a.strip() for a in activites if a.strip()],
+    }
+
+
+ASSISTANT_INDISPONIBLE = (
+    "L'assistant ne répond pas pour le moment. Le dossier reste consultable ; "
+    "réessayez dans un instant.")
+
+
+def verifier_messages(messages):
+    """Same message rules as the traveler chat; raise ValueError in French."""
+    if not isinstance(messages, list) or not 1 <= len(messages) <= 60:
+        raise ValueError("messages doit être une liste de 1 à 60 messages.")
+    for message in messages:
+        if (not isinstance(message, dict)
+                or message.get("role") not in ("user", "assistant")
+                or not isinstance(message.get("content"), str)
+                or not message["content"].strip()):
+            raise ValueError("Chaque message doit avoir un role (user ou assistant) "
+                             "et un content texte non vide.")
+
+
+def _contexte_dossier(record):
+    """System note describing the request the advisor works on, if any."""
+    if not isinstance(record, dict):
+        return None
+    d = record.get("demande") or {}
+    lignes = [
+        f"DOSSIER EN COURS (id={record.get('id', '')}).",
+        f"Destination : {d.get('destination') or 'non renseignée'} ; "
+        f"dates : {d.get('date_depart') or '?'} → {d.get('date_retour') or '?'} ; "
+        f"voyageurs : {d.get('nombre_voyageurs') or '?'} ; "
+        f"budget max par personne : {d.get('budget_max_par_personne') or '?'} € ; "
+        f"type : {d.get('type_voyage') or '?'}.",
+        f"Souhaits : {d.get('souhaits') or 'aucun'} ; contraintes : {d.get('contraintes') or 'aucune'}.",
+    ]
+    recherches = record.get("recherches") or []
+    if recherches:
+        derniere = recherches[-1]
+        lignes.append(f"Dernière lecture du serveur : {derniere.get('consulte_le', '?')}.")
+        for r in derniere.get("resultats") or []:
+            lignes.append(
+                f"- {r.get('nom')} ({r.get('type')}) : {r.get('prix_unitaire_eur')} € par personne, "
+                f"{'disponible' if r.get('disponible') else 'indisponible'}, "
+                f"{r.get('places_restantes', '?')} places.")
+    else:
+        lignes.append("Aucune lecture du serveur pour ce dossier.")
+    return "\n".join(lignes)
 
 
 class OpenRouterError(Exception):
@@ -323,6 +477,93 @@ class Agent:
         message = self._call_model(conversation, with_tools=False)
         return _retour(message.get("content") or "")
 
+    def chat_conseiller(self, messages, demande_id=None):
+        """Advisor chat turn (#115): reply, verified search and trace.
+
+        The only tool is a read-only search: the advisor chat never writes on a
+        request, never books and never changes a status."""
+        if not self._api_key:
+            raise OpenRouterError("Clé OpenRouter absente : définir OPENROUTER_API_KEY.", 503)
+        trace = {"model": self.model, "tool_calls": [], "simulation": True,
+                 "acteur": "assistant_conseiller"}
+        conversation: list = [{"role": "system", "content": ADVISOR_SYSTEM_PROMPT}]
+        demande = self.store.obtenir(demande_id) if demande_id else None
+        contexte = _contexte_dossier(demande)
+        if contexte:
+            conversation.append({"role": "system", "content": contexte})
+        conversation += [{"role": m["role"], "content": m["content"]}
+                         for m in messages[-MAX_MESSAGES:]]
+        recherche = None
+
+        def _retour(reply):
+            trace["request_id"] = (demande or {}).get("id")
+            trace["reponse_finale"] = reply or ""
+            return {"reply": reply or "", "demande": demande,
+                    "recherche": recherche, "trace": trace}
+
+        for _ in range(MAX_TOOL_ITERATIONS):
+            message = self._call_model(conversation, tools=[ADVISOR_TOOL_DEFINITION])
+            tool_calls = message.get("tool_calls") or []
+            if not tool_calls:
+                return _retour(message.get("content") or "")
+            conversation.append({"role": "assistant", "content": message.get("content") or "",
+                                 "tool_calls": tool_calls})
+            for call in tool_calls:
+                outcome = self._execute_advisor_tool(call, trace)
+                recherche = outcome.get("recherche") or recherche
+                conversation.append({
+                    "role": "tool",
+                    "tool_call_id": call.get("id") or "call_inconnu",
+                    "content": json.dumps(outcome["payload"], ensure_ascii=False),
+                })
+
+        message = self._call_model(conversation, with_tools=False)
+        return _retour(message.get("content") or "")
+
+    def _execute_advisor_tool(self, call, trace):
+        """Run the read-only advisor search after validating its arguments."""
+        function = call.get("function") or {}
+        name = function.get("name")
+        entry = {"outil": name, "statut": "refuse"}
+        if name != ADVISOR_TOOL_NAME:
+            entry["erreur"] = f"Outil inconnu : {name}. Seul {ADVISOR_TOOL_NAME} est autorisé."
+            trace["tool_calls"].append(entry)
+            return {"payload": {"erreur": entry["erreur"]}}
+        try:
+            criteres = criteres_conseiller(json.loads(function.get("arguments") or "{}"))
+        except json.JSONDecodeError:
+            criteres, erreur = None, "Arguments invalides : un objet JSON était attendu."
+        except ValueError as err:
+            criteres, erreur = None, str(err)
+        if criteres is None:
+            entry["erreur"] = erreur
+            entry["validation"] = "arguments_invalides"
+            trace["tool_calls"].append(entry)
+            return {"payload": {
+                "erreur": entry["erreur"],
+                "consigne": "Demande au conseiller l'information manquante ou à corriger.",
+            }}
+        entry["arguments"] = criteres
+        try:
+            recherche = self.supplier.rechercher(criteres)
+        except SupplierError as err:
+            entry["statut"], _ = _rapport_erreur_fournisseur(err)
+            entry["erreur"] = str(err)
+            entry["http_status"] = getattr(err, "status", None)
+            trace["tool_calls"].append(entry)
+            return {"payload": {
+                "erreur": "La vérification n'a pas abouti.",
+                "consigne": (
+                    "Le serveur de prestations n'a pas pu vérifier les prix et les places. "
+                    "Dis-le simplement au conseiller, sans inventer de prestation, et "
+                    "propose de réessayer dans un instant."),
+            }}
+        entry["statut"] = "ok"
+        entry["http_status"] = 200
+        entry["reponse_serveur"] = resume_reponse_serveur(recherche)
+        trace["tool_calls"].append(entry)
+        return {"recherche": recherche, "payload": recherche}
+
     def generer_proposition(self, demande_record, recherche):
         """Generate a structured proposition via OpenRouter (no tools)."""
         if not self._api_key:
@@ -371,10 +612,10 @@ class Agent:
         except PropositionError as err:
             raise OpenRouterError(f"Proposition refusée : {err}") from err
 
-    def _call_model(self, conversation, with_tools=True):
+    def _call_model(self, conversation, with_tools=True, tools=None):
         payload = {"model": self.model, "messages": conversation}
         if with_tools:
-            payload["tools"] = [TOOL_DEFINITION]
+            payload["tools"] = tools or [TOOL_DEFINITION]
             payload["tool_choice"] = "auto"
         request = urllib.request.Request(
             self.base_url,
