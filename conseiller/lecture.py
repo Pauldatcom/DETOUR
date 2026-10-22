@@ -104,6 +104,43 @@ def a_des_ecarts(changements):
     """True when at least one line has a real price or availability change."""
     return any(isinstance(c, dict) and not c.get("inchange") for c in changements or [])
 
+def price_summary(proposition, travelers):
+    """Prices the advisor needs to check a proposal quickly (#39).
+
+    Per line: name, type, quantity and price per person. For the proposal:
+    total, price per person and the latest server reading time.
+    Only verified lines carry a price; missing lines keep None.
+    """
+    if type(travelers) is not int or travelers < 1:
+        travelers = 1
+    lines = []
+    total = 0
+    readings = []
+    for line in proposition.get("prestations") or []:
+        verified = line.get("verification") == VERIFICATION_VERIFIE
+        line_total = line.get("prix_total_eur")
+        if verified and type(line_total) is not int:
+            line_total = (line.get("prix_unitaire_eur") or 0) * (line.get("quantite") or 1)
+        if verified:
+            total += line_total
+            if parse_iso8601(line.get("consulte_le")) is not None:
+                readings.append(line["consulte_le"])
+        lines.append({
+            "id": line.get("id"),
+            "nom": line.get("nom"),
+            "type": line.get("type"),
+            "quantite": line.get("quantite"),
+            "prix_par_personne_eur": round(line_total / travelers) if verified else None,
+        })
+    latest = max(readings, key=parse_iso8601) if readings else None
+    return {
+        "nombre_voyageurs": travelers,
+        "lignes": lines,
+        "prix_total_eur": total,
+        "prix_par_personne_eur": round(total / travelers),
+        "consulte_le": latest,
+    }
+
 
 def enrichir_propositions(props, demand_store):
     """Attach reading deltas and constraint checks; stored proposals stay intact.
@@ -119,6 +156,8 @@ def enrichir_propositions(props, demand_store):
         resultats = (recherches[-1].get("resultats") if recherches else None) or []
         enrichie["contraintes_verifiees"] = verifier_contraintes(
             dem or {}, enrichie, resultats)
+        travelers = ((dem or {}).get("demande") or {}).get("nombre_voyageurs", 1)
+        enrichie["recapitulatif_prix"] = price_summary(enrichie, travelers)
         enrichies.append(enrichie)
     return enrichies
 

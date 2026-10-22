@@ -173,6 +173,25 @@ function formatDateTime(iso) {
     : date.toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
 }
 
+/**
+ * #113 : joue le saut du O une seule fois (1,15 s, pas de boucle).
+ * Utilise a l'ouverture de l'application et quand le conseiller confirme
+ * une reservation. L'agent ne declenche jamais cette animation.
+ * Respecte prefers-reduced-motion: reduce (etat final sans mouvement).
+ */
+function jouerSautLogo() {
+  var logo = document.querySelector(".brand .logo");
+  if (!logo) return;
+  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  logo.classList.remove("play");
+  void logo.getBoundingClientRect();
+  logo.classList.add("play");
+  setTimeout(function () { logo.classList.remove("play"); }, 1150);
+}
+
+// Saut du O a l'ouverture de l'application.
+jouerSautLogo();
+
 function dashRow(demande) {
   const d = demande.demande;
   const client = demande.client;
@@ -460,6 +479,154 @@ function blocReponse(record) {
 }
 
 
+const TRACE_BADGES = {
+  user: { className: "trace-badge voyageur", label: "VOYAGEUR" },
+  assistant: { className: "trace-badge agent", label: "AGENT" },
+  suggestion: { className: "trace-badge agent-suggestion", label: "SUGGESTION AGENT" },
+  a_relever: { className: "trace-badge a-relever", label: "\u00c0 RELIRE" },
+  revu: { className: "trace-badge revu", label: "RELU CONSEILLER" },
+  confirme: { className: "trace-badge confirme", label: "CONFIRM\u00c9" },
+};
+
+function traceEntry(badge, bodyText, opts) {
+  opts = opts || {};
+  const entry = document.createElement("li");
+  entry.className = "trace-entry";
+  const badgeNode = document.createElement("span");
+  badgeNode.className = badge.className;
+  badgeNode.textContent = badge.label;
+  const corps = document.createElement("div");
+  corps.className = "trace-entry-body";
+  if (opts.draft) {
+    const draft = document.createElement("span");
+    draft.className = "trace-draft";
+    draft.textContent = "Brouillon";
+    corps.append(draft);
+  }
+  const text = document.createElement("div");
+  text.textContent = bodyText;
+  corps.append(text);
+  if (opts.meta) {
+    const meta = document.createElement("div");
+    meta.className = "trace-meta";
+    meta.textContent = opts.meta;
+    corps.append(meta);
+  }
+  entry.append(badgeNode, corps);
+  return entry;
+}
+
+function traceSectionLabel(text) {
+  const li = document.createElement("li");
+  li.className = "trace-section-label";
+  li.textContent = text;
+  return li;
+}
+
+/**
+ * #128 : trace de l'agent — conversation, recherches vérifiées,
+ * brouillons, modifications et décisions du conseiller, avec des badges
+ * distinguant les suggestions de l'agent des décisions du conseiller.
+ */
+function afficherTrace(content, record, propositions) {
+  const messages = record.messages || [];
+  const recherches = record.recherches || [];
+  const manquants = record.champs_manquants || [];
+  const decisions = record.decisions || [];
+  const modifications = record.modifications || [];
+  const props = propositions || [];
+  const brouillons = props.filter(function (p) { return p.statut === "brouillon"; });
+
+  if (!messages.length && !recherches.length && !manquants.length
+      && !decisions.length && !modifications.length && !props.length) return;
+
+  const titre = document.createElement("h3");
+  titre.className = "detail-subtitle";
+  titre.textContent = "Trace de la conversation";
+  const liste = document.createElement("ul");
+  liste.className = "trace-list";
+
+  // 1. Conversation
+  if (messages.length) {
+    liste.append(traceSectionLabel("Demande du voyageur"));
+    for (const message of messages) {
+      const badge = TRACE_BADGES[message.role] || TRACE_BADGES.assistant;
+      liste.append(traceEntry(badge, message.content || "\u2014"));
+    }
+  }
+
+  // 2. Recherches agent (suggestions)
+  if (recherches.length) {
+    liste.append(traceSectionLabel("Recherches de l\u2019agent"));
+    for (const recherche of recherches) {
+      const source = recherche.source_label || "\u2014";
+      const dateStr = formatDateTime(recherche.consulte_le);
+      const resultats = recherche.resultats || [];
+      const lignes = resultats.map(function (r) {
+        return r.nom + " (" + r.id + ") \u2014 " + r.prix_unitaire_eur
+          + " \u20ac/pers \u00b7 " + (r.prix_total_eur != null ? r.prix_total_eur + " \u20ac" : "\u2014")
+          + " \u00b7 " + (r.disponible ? "disponible" : "indisponible");
+      });
+      const body = "Recherche v\u00e9rifi\u00e9e \u2014 Source : " + source + "\n" + lignes.join("\n");
+      liste.append(traceEntry(TRACE_BADGES.suggestion, body, { meta: "V\u00e9rifi\u00e9 le " + dateStr }));
+    }
+  }
+
+  // 3. Informations manquantes
+  if (manquants.length) {
+    liste.append(traceSectionLabel("Informations manquantes ou obsol\u00e8tes"));
+    liste.append(traceEntry(
+      TRACE_BADGES.a_relever,
+      "Champs obligatoires manquants : " + manquants.join(", "),
+    ));
+  }
+
+  // 4. Brouillons (propositions agent)
+  if (brouillons.length) {
+    liste.append(traceSectionLabel("Brouillons de l\u2019agent"));
+    for (const prop of brouillons) {
+      liste.append(traceEntry(
+        TRACE_BADGES.a_relever,
+        (prop.titre || "Proposition") + " (" + prop.id + ") \u2014 total "
+          + (prop.prix_total_eur != null ? prop.prix_total_eur + " \u20ac" : "\u2014"),
+        { draft: true },
+      ));
+    }
+  }
+
+  // 5. Modifications conseiller (corrections de champs)
+  if (modifications.length) {
+    liste.append(traceSectionLabel("Corrections du conseiller"));
+    for (const mod of modifications) {
+      const champ = mod.champ || "champ";
+      liste.append(traceEntry(
+        TRACE_BADGES.revu,
+        "Correction : " + champ + " "
+          + (mod.avant != null ? mod.avant : "\u2014") + " \u2192 "
+          + (mod.apres != null ? mod.apres : "\u2014"),
+        { meta: (mod.par || "\u2014") + " \u00b7 " + formatDateTime(mod.le) },
+      ));
+    }
+  }
+
+  // 6. D\u00e9cisions conseiller (qualification, statut, confirmation)
+  if (decisions.length) {
+    liste.append(traceSectionLabel("D\u00e9cisions du conseiller"));
+    for (const dec of decisions) {
+      const isConfirmation = (dec.action === "qualification" && dec.apres === "pret_proposition")
+        || (dec.action === "statut" && dec.apres === "valide");
+      const badge = isConfirmation ? TRACE_BADGES.confirme : TRACE_BADGES.revu;
+      liste.append(traceEntry(
+        badge,
+        dec.action + (dec.apres ? " \u2192 " + dec.apres : "") + " \u2014 motif : " + (dec.motif || "\u2014"),
+        { meta: (dec.par || "\u2014") + " \u00b7 " + formatDateTime(dec.le) },
+      ));
+    }
+  }
+
+  content.append(titre, liste);
+}
+
 async function afficherDetail(demId) {
   const content = document.getElementById("detail-content");
   const section = document.getElementById("detail-section");
@@ -512,34 +679,22 @@ async function afficherDetail(demId) {
     content.append(grid);
     content.append(blocReponse(record));
 
-    const recherches = record.recherches || [];
-    if (recherches.length) {
-      const derniere = recherches[recherches.length - 1];
-      const titre = document.createElement("h3");
-      titre.className = "detail-subtitle";
-      titre.textContent = "Dernières prestations vérifiées";
-      const source = document.createElement("div");
-      source.className = "source-box";
-      source.append(Object.assign(document.createElement("div"), {
-        textContent: `Source : ${derniere.source_label} — vérifié le ${formatDateTime(derniere.consulte_le)}`,
-      }));
-      const liste = document.createElement("ul");
-      liste.className = "detail-liste";
-      for (const item of derniere.resultats) {
-        const li = document.createElement("li");
-        li.textContent = `${item.nom} (${item.id}) — ${item.prix_unitaire_eur} €/pers · ${item.prix_total_eur} € pour le groupe · ${item.disponible ? "disponible" : "indisponible"}`;
-        liste.append(li);
-      }
-      content.append(titre, source, liste);
-    } else {
-      const aucune = document.createElement("p");
-      aucune.className = "demande-empty";
-      aucune.textContent = "Aucune recherche vérifiée pour cette demande.";
-      content.append(aucune);
+    // #128 : fetch propositions for the trace (brouillons + decisions).
+    let propositions = [];
+    try {
+      const propData = await apiJSON("/api/propositions");
+      propositions = (propData.propositions || []).filter(
+        (p) => p.demande_id === demId,
+      );
+    } catch {
+      // propositions section will show its own error
     }
 
+    // #128 : trace agent (conversation + recherches + brouillons + decisions).
+    afficherTrace(content, record, propositions);
+
     // Proposals for this request: each line keeps its own source and read time.
-    await afficherPropositionsDemande(content, demId);
+    await afficherPropositionsDemande(content, demId, propositions);
   } catch (err) {
     const erreur = document.createElement("p");
     erreur.className = "form-error";

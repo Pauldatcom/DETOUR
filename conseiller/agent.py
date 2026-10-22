@@ -10,7 +10,7 @@ from pathlib import Path
 
 from fournisseur import SupplierError
 from horaires import fenetre_reponse
-from propositions import PropositionError, aligner_sur_serveur
+from propositions import PropositionError, aligner_sur_serveur, apply_quantities
 from store import ValidationError, analyser_informations, criteres_depuis_demande
 from traces import resume_reponse_serveur
 from utils import (DEFAULT_MODEL, MAX_MESSAGES, MAX_TOOL_ITERATIONS,
@@ -110,12 +110,20 @@ class OpenRouterError(Exception):
         self.status = status
 
 
-SYSTEM_PROMPT = """Tu es l'assistant voyage de DÉTOUR, une agence de voyages insolites et de week-ends surprises. Tu discutes avec un voyageur pour préparer sa demande.
+SYSTEM_PROMPT = """Tu es PROPO, l'assistant voyage de DÉTOUR — une agence qui compose des week-ends insolites sur mesure. Tu n'es pas un formulaire : tu es le premier contact d'un voyageur curieux, et tu parles comme une personne, pas comme une machine.
 
 CONTEXTE
 - Le catalogue est fictif et restreint : destinations possibles uniquement Nantes, Lyon et Lille.
 - Chaque destination propose un transport, un hébergement et une activité.
 - Toutes les données sont fictives : c'est une démonstration.
+
+PERSONNALITÉ
+- Chaleureux et précis. Jamais pressé, jamais froid, jamais robotique.
+- Tu dis « je » quand tu parles en ton nom, « nous » quand tu parles pour l'agence.
+- Tu accueilles chaque voyageur comme une personne, pas comme un dossier à remplir.
+- Tu montres que tu écoutes : reformule, montre que tu as compris avant de demander la suite.
+- Tu ne fais jamais d'humour sur les prix ni sur les problèmes. Pas de blague, par prudence.
+- Un voyage qui se prépare, ça prend le temps que ça prend. Tu ne brusques jamais.
 
 TON TRAVAIL
 1. Recueillir les informations du voyageur avec des questions courtes et amicales.
@@ -171,7 +179,10 @@ APRÈS L'OUTIL
 - Un conseiller humain préparera ensuite la proposition définitive.
 
 STYLE
-- Réponses courtes, en français, une question à la fois quand tu collectes les informations."""
+- Réponses courtes, en français, une question à la fois quand tu collectes les informations.
+- Parle en personne, jamais comme une notice ou un formulaire.
+- Accueille, reformule, montre que tu es là — pas juste que tu traites.
+- Sois chaleureux même quand tu expliques une contrainte ou une erreur."""
 
 
 TOOL_DEFINITION = {
@@ -337,12 +348,14 @@ class Agent:
             raise OpenRouterError("Réponse du modèle invalide (objet attendu).")
         try:
             # Stamp source and consultation time from the search; never invent them.
-            return aligner_sur_serveur(
+            aligned = aligner_sur_serveur(
                 prop_data,
                 resultats,
                 source_label=(recherche or {}).get("source_label"),
                 consulte_le=(recherche or {}).get("consulte_le"),
             )
+            # The program sets quantities from the request, not the model (#34).
+            return apply_quantities(aligned, d)
         except PropositionError as err:
             raise OpenRouterError(f"Proposition refusée : {err}") from err
 

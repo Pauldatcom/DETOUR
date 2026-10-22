@@ -40,6 +40,17 @@ from utils import (DECISION_ACCEPTER, DECISION_CORRECTION, DECISION_REFUSER,
 ROOT = Path(__file__).resolve().parent
 WEB_ROOT = ROOT.parent / "web" / "dist"
 
+# Logo officiel DÉTOUR : source unique, le kit brand-2026 à la racine du dépôt.
+DOSSIER_LOGOS = ROOT.parent / "brand-2026" / "logo"
+LOGOS_OFFICIELS = {
+    "detour-logo.svg",
+    "detour-logo-negatif.svg",
+    "detour-logo-negatif-transparent.svg",
+    "detour-logo-mono-encre.svg",
+    "detour-logo-mono-blanc.svg",
+    "detour-monogramme.svg",
+}
+
 
 def load_env_file(path=None):
     env_path = Path(path) if path else ROOT.parent / ".env"
@@ -100,6 +111,12 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
     def session_supprimer(token):
         with sessions_lock:
             sessions.pop(token, None)
+
+    def session_invalider_utilisateur(user_id, token_conserve=None):
+        with sessions_lock:
+            for t in [t for t, s in sessions.items()
+                      if s.get("user_id") == user_id and t != token_conserve]:
+                sessions.pop(t, None)
 
     def session_lire(token):
         if not token:
@@ -177,6 +194,24 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
             self.send_response(200)
             self.send_header("Content-Type", f"{mime or 'application/octet-stream'}; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def send_brand_asset(self, filename):
+            """Logo officiel (brand-2026) servi tel quel : ni déformé, ni recoloré.
+
+            `detour-logo-negatif-transparent.svg` est le négatif officiel sans le
+            fond Encre du kit, pour les surfaces sombres legacy (#07101E).
+            """
+            if filename not in LOGOS_OFFICIELS:
+                raise ApiError(404, "not_found", "Logo introuvable.")
+            body = (DOSSIER_LOGOS / filename).read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/svg+xml")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'self'; img-src 'self' data:; base-uri 'none'")
             self.end_headers()
             self.wfile.write(body)
 
@@ -267,6 +302,9 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                             return self.redirect("/login")
                     return self.send_static("conseiller.html")
 
+                if method == "GET" and path.startswith("/brand/"):
+                    return self.send_brand_asset(path.rsplit("/", 1)[-1])
+
                 # ---------- React SPA (web/dist) ----------
                 if method == "GET" and WEB_ROOT.exists() \
                         and not path.startswith("/api/") \
@@ -318,7 +356,8 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                 if method == "GET" and path == "/api/session":
                     if session:
                         return self.send_json(200, {"connecte": True, "role": session["role"],
-                                                    "nom": session.get("nom", "")})
+                                                    "nom": session.get("nom", ""),
+                                                    "email": session.get("email", "")})
                     if users is None:  # tests/dev mode: access without account
                         return self.send_json(200, {"connecte": True, "role": "client", "nom": ""})
                     return self.send_json(200, {"connecte": False})
@@ -338,9 +377,13 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                     admin = session and session["role"] == "conseiller"
                     client = session and session["role"] == "client"
 
-                    if path in ("/api/mes-demandes", "/api/mes-propositions"):
+                    if path in ("/api/mes-demandes", "/api/mes-propositions",
+                                "/api/account", "/api/account/password"):
                         if not client:
-                            raise ApiError(401, "auth_requise", "Connectez-vous pour voir vos demandes.")
+                            raise ApiError(401, "auth_requise", "Connectez-vous avec un compte voyageur.")
+                    elif method == "POST" and path == "/api/demandes":
+                        if not client:
+                            raise ApiError(401, "auth_requise", "Connectez-vous pour envoyer une demande.")
                     elif path in ("/api/stats", "/api/propositions") and method == "GET":
                         if not admin:
                             raise ApiError(401, "auth_requise", "Accès conseiller requis.")
@@ -348,7 +391,7 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                             r"/api/demandes/(dem_[a-f0-9]+)/reponse", path):
                         # #52: only an advisor answers a customer request.
                         if not admin:
-                            raise ApiError(401, "auth_requise", "Accès conseiller requis.")    
+                            raise ApiError(401, "auth_requise", "Accès conseiller requis.")
                     elif method == "GET" and (m := re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)", path)):
                         if not (admin or (client and _proprietaire(store, m.group(1), session))):
                             raise ApiError(404, "demande_not_found", "Demande introuvable.")
@@ -499,6 +542,16 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                             d["client"] = users.obtenir(d.get("demande", {}).get("user_id", ""))
                     return self.send_json(200, {"demandes": demandes, "simulation": True})
 
+                if method == "GET" and path == "/api/account":
+                    session = client_exige(self)
+                    if users is None:
+                        raise ApiError(503, "auth_desactivee", "Portail non configuré (users).")
+                    compte = users.obtenir(session.get("user_id", ""))
+                    if compte is None:
+                        raise UserError("Compte introuvable.", 404, "compte_introuvable")
+                    compte["mot_de_passe_defini"] = users.mot_de_passe_defini(session["user_id"])
+                    return self.send_json(200, {"compte": compte})
+
                 if method == "GET" and path == "/api/catalogue":
                     if supplier is None:
                         raise ApiError(503, "supplier_not_configured", "Serveur fictif non configuré.")
@@ -557,6 +610,27 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                         return self.send_json(201, {"demande": record, "simulation": True})
 
                 if method == "PATCH":
+                    if path == "/api/account":
+                        session = client_exige(self)
+                        if users is None:
+                            raise ApiError(503, "auth_desactivee", "Portail non configuré (users).")
+                        data = self.read_json()
+                        if users.mot_de_passe_defini(session.get("user_id", "")):
+                            if not users.verifier_mot_de_passe(
+                                    session.get("user_id", ""),
+                                    data.get("mot_de_passe_actuel", "")):
+                                raise UserError("Le mot de passe actuel est incorrect.",
+                                                401, "mot_de_passe_actuel_invalide")
+                        compte = users.mettre_a_jour_profil(
+                            session.get("user_id", ""), data.get("email"), data.get("nom"))
+                        compte["mot_de_passe_defini"] = users.mot_de_passe_defini(session["user_id"])
+                        token = _token_depuis_cookie(self.headers)
+                        with sessions_lock:
+                            session_stockee = sessions.get(token)
+                            if session_stockee is not None:
+                                session_stockee.update(email=compte["email"], nom=compte["nom"])
+                        return self.send_json(200, {"compte": compte})
+
                     match = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/qualification", path)
                     if match:
                         session = admin_exige(self)
@@ -640,8 +714,28 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                             pass
                     return self.send_json(200, {**result, "simulation": True})
 
+                if method == "POST" and path == "/api/account/password":
+                    session = client_exige(self)
+                    if users is None:
+                        raise ApiError(503, "auth_desactivee", "Portail non configuré (users).")
+                    data = self.read_json()
+                    users.changer_mot_de_passe(
+                        session.get("user_id", ""),
+                        data.get("mot_de_passe_actuel", ""),
+                        data.get("nouveau_mot_de_passe"),
+                    )
+                    session_invalider_utilisateur(
+                        session.get("user_id", ""),
+                        _token_depuis_cookie(self.headers),
+                    )
+                    return self.send_json(200, {"mot_de_passe_modifie": True})
+
                 if method == "POST" and path == "/api/demandes":
                     data = self.read_json()
+                    if users is not None:
+                        session = client_exige(self)
+                        # Never trust a client-supplied owner id.
+                        data["user_id"] = session.get("user_id", "")
                     record = store.creer(data)
                     return self.send_json(201, {"demande": record, "simulation": True})
 

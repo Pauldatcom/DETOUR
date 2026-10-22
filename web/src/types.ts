@@ -2,6 +2,14 @@ export interface Session {
   connecte: boolean;
   role?: "client" | "conseiller";
   nom?: string;
+  email?: string;
+}
+
+export interface Account {
+  id: string;
+  email: string;
+  nom: string;
+  mot_de_passe_defini: boolean;
 }
 
 export interface Config {
@@ -36,11 +44,16 @@ export interface Stats {
 export interface Demande {
   id: string;
   statut: string;
+  qualification?: string;
   cree_le: string;
+  echeance_cible?: string;
+  echeance_statut?: "ok" | "approche" | "depassee";
+  champs_manquants?: string[];
   demande: DemandeData;
   client?: ClientInfo;
   recherches?: Recherche[];
   messages?: ChatMessage[];
+  decisions?: DecisionStatut[];
 }
 
 export interface DemandeData {
@@ -120,9 +133,40 @@ export interface Proposition {
   description: string;
   prestations: Prestation[];
   prix_total_eur: number;
+  version?: number;
+  parente_id?: string;
   changements?: ChangementLecture[];
   /** Program-checked constraints for the advisor (#41). */
   contraintes_verifiees?: ContrainteVerifiee[];
+  decisions?: DecisionPrestation[];
+  decisions_statut?: DecisionStatutProposition[];
+}
+
+export interface DecisionPrestation {
+  prestation_id: string;
+  choix: "keep" | "replace" | "drop";
+  par: string;
+  le: string;
+  motif: string;
+  remplacement_id?: string;
+}
+
+export interface DecisionStatut {
+  action: string;
+  motif?: string;
+  instructions?: string;
+  par: string;
+  le: string;
+  version?: number;
+}
+
+export interface DecisionStatutProposition {
+  action: "accepter" | "demander_correction" | "refuser";
+  motif?: string;
+  instructions?: string;
+  par: string;
+  le: string;
+  version?: number;
 }
 
 /** One line in a proposal. Only "verifie" lines carry a real server price. */

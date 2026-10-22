@@ -235,7 +235,6 @@ def marquer_echeances(record, maintenant=None):
         return record
     present = vers_metier(maintenant or datetime.now(timezone.utc))
     reponse = record.get("reponse")
-   
     if isinstance(reponse, dict):
         try:
             present = vers_metier(datetime.fromisoformat(str(reponse.get("le"))))

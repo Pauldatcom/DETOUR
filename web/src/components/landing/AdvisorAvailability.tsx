@@ -7,7 +7,7 @@ interface AdvisorAvailabilityProps {
   onDecrir: () => void;
 }
 
-/** Bloc disponibilité conseillers + engagements. */
+/** Bloc disponibilité conseillers + engagements — 2026 brand ink band. */
 export function AdvisorAvailability({ onDecrir }: AdvisorAvailabilityProps) {
   // #53 : the availability block reflects the advisor's real working hours.
   const [dispo, setDispo] = useState<Disponibilite | null>(null);
@@ -29,47 +29,43 @@ export function AdvisorAvailability({ onDecrir }: AdvisorAvailabilityProps) {
 
   const fenetre = dispo?.fenetre;
   return (
-    <section id="conseillers" className="scroll-mt-20 bg-[#0b2447] py-16 text-white lg:py-24">
+    <section id="conseillers" className="relative scroll-mt-20 bg-ink py-16 text-chalk lg:py-24">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute right-0 left-0"
         style={{
           background:
-            "radial-gradient(800px 400px at 90% 50%, rgba(56,189,184,0.18), transparent 70%)",
+            "radial-gradient(800px 400px at 90% 50%, rgba(188,211,234,0.14), transparent 70%)",
         }}
       />
       <div className="relative mx-auto grid max-w-6xl gap-12 px-4 sm:px-6 lg:grid-cols-2 lg:items-center">
         <div>
-          <p className="mb-2 text-sm font-semibold tracking-widest text-[#7fd9d5] uppercase">
+          <p className="mb-2 font-mono text-xs font-semibold tracking-widest text-sky uppercase">
             {CONSEILLERS.surtitre}
           </p>
-          <h2 className="text-3xl font-bold sm:text-4xl">{CONSEILLERS.titre}</h2>
-          <p className="mt-4 text-[#c9d9ec]">{CONSEILLERS.texte}</p>
+          <h2 className="text-3xl font-extrabold sm:text-4xl">{CONSEILLERS.titre}</h2>
+          <p className="mt-4 text-sky">{CONSEILLERS.texte}</p>
 
           <div className="mt-8 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border border-white/15 bg-white/5 p-4 text-center">
-              <p className="text-xs text-[#7fd9d5]">Statut</p>
+            <div className="rounded-xl border border-chalk/15 bg-chalk/5 p-4 text-center">
+              <p className="font-mono text-xs text-sky">Statut</p>
               {/* #49: never claim advisors are available when closed or unknown. */}
               <p className="mt-1 text-sm font-bold">{fenetre?.ouvert ? "Ouvert" : "Fermé"}</p>
             </div>
-            <div className="rounded-xl border border-white/15 bg-white/5 p-4 text-center">
-              <p className="text-xs text-[#7fd9d5]">Horaires</p>
-              <p className="mt-1 text-sm font-bold">
+            <div className="rounded-xl border border-chalk/15 bg-chalk/5 p-4 text-center">
+              <p className="font-mono text-xs text-sky">Horaires</p>
+              <p className="meta-nowrap mt-1 text-sm font-bold">
                 {CONSEILLERS.disponibilite.jours}
                 <br />
                 {CONSEILLERS.disponibilite.heures}
               </p>
             </div>
-            <div className="rounded-xl border border-white/15 bg-white/5 p-4 text-center">
-              <p className="text-xs text-[#7fd9d5]">Délai de réponse</p>
-              <p className="mt-1 text-sm font-bold">{CONSEILLERS.disponibilite.delai}</p>
-            </div>
           </div>
-          <p className="mt-4 text-sm text-[#afc4dc]">
+          <p className="mt-4 text-sm text-sky/80">
             {fenetre?.promesse_delai || CONSEILLERS.disponibilite.precision}
           </p>
           {fenetre && !fenetre.ouvert && fenetre.message && (
-            <p className="mt-2 text-sm text-[#7fd9d5]">{fenetre.message}</p>
+            <p className="mt-2 text-sm text-yellow">{fenetre.message}</p>
           )}
         </div>
 
@@ -79,7 +75,7 @@ export function AdvisorAvailability({ onDecrir }: AdvisorAvailabilityProps) {
               <li key={i} className="flex items-start gap-3">
                 <span
                   aria-hidden="true"
-                  className="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-[#38bdb8]/20 text-[#38bdb8]"
+                  className="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-yellow/20 text-yellow"
                 >
                   <svg
                     className="h-3.5 w-3.5"
@@ -92,13 +88,13 @@ export function AdvisorAvailability({ onDecrir }: AdvisorAvailabilityProps) {
                     <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
                   </svg>
                 </span>
-                <span className="text-[#c9d9ec]">{e}</span>
+                <span className="text-sky">{e}</span>
               </li>
             ))}
           </ul>
           <button
             onClick={onDecrir}
-            className="mt-8 rounded-full bg-white px-8 py-3 font-semibold text-[#0b2447] text-base shadow-lg transition outline-none hover:bg-[#eaf4fb] focus-visible:ring-2 focus-visible:ring-[#38bdb8] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b2447]"
+            className="mt-8 rounded-full bg-yellow px-8 py-3 font-semibold text-base text-ink shadow-lg transition hover:bg-yellow/90"
           >
             Décrire mon voyage
           </button>

@@ -37,7 +37,6 @@ export const HERO = {
   ctaSecondaire: "Découvrir nos inspirations",
   image: "hero-alpes.jpg",
   imageAlt: "Vallée alpine au lever du soleil — visuel d'illustration fictif",
-  badge: "Réponse d'un conseiller sous 24 à 48 h ouvrées",
 } as const;
 
 export const INSPIRATIONS = {
@@ -160,7 +159,6 @@ export const CONSEILLERS = {
   disponibilite: {
     jours: "Du lundi au vendredi",
     heures: "9 h — 18 h",
-    delai: "Sous 24 à 48 heures ouvrées",
     precision:
       "En dehors de ces horaires, laissez-nous votre demande : nous la traitons à la première heure ouvrée.",
   },
@@ -214,10 +212,7 @@ export const FOOTER = {
     },
     {
       titre: "Informations",
-      liens: [
-        { label: "Horaires : lundi à vendredi, 9 h à 18 h", href: "/conseillers" },
-        { label: "Délai de réponse : 24 à 48 h ouvrées", href: "/conseillers" },
-      ],
+      liens: [{ label: "Horaires : lundi à vendredi, 9 h à 18 h", href: "/conseillers" }],
     },
   ],
   mentions:
@@ -237,5 +232,5 @@ export const FORMULAIRE = {
   etatVide: "Aucun détail requis pour commencer, mais le plus vous nous en direz, le mieux.",
   etatErreur: "Impossible d'envoyer votre demande. Vérifiez les champs puis réessayez.",
   messageSucces:
-    "Votre demande a bien été enregistrée. Un conseiller vous répondra du lundi au vendredi, de 9 h à 18 h, sous 24 à 48 heures ouvrées.",
+    "Votre demande a bien été enregistrée. Un conseiller vous répondra du lundi au vendredi, de 9 h à 18 h.",
 } as const;
