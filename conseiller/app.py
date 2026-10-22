@@ -399,6 +399,9 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                     elif method == "GET" and (m := re.fullmatch(r"/api/propositions/(prop_[a-f0-9]+)", path)):
                         if not (admin or (client and _proprietaire_proposition(propositions, store, m.group(1), session))):
                             raise ApiError(404, "proposition_not_found", "Proposition introuvable.")
+                    elif method == "POST" and (m2 := re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/approbation", path)):
+                        if not (client and _proprietaire(store, m2.group(1), session)):
+                            raise ApiError(404, "demande_not_found", "Demande introuvable.")
                     elif method == "POST" and (m2 := re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/recherche", path)):
                         if not (admin or (client and _proprietaire(store, m2.group(1), session))):
                             raise ApiError(401, "auth_requise", "Connectez-vous pour relancer une recherche.")
@@ -561,7 +564,8 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
 
                 if method == "GET" and path == "/api/demandes":
                     admin_exige(self)
-                    demandes = store.lister()
+                    # The advisor only gets requests the traveler approved.
+                    demandes = store.list_for_advisor()
                     demandes.sort(key=lambda d: d.get("cree_le", ""), reverse=True)
                     if users is not None:
                         for d in demandes:
@@ -714,6 +718,16 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                         except ValidationError:
                             pass
                     return self.send_json(200, {**result, "simulation": True})
+
+                match_approval = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/approbation", path)
+                if method == "POST" and match_approval:
+                    session = client_exige(self)
+                    data = self.read_json()
+                    record = store.approve_by_traveler(
+                        match_approval.group(1), session.get("user_id", ""), data.get("confirme"))
+                    if record is None:
+                        raise ApiError(404, "demande_not_found", "Demande introuvable.")
+                    return self.send_json(200, {"demande": record, "simulation": True})
 
                 if method == "POST" and path == "/api/account/password":
                     session = client_exige(self)
