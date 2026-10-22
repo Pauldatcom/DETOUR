@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
+import { renderLightMarkdown } from "../../lib/markdown";
 
 /**
  * Message / content bubbles for the advisor chatbot surface.
  * Roles are visually distinct; no jumping-o typography in message text.
+ * Assistant / draft / confirmed string bodies render a safe markdown subset (#154).
  */
 export type ChatBubbleRole = "advisor" | "assistant" | "draft" | "confirmed" | "system";
 
@@ -25,6 +27,15 @@ const DEFAULT_LABEL: Partial<Record<ChatBubbleRole, string>> = {
   confirmed: "Confirmé par le conseiller",
 };
 
+const MARKDOWN_ROLES: ReadonlySet<ChatBubbleRole> = new Set(["assistant", "draft", "confirmed"]);
+
+function Body({ role, children }: { role: ChatBubbleRole; children: ReactNode }) {
+  if (MARKDOWN_ROLES.has(role) && typeof children === "string") {
+    return <div className="font-sans">{renderLightMarkdown(children)}</div>;
+  }
+  return <div className="font-sans whitespace-pre-wrap">{children}</div>;
+}
+
 export function ChatBubble({ role, children, label }: ChatBubbleProps) {
   const badge = label ?? DEFAULT_LABEL[role];
 
@@ -39,7 +50,7 @@ export function ChatBubble({ role, children, label }: ChatBubbleProps) {
           {badge}
         </p>
       )}
-      <div className="font-sans whitespace-pre-wrap">{children}</div>
+      <Body role={role}>{children}</Body>
     </div>
   );
 }

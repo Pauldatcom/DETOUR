@@ -15,7 +15,7 @@ materials:
 | `server/` | Fictional supplier API: catalogue, availability, options, simulated reservations. Read-only dashboard included. |
 | `conseiller/` | Client-facing conversational application. A deterministic tool loop calls OpenRouter server-side and the supplier API server-side. |
 | `conseiller/agent.py` | Conversational agent: the model proposes tool calls, the program validates and executes them. |
-| `conseiller/propositions.py` | Proposition store (JSON): CRUD, validation, status changes for travel proposals. |
+| `conseiller/propositions.py` | Proposition store (SQLite): CRUD, validation, status changes for travel proposals. |
 | `conseiller/app.py` | HTTP server (stdlib): pages, auth, API routes, metrics, OAuth Google, serves `web/dist` if built. |
 | `web/` | React/Vite front (TypeScript, Tailwind v4, React Router v7, Recharts). Dev: `pnpm dev` (:5173, proxy → :8766). Prod: `pnpm build` then `conseiller/app.py` serves `web/dist`. |
 | `observability/` | Grafana stack (docker-compose): Grafana, Prometheus, Loki, optional Alloy for Grafana Cloud. |

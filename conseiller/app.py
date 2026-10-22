@@ -20,6 +20,7 @@ from http.cookies import SimpleCookie
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
 
+import db
 from agent import Agent, DEFAULT_MODEL, OpenRouterError
 from fournisseur import DEFAULT_URL, SupplierClient, SupplierError
 from horaires import est_ouvert, fenetre_reponse
@@ -951,18 +952,22 @@ def main():
     parser = argparse.ArgumentParser(description="Parcours de demande client DÉTOUR")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8766)
-    parser.add_argument("--state-file", default=str(ROOT / ".local" / "demandes.json"))
+    parser.add_argument("--db-file", default=str(ROOT / ".local" / "detour.db"))
     parser.add_argument("--users-file", default=str(ROOT / ".local" / "users.json"))
-    parser.add_argument("--propositions-file", default=str(ROOT / ".local" / "propositions.json"))
     parser.add_argument("--traces-dir", default=str(ROOT / ".local" / "traces"),
                         help="Directory for redacted agent traces (#5).")
     parser.add_argument("--supplier-url", default=os.environ.get("TRAVEL_API_URL", DEFAULT_URL))
     args = parser.parse_args()
 
     load_env_file()
-    store = DemandStore(args.state_file)
+    store = DemandStore(args.db_file)
     users = UserStore(args.users_file)
-    propositions = PropositionStore(args.propositions_file)
+    propositions = PropositionStore(args.db_file)
+    # The enriched dataset seeds the read-only destinations table (#88/#89).
+    # Idempotent: re-running refreshes the rows without duplicating them.
+    dataset = ROOT.parent / "data" / "travel_agency_dataset.json"
+    if dataset.exists():
+        db.seed_destinations(store.conn, dataset)
     team_key = os.environ.get("TRAVEL_TEAM_KEY", "demo-key")
     supplier = SupplierClient(args.supplier_url, team_key)
     api_key = os.environ.get("OPENROUTER_API_KEY", "")
