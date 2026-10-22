@@ -167,7 +167,7 @@ class TestDemandStore(unittest.TestCase):
     def test_creer_et_obtenir(self):
         record = self.store.creer(dict(VALIDE))
         self.assertTrue(record["id"].startswith("dem_"))
-        self.assertEqual(record["statut"], "a_analyser")
+        self.assertEqual(record["statut"], "nouvelle")  # #49 Submitted
         self.assertEqual(record["qualification"], "pret_relecture")
         self.assertEqual(record["champs_manquants"], [])
         self.assertIn("cree_le", record)
@@ -313,7 +313,23 @@ class TestHttpApi(unittest.TestCase):
             self.assertEqual(res.status, 201)
             data = json.loads(res.read())
         self.assertTrue(data["demande"]["id"].startswith("dem_"))
-        self.assertEqual(data["demande"]["statut"], "a_analyser")
+        self.assertEqual(data["demande"]["statut"], "nouvelle")  # #49 Submitted
+        self.assertTrue(data["demande"]["cree_le"])
+
+    def test_disponibilite_expose_ouvert_et_promesse(self):
+        # #49: customer sees Mon–Fri hours; never an immediate promise when closed.
+        with urllib.request.urlopen(self.url("/api/disponibilite")) as res:
+            data = json.loads(res.read())
+        self.assertIn("ouvert", data)
+        fenetre = data["fenetre"]
+        self.assertIn("promesse_delai", fenetre)
+        self.assertIn("lundi", fenetre["promesse_delai"])
+        self.assertIn("vendredi", fenetre["promesse_delai"])
+        self.assertIn("09:00", fenetre["promesse_delai"])
+        self.assertIn("18:00", fenetre["promesse_delai"])
+        if not fenetre["ouvert"]:
+            self.assertIn("fermé", fenetre["message"])
+            self.assertNotIn("immédiat", fenetre["message"].lower())
 
     def test_creer_demande_invalide(self):
         req = urllib.request.Request(
@@ -436,7 +452,7 @@ class TestRechercheRoute(unittest.TestCase):
         stored = store.obtenir(dem_id)
         assert stored is not None
         self.assertEqual(len(stored["recherches"]), 1)
-        self.assertEqual(stored["statut"], "a_analyser")
+        self.assertEqual(stored["statut"], "nouvelle")
 
     def test_demande_inconnue(self):
         _, base = self.serve(FakeSupplier())

@@ -351,6 +351,7 @@ class TestStatutARevoirApresChangement(unittest.TestCase):
                 "consulte_le": "2026-10-19T10:42:00+00:00",
             }],
         })
+        store.demandes[dem_id]["statut"] = "a_analyser"
         store.definir_qualification(dem_id, QUALIF_PRET_PROPOSITION, acteur="conseiller",
                                     par="Nora", motif="dossier complet")
         store.changer_statut(dem_id, STATUT_PROPOSE, "Nora", "envoyee au voyageur")
@@ -386,7 +387,7 @@ class TestStatutARevoirApresChangement(unittest.TestCase):
         })
         status, data = post(f"{base}/api/demandes/{dem_id}/recherche")
         self.assertEqual(status, 201)
-        self.assertEqual(data["demande"]["statut"], "a_analyser")
+        self.assertEqual(data["demande"]["statut"], "nouvelle")  # #49, unchanged
 
 
 class TestDecisionPrestation(unittest.TestCase):
