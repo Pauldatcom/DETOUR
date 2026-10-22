@@ -45,7 +45,7 @@ export default function App() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-white">
-        <span className="text-sm text-[#4b6480]">Chargement…</span>
+        <span className="text-sm text-ballast">Chargement…</span>
       </div>
     );
   }

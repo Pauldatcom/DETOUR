@@ -1,4 +1,4 @@
-"use strict";
+﻿"use strict";
 
 /**
  * Proposal detail UI for the advisor dashboard: provenance, reading deltas,
@@ -58,6 +58,28 @@ const DECISION_PROPOSITION = [
 ];
 
 /**
+ * #128 : badge de décision distinguant la provenance et l'étape de validation.
+ * L'agent propose ("Suggestion de l'agent"), le conseiller relit et confirme.
+ * L'agent ne apparaît jamais comme l'auteur de la confirmation.
+ */
+const DECISION_BADGE = {
+  brouillon: { label: "Suggestion de l'agent · à relire", kind: "agent" },
+  envoyee: { label: "Relu par le conseiller", kind: "relu" },
+  correction_requested: { label: "Relu par le conseiller", kind: "relu" },
+  validee: { label: "Confirmé par le conseiller", kind: "confirme" },
+  refusee: { label: "Refusé par le conseiller", kind: "ko" },
+};
+
+/** Crée un badge de décision avec la classe appropriée. */
+function badgeDecision(statut) {
+  const def = DECISION_BADGE[statut] || { label: statut, kind: "info" };
+  const span = document.createElement("span");
+  span.className = `badge badge-${def.kind}`;
+  span.textContent = def.label;
+  return span;
+}
+
+/**
  * Bloc de décision du conseiller sur une proposition.
  *
  * Affiche le statut, propose Accepter / Demander une correction / Refuser,
@@ -69,8 +91,12 @@ function blocDecisionProposition(prop, demId) {
   wrap.className = "prop-decision";
 
   const statut = document.createElement("div");
-  statut.className = "prop-statut";
+  statut.className = `prop-statut prop-${prop.statut}`;
   statut.textContent = `Statut : ${PROP_STATUT_LABELS[prop.statut] || prop.statut}`;
+
+  // #128 : badge de décision distinguant l'origine de la proposition.
+  // L'agent suggère, le conseiller relit et confirme — jamais l'inverse.
+  const badge = badgeDecision(prop.statut);
 
   const champs = document.createElement("div");
   champs.className = "prop-motif";
@@ -98,15 +124,25 @@ function blocDecisionProposition(prop, demId) {
   const confirmation = document.createElement("div");
   confirmation.className = "prop-confirmation";
 
+  function marquerTerminal(libelle) {
+    actions.hidden = true;
+    const icone = libelle === "Validée" ? "✓" : libelle === "Refusée" ? "✗" : "•";
+    confirmation.textContent =
+      `${icone} Proposition ${libelle.toLowerCase()} — ${formatDateTime(new Date().toISOString())}`;
+  }
+
   async function envoyer(decision, bouton) {
     erreur.textContent = "";
     const corps = { motif: motif.value.trim() };
     if (decision.action === "demander_correction") {
       corps.instructions = instructions.value.trim();
     }
+    const labels = [];
     for (const autre of actions.querySelectorAll("button")) {
+      labels.push(autre.textContent);
       autre.disabled = true;
     }
+    if (bouton) bouton.textContent = "Envoi…";
     try {
       const data = await apiJSON(
         `/api/propositions/${encodeURIComponent(prop.id)}/${decision.route}`,
@@ -118,18 +154,26 @@ function blocDecisionProposition(prop, demId) {
       );
       const apres = (data.proposition || {}).statut;
       const libelle = PROP_STATUT_LABELS[apres] || apres;
+      statut.className = `prop-statut prop-${apres}`;
       statut.textContent = `Statut : ${libelle}`;
-      confirmation.textContent = `${decision.label} — nouveau statut : ${libelle}.`;
+      // #128 : met à jour le badge de décision après l'action du conseiller.
+      badge.replaceWith(badgeDecision(apres));
+      marquerTerminal(libelle);
       champs.hidden = true;
+
       // #113 : la confirmation explicite du conseiller fait sauter le O.
       // Un seul passage de 1,15 s ; l'agent ne déclenche jamais ce geste.
       if (decision.action === "accepter" && typeof jouerSautLogo === "function") {
+
         jouerSautLogo();
       }
     } catch (err) {
       erreur.textContent = err.message;
+      let i = 0;
       for (const autre of actions.querySelectorAll("button")) {
         autre.disabled = false;
+        if (autre === bouton && labels[i] !== undefined) autre.textContent = labels[i];
+        i++;
       }
     }
   }
@@ -156,7 +200,11 @@ function blocDecisionProposition(prop, demId) {
     actions.append(btn);
   }
 
-  wrap.append(statut, actions, champs, confirmation, erreur);
+  if (prop.statut === "validee" || prop.statut === "refusee") {
+    marquerTerminal(PROP_STATUT_LABELS[prop.statut] || prop.statut);
+  }
+
+  wrap.append(statut, badge, actions, champs, confirmation, erreur);
   return wrap;
 }
 
@@ -227,10 +275,15 @@ function texteChangementLecture(c) {
 }
 
 /** Render stored proposals: verified lines show price, source and time; others stay missing. */
-async function afficherPropositionsDemande(content, demId) {
+async function afficherPropositionsDemande(content, demId, propsData) {
   try {
-    const data = await apiJSON("/api/propositions");
-    const props = (data.propositions || []).filter((p) => p.demande_id === demId);
+    let props;
+    if (propsData) {
+      props = propsData;
+    } else {
+      const data = await apiJSON("/api/propositions");
+      props = (data.propositions || []).filter((p) => p.demande_id === demId);
+    }
     const titre = document.createElement("h3");
     titre.className = "detail-subtitle";
     titre.textContent = "Propositions";
@@ -245,6 +298,8 @@ async function afficherPropositionsDemande(content, demId) {
     for (const prop of props) {
       const bloc = document.createElement("div");
       bloc.className = "source-box";
+      if (prop.statut === "validee") bloc.classList.add("prop-acceptee");
+      else if (prop.statut === "refusee") bloc.classList.add("prop-refusee");
       const version = prop.version || 1;
       const lienParent = prop.parente_id ? ` · v${version} (depuis ${prop.parente_id})` : ` · v${version}`;
       bloc.append(Object.assign(document.createElement("div"), {

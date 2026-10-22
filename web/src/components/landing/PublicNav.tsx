@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { Logo } from "../Logo";
 import { NAVIGATION } from "../../data/detourContent";
 import type { Session } from "../../types";
-import { BrandLogo } from "../conseiller/BrandLogo";
 
 interface PublicNavProps {
   session: Session | null;
@@ -37,7 +37,7 @@ export function PublicNav({ session, onLogout }: PublicNavProps) {
   );
 
   return (
-    <header className="sticky top-0 z-40 border-b border-ink/10 bg-chalk/90 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-line bg-chalk/90 backdrop-blur">
       <a href="#contenu-principal" className="skip-link">
         Aller au contenu
       </a>
@@ -50,10 +50,8 @@ export function PublicNav({ session, onLogout }: PublicNavProps) {
           className="flex min-w-0 items-center gap-2"
           onClick={() => setOpen(false)}
         >
-          <BrandLogo variant="color" width={105} alt="DÉTOUR" />
-          <span className="hidden rounded-full bg-sky/50 px-2 py-0.5 text-xs font-semibold text-ink sm:inline">
-            Projet fictif
-          </span>
+          <Logo variant="encre" width={112} />
+          <span className="sr-only">DÉTOUR</span>
         </Link>
 
         <ul className="hidden items-center gap-6 lg:flex">
@@ -140,7 +138,7 @@ export function PublicNav({ session, onLogout }: PublicNavProps) {
       {profileOpen && connecte && (
         <div
           id="profile-menu"
-          className="absolute top-16 right-4 z-50 w-56 rounded-xl border border-ink/10 bg-white p-2 shadow-lg sm:right-[max(1.5rem,calc((100vw-72rem)/2))]"
+          className="absolute top-16 right-4 z-50 w-56 rounded-xl border border-line bg-card p-2 shadow-lg sm:right-[max(1.5rem,calc((100vw-72rem)/2))]"
         >
           <p className="px-3 pt-2 text-xs font-medium text-ballast">
             {session?.nom || session?.email || "Compte connecté"}
@@ -175,7 +173,7 @@ export function PublicNav({ session, onLogout }: PublicNavProps) {
       )}
 
       {open && (
-        <div id="nav-mobile" className="border-t border-ink/10 bg-chalk px-4 py-4 lg:hidden">
+        <div id="nav-mobile" className="border-t border-line bg-chalk px-4 py-4 lg:hidden">
           <ul className="flex flex-col gap-1">
             {NAVIGATION.map((item) => (
               <li key={item.label}>

@@ -1,4 +1,4 @@
-"""JSON persistence for DÉTOUR travel propositions."""
+"""Persistence for DÉTOUR travel propositions (SQLite)."""
 
 import json
 import secrets
@@ -6,6 +6,7 @@ import threading
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+import db
 from utils import (
     ACTEUR_AGENT,
     DECISION_ACCEPTER,
@@ -18,6 +19,7 @@ from utils import (
     PROP_STATUTS,
     SOURCE_LABEL,
     STATUT_BROUILLON,
+    STATUT_CORRECTION_DEMANDEE,
     STATUT_PAR_DECISION,
     TRANSITIONS_PROPOSITION,
 )
@@ -100,7 +102,7 @@ def valider_prestation(data):
         return _ligne_manquante(prest_id, nom.strip(), type_.strip(), quantite)
 
     prix = data["prix_unitaire_eur"]
-    return {
+    ligne = {
         "id": prest_id,
         "nom": nom.strip(),
         "type": type_.strip(),
@@ -112,6 +114,10 @@ def valider_prestation(data):
         "source": data["source"].strip(),
         "consulte_le": data["consulte_le"].strip(),
     }
+    # #111: an edit must not hide that a v2 price was copied from v1, unread.
+    if data.get("copie_depuis_v1") is True:
+        ligne["copie_depuis_v1"] = True
+    return ligne
 
 
 def valider_proposition(data):
@@ -231,23 +237,19 @@ def apply_quantities(data, demande):
 
 class PropositionStore:
     def __init__(self, path=None):
+        """Open the propositions store backed by SQLite.
+
+        `path` is the SQLite database file (created on first use). Passing
+        None keeps a pure in-memory store, used by tests and tooling.
+        """
         self.path = Path(path) if path else None
         self.lock = threading.RLock()
-        self.propositions = {}
-        if self.path and self.path.exists():
-            try:
-                self.propositions = json.loads(self.path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                self.propositions = {}
+        self.conn = db.connect(self.path) if self.path else None
+        self.propositions = db.load_propositions(self.conn) if self.conn else {}
 
     def save(self):
-        if not self.path:
-            return
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.propositions, ensure_ascii=False, indent=2),
-                       encoding="utf-8")
-        tmp.replace(self.path)
+        if self.conn:
+            db.save_propositions(self.conn, self.propositions)
 
     def creer(self, demande_id, data, conseiller="", version=1, parente_id=None):
         valide = valider_proposition(data)
@@ -308,10 +310,17 @@ class PropositionStore:
             if not record:
                 return None
             champs = valider_proposition(data)
+            # #111: prices are never edited by hand and lines must not be
+            # re-marked "verified" from the browser. Once a proposal is sent or
+            # decided, only the title and message may change: the prestations
+            # are kept as stored by the server.
+            modifiable = record.get("statut") in (
+                STATUT_BROUILLON, STATUT_CORRECTION_DEMANDEE)
             record["titre"] = champs["titre"]
             record["description"] = champs["description"]
-            record["prestations"] = champs["prestations"]
-            record["prix_total_eur"] = champs["prix_total_eur"]
+            if modifiable:
+                record["prestations"] = champs["prestations"]
+                record["prix_total_eur"] = champs["prix_total_eur"]
             record["modifiee_le"] = utc_now_iso()
             self.save()
             return json.loads(json.dumps(record))

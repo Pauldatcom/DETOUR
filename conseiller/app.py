@@ -20,6 +20,7 @@ from http.cookies import SimpleCookie
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
 
+import db
 from agent import Agent, DEFAULT_MODEL, OpenRouterError
 from fournisseur import DEFAULT_URL, SupplierClient, SupplierError
 from horaires import est_ouvert, fenetre_reponse
@@ -387,12 +388,20 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                     elif path in ("/api/stats", "/api/propositions") and method == "GET":
                         if not admin:
                             raise ApiError(401, "auth_requise", "Accès conseiller requis.")
+                    elif method == "POST" and re.fullmatch(
+                            r"/api/demandes/(dem_[a-f0-9]+)/reponse", path):
+                        # #52: only an advisor answers a customer request.
+                        if not admin:
+                            raise ApiError(401, "auth_requise", "Accès conseiller requis.")
                     elif method == "GET" and (m := re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)", path)):
                         if not (admin or (client and _proprietaire(store, m.group(1), session))):
                             raise ApiError(404, "demande_not_found", "Demande introuvable.")
                     elif method == "GET" and (m := re.fullmatch(r"/api/propositions/(prop_[a-f0-9]+)", path)):
                         if not (admin or (client and _proprietaire_proposition(propositions, store, m.group(1), session))):
                             raise ApiError(404, "proposition_not_found", "Proposition introuvable.")
+                    elif method == "POST" and (m2 := re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/approbation", path)):
+                        if not (client and _proprietaire(store, m2.group(1), session)):
+                            raise ApiError(404, "demande_not_found", "Demande introuvable.")
                     elif method == "POST" and (m2 := re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/recherche", path)):
                         if not (admin or (client and _proprietaire(store, m2.group(1), session))):
                             raise ApiError(401, "auth_requise", "Connectez-vous pour relancer une recherche.")
@@ -555,7 +564,8 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
 
                 if method == "GET" and path == "/api/demandes":
                     admin_exige(self)
-                    demandes = store.lister()
+                    # The advisor only gets requests the traveler approved.
+                    demandes = store.list_for_advisor()
                     demandes.sort(key=lambda d: d.get("cree_le", ""), reverse=True)
                     if users is not None:
                         for d in demandes:
@@ -589,6 +599,20 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                             "demande": dem,
                             "simulation": True,
                         })
+                if method == "POST":
+                    # #52: the advisor sends a written response to the customer request.
+                    # Author, date and time are set by the server, never by the client.
+                    match = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/reponse", path)
+                    if match:
+                        session = admin_exige(self)
+                        data = self.read_json()
+                        record = store.repondre(match.group(1), data.get("message"),
+                                                _nom_conseiller(session))
+                        if record is None:
+                            raise ApiError(404, "demande_not_found", "Demande introuvable.")
+                        if users is not None:
+                            record["client"] = users.obtenir(record.get("demande", {}).get("user_id", ""))
+                        return self.send_json(201, {"demande": record, "simulation": True})
 
                 if method == "PATCH":
                     if path == "/api/account":
@@ -694,6 +718,16 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                         except ValidationError:
                             pass
                     return self.send_json(200, {**result, "simulation": True})
+
+                match_approval = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/approbation", path)
+                if method == "POST" and match_approval:
+                    session = client_exige(self)
+                    data = self.read_json()
+                    record = store.approve_by_traveler(
+                        match_approval.group(1), session.get("user_id", ""), data.get("confirme"))
+                    if record is None:
+                        raise ApiError(404, "demande_not_found", "Demande introuvable.")
+                    return self.send_json(200, {"demande": record, "simulation": True})
 
                 if method == "POST" and path == "/api/account/password":
                     session = client_exige(self)
@@ -918,18 +952,22 @@ def main():
     parser = argparse.ArgumentParser(description="Parcours de demande client DÉTOUR")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8766)
-    parser.add_argument("--state-file", default=str(ROOT / ".local" / "demandes.json"))
+    parser.add_argument("--db-file", default=str(ROOT / ".local" / "detour.db"))
     parser.add_argument("--users-file", default=str(ROOT / ".local" / "users.json"))
-    parser.add_argument("--propositions-file", default=str(ROOT / ".local" / "propositions.json"))
     parser.add_argument("--traces-dir", default=str(ROOT / ".local" / "traces"),
                         help="Directory for redacted agent traces (#5).")
     parser.add_argument("--supplier-url", default=os.environ.get("TRAVEL_API_URL", DEFAULT_URL))
     args = parser.parse_args()
 
     load_env_file()
-    store = DemandStore(args.state_file)
+    store = DemandStore(args.db_file)
     users = UserStore(args.users_file)
-    propositions = PropositionStore(args.propositions_file)
+    propositions = PropositionStore(args.db_file)
+    # The enriched dataset seeds the read-only destinations table (#88/#89).
+    # Idempotent: re-running refreshes the rows without duplicating them.
+    dataset = ROOT.parent / "data" / "travel_agency_dataset.json"
+    if dataset.exists():
+        db.seed_destinations(store.conn, dataset)
     team_key = os.environ.get("TRAVEL_TEAM_KEY", "demo-key")
     supplier = SupplierClient(args.supplier_url, team_key)
     api_key = os.environ.get("OPENROUTER_API_KEY", "")

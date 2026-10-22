@@ -54,6 +54,13 @@ export interface Demande {
   recherches?: Recherche[];
   messages?: ChatMessage[];
   decisions?: DecisionStatut[];
+  /** Traveler approval before an advisor gets the request. */
+  approbation_client?: TravelerApproval;
+}
+
+export interface TravelerApproval {
+  statut: "en_attente" | "confirmee" | "refusee";
+  le: string | null;
 }
 
 export interface DemandeData {
@@ -98,6 +105,8 @@ export interface PrestationRecherche {
   prix_total_eur: number;
   disponible: boolean;
   dans_budget: boolean;
+  /** Seats left on the departure date, as read from the server. */
+  places_restantes?: number;
 }
 
 /** Delta between proposal v1 and a newer server reading (never mutates v1). */

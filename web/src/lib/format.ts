@@ -4,6 +4,7 @@ export const STATUT_LABELS: Record<string, string> = {
   nouvelle: "Nouvelle",
   a_analyser: "À analyser",
   a_revoir: "À revoir",
+  repondue: "Répondue",
   propose: "Proposée",
   valide: "Validée",
   refuse: "Refusée",
@@ -17,18 +18,24 @@ export const PROP_STATUT_LABELS: Record<string, string> = {
   correction_requested: "Correction demandée",
 };
 
+/*
+ * Status text colors — 2026 brand palette.
+ * Yellow is never used as text on a light background (charte rule),
+ * so accent states fall back to ink; corrections use brick.
+ */
 export const STATUT_COLORS: Record<string, string> = {
-  nouvelle: "text-accent-bright",
-  a_analyser: "text-warning",
-  a_revoir: "text-warning",
-  propose: "text-accent",
-  valide: "text-success",
-  refuse: "text-danger",
+  nouvelle: "text-ballast",
+  a_analyser: "text-ballast",
+  a_revoir: "text-brick",
+  repondue: "text-ink",
+  propose: "text-ink",
+  valide: "text-ink",
+  refuse: "text-brick",
   brouillon: "text-muted",
-  envoyee: "text-accent",
-  validee: "text-success",
-  refusee: "text-danger",
-  correction_requested: "text-warning",
+  envoyee: "text-ink",
+  validee: "text-ink",
+  refusee: "text-brick",
+  correction_requested: "text-brick",
 };
 
 export function formatEuro(value: number): string {
