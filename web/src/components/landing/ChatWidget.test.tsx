@@ -18,7 +18,7 @@ vi.mock("react-router-dom", async (importOriginal) => {
 
 // Mock the api module: only `chat` is used by ChatWidget.
 vi.mock("../../lib/api", () => ({
-  api: { chat: vi.fn() },
+  api: { chat: vi.fn(), approveRequest: vi.fn() },
 }));
 
 // ---------------------------------------------------------------------------
@@ -46,6 +46,28 @@ function makeResult(reply: string) {
 }
 
 const apiChat = vi.mocked(api.chat);
+const apiApprove = vi.mocked(api.approveRequest);
+
+/** A ChatResult where the agent just saved a request waiting for approval. */
+function makeSavedResult(reply: string) {
+  return {
+    ...makeResult(reply),
+    demande: {
+      id: "dem_abc123",
+      statut: "nouvelle",
+      cree_le: "2026-10-22T10:00:00+00:00",
+      demande: {} as never,
+      approbation_client: { statut: "en_attente" as const, le: null },
+    },
+  };
+}
+
+/** Open the chat and send one message. */
+async function sendMessage(user: ReturnType<typeof userEvent.setup>, text: string) {
+  await user.click(screen.getByRole("button", { name: /ouvrir le chat/i }));
+  await user.type(screen.getByRole("textbox"), text);
+  await user.click(screen.getByRole("button", { name: /envoyer/i }));
+}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -299,6 +321,65 @@ describe("ChatWidget", () => {
         await user.click(screen.getByRole("button", { name: /envoyer/i }));
         expect(await screen.findByText(reply)).toBeInTheDocument();
       });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Traveler approval of the saved request
+  // -------------------------------------------------------------------------
+  describe("traveler approval", () => {
+    it("shows the two buttons when the saved request waits for approval", async () => {
+      apiChat.mockResolvedValue(makeSavedResult("Votre demande est enregistrée."));
+      const user = userEvent.setup();
+      renderWidget();
+      await sendMessage(user, "Lyon");
+      expect(
+        await screen.findByRole("button", { name: "Je confirme ma demande" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Non, je veux modifier" })).toBeInTheDocument();
+    });
+
+    it("does not show the buttons when no request was saved", async () => {
+      apiChat.mockResolvedValue(makeResult("Quel type de voyage ?"));
+      const user = userEvent.setup();
+      renderWidget();
+      await sendMessage(user, "Lyon");
+      await screen.findByText("Quel type de voyage ?");
+      expect(screen.queryByRole("button", { name: "Je confirme ma demande" })).toBeNull();
+    });
+
+    it("confirms the request and tells the traveler it is sent", async () => {
+      apiChat.mockResolvedValue(makeSavedResult("Votre demande est enregistrée."));
+      apiApprove.mockResolvedValue({ demande: {} as never });
+      const user = userEvent.setup();
+      renderWidget();
+      await sendMessage(user, "Lyon");
+      await user.click(await screen.findByRole("button", { name: "Je confirme ma demande" }));
+      expect(apiApprove).toHaveBeenCalledWith("dem_abc123", true);
+      expect(await screen.findByText(/transmise à un conseiller/i)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Je confirme ma demande" })).toBeNull();
+    });
+
+    it("declines the request and asks what to change", async () => {
+      apiChat.mockResolvedValue(makeSavedResult("Votre demande est enregistrée."));
+      apiApprove.mockResolvedValue({ demande: {} as never });
+      const user = userEvent.setup();
+      renderWidget();
+      await sendMessage(user, "Lyon");
+      await user.click(await screen.findByRole("button", { name: "Non, je veux modifier" }));
+      expect(apiApprove).toHaveBeenCalledWith("dem_abc123", false);
+      expect(await screen.findByText(/ce que vous souhaitez modifier/i)).toBeInTheDocument();
+    });
+
+    it("sends the saved request id with the next message", async () => {
+      apiChat.mockResolvedValue(makeSavedResult("Votre demande est enregistrée."));
+      const user = userEvent.setup();
+      renderWidget();
+      await sendMessage(user, "Lyon");
+      await screen.findByText("Votre demande est enregistrée.");
+      await user.type(screen.getByRole("textbox"), "Plutôt 3 personnes");
+      await user.click(screen.getByRole("button", { name: /envoyer/i }));
+      expect(apiChat).toHaveBeenLastCalledWith(expect.any(Array), "dem_abc123");
     });
   });
 
