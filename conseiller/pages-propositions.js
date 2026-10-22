@@ -198,10 +198,15 @@ function texteChangementLecture(c) {
 }
 
 /** Render stored proposals: verified lines show price, source and time; others stay missing. */
-async function afficherPropositionsDemande(content, demId) {
+async function afficherPropositionsDemande(content, demId, propsData) {
   try {
-    const data = await apiJSON("/api/propositions");
-    const props = (data.propositions || []).filter((p) => p.demande_id === demId);
+    let props;
+    if (propsData) {
+      props = propsData;
+    } else {
+      const data = await apiJSON("/api/propositions");
+      props = (data.propositions || []).filter((p) => p.demande_id === demId);
+    }
     const titre = document.createElement("h3");
     titre.className = "detail-subtitle";
     titre.textContent = "Propositions";
@@ -226,16 +231,8 @@ async function afficherPropositionsDemande(content, demId) {
       const liste = document.createElement("ul");
       liste.className = "detail-liste";
       for (const item of prop.prestations || []) {
-        const li = document.createElement("li");
-        if (item.verification === "verifie") {
-          const dispo = item.disponible ? "disponible" : "indisponible";
-          li.textContent =
-            `${item.nom} (${item.id}) — ${item.prix_unitaire_eur} €/pers · ${dispo}` +
-            ` · ${item.source} · ${formatDateTime(item.consulte_le)}`;
-        } else {
-          li.textContent = `${item.nom} (${item.id}) — manquant`;
-        }
-        liste.append(li);
+        // #127 : état de vérification explicite par ligne (vérifié / modifié / indisponible / manquant).
+        liste.append(lignePrestationVerifiee(item, true));
       }
       bloc.append(liste);
       // #41: constraints the program checked against this proposal.
