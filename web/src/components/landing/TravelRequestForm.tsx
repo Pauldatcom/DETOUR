@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FORMULAIRE } from "../../data/detourContent";
 import { api } from "../../lib/api";
@@ -17,9 +17,20 @@ const TYPES_VOYAGE = [
   ["autres", "Autre voyage"],
 ] as const;
 
-/** Formulaire de demande de voyage persisté sur le compte du voyageur connecté. */
+/** Travel request modal — persisted demande + labelled fields (#131). */
 export function TravelRequestForm({ isLoggedIn, onClose }: TravelRequestFormProps) {
   const navigate = useNavigate();
+  const baseId = useId();
+  const errorId = `${baseId}-erreur`;
+  const destId = `${baseId}-destination`;
+  const typeId = `${baseId}-type`;
+  const departId = `${baseId}-depart`;
+  const retourId = `${baseId}-retour`;
+  const voyageursId = `${baseId}-voyageurs`;
+  const budgetId = `${baseId}-budget`;
+  const niveauId = `${baseId}-niveau`;
+  const enviesId = `${baseId}-envies`;
+
   const [etat, setEtat] = useState<Etat>("vide");
   const [destination, setDestination] = useState("");
   const [dateDepart, setDateDepart] = useState("");
@@ -72,6 +83,10 @@ export function TravelRequestForm({ isLoggedIn, onClose }: TravelRequestFormProp
     }
   }
 
+  const fieldClass =
+    "mt-1 w-full rounded-xl border border-ink/15 bg-card px-4 py-2.5 text-sm text-ink outline-none";
+  const labelClass = "block text-sm font-medium text-ink";
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -79,11 +94,16 @@ export function TravelRequestForm({ isLoggedIn, onClose }: TravelRequestFormProp
       aria-modal="true"
       aria-labelledby="form-titre"
     >
-      <div className="absolute inset-0 bg-[#06101c]/75 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-ink/75 backdrop-blur-sm"
+        onClick={onClose}
+        aria-hidden="true"
+      />
       <div className="relative max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl bg-white shadow-2xl">
         <button
+          type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 rounded-full p-2 text-[#4b6480] outline-none hover:bg-[#f2f7fc] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+          className="absolute top-4 right-4 rounded-full p-2 text-ballast outline-none hover:bg-card"
           aria-label="Fermer le formulaire"
         >
           <svg
@@ -100,78 +120,100 @@ export function TravelRequestForm({ isLoggedIn, onClose }: TravelRequestFormProp
 
         <div className="p-6 sm:p-8">
           {etat === "envoye" ? (
-            <div className="py-4 text-center">
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#f0fdf4]">
+            <div className="py-4 text-center" role="status" aria-live="polite">
+              <div
+                className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-sky/40"
+                aria-hidden="true"
+              >
                 <svg
-                  className="h-7 w-7 text-[#22c55e]"
+                  className="h-7 w-7 text-ink"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
                   strokeWidth={2}
-                  aria-hidden="true"
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
                 </svg>
               </div>
-              <h2 id="form-titre" className="text-xl font-bold text-[#0b2447]">
+              <h2 id="form-titre" className="font-display text-xl font-extrabold text-ink">
                 Demande enregistrée
               </h2>
-              <p className="mt-3 leading-relaxed text-[#4b6480]">{FORMULAIRE.messageSucces}</p>
+              {/* Confirmation stays clear without motion (#131 / #113). */}
+              <p className="mt-3 leading-relaxed text-ballast">{FORMULAIRE.messageSucces}</p>
+              <p className="mt-2 text-sm text-ink">
+                Un conseiller vous répondra sous 24 à 48 h ouvrées.
+              </p>
               <button
+                type="button"
                 onClick={() => {
                   onClose();
                   navigate(`/mon-compte/demandes/${demandeId}`);
                 }}
-                className="mt-6 rounded-full bg-[#0b2447] px-6 py-2.5 text-sm font-semibold text-white outline-none hover:bg-[#12335e] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+                className="mt-6 rounded-full bg-ink px-6 py-2.5 text-sm font-semibold text-chalk outline-none hover:bg-ink/90"
               >
                 Voir ma demande
               </button>
             </div>
           ) : (
             <>
-              <h2 id="form-titre" className="text-xl font-bold text-[#0b2447]">
+              <h2 id="form-titre" className="font-display text-xl font-extrabold text-ink">
                 {FORMULAIRE.titre}
               </h2>
-              <p className="mt-1 text-sm text-[#4b6480]">{FORMULAIRE.sousTitre}</p>
+              <p className="mt-1 text-sm text-ballast">{FORMULAIRE.sousTitre}</p>
 
               {!isLoggedIn && (
-                <div className="mt-4 rounded-xl border border-[#e8d5ff] bg-[#f8f0ff] px-4 py-3 text-sm text-[#6b3e9e]">
+                <div className="mt-4 rounded-xl border border-sky bg-sky/30 px-4 py-3 text-sm text-ink">
                   Connectez-vous pour enregistrer votre demande et la retrouver dans votre espace.
                 </div>
               )}
 
               {etat === "erreur" && (
                 <p
+                  id={errorId}
                   role="alert"
-                  className="mt-3 rounded-xl border border-[#fce8e8] bg-[#fff0f0] px-4 py-2 text-sm text-[#b91c1c]"
+                  className="mt-3 rounded-xl border border-brick/30 bg-brick/10 px-4 py-2 text-sm text-brick"
                 >
                   {erreur || FORMULAIRE.etatErreur}
                 </p>
               )}
 
-              <form onSubmit={(event) => void handleSubmit(event)} className="mt-5 space-y-4">
-                <label className="block">
-                  <span className="mb-1 block text-sm font-medium text-[#0b2447]">
-                    {FORMULAIRE.champDestination} <span className="text-[#b91c1c]">*</span>
-                  </span>
+              <form
+                onSubmit={(event) => void handleSubmit(event)}
+                noValidate
+                className="mt-5 space-y-4"
+              >
+                <div>
+                  <label htmlFor={destId} className={labelClass}>
+                    {FORMULAIRE.champDestination}{" "}
+                    <span aria-hidden="true" className="text-brick">
+                      *
+                    </span>
+                  </label>
                   <input
+                    id={destId}
                     value={destination}
                     onChange={(event) => setDestination(event.target.value)}
                     required
                     placeholder="Ex. : Norvège, côte amalfitaine…"
-                    className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm text-[#0b2447] outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+                    aria-describedby={etat === "erreur" ? errorId : undefined}
+                    className={fieldClass}
                   />
-                </label>
+                </div>
 
-                <label className="block">
-                  <span className="mb-1 block text-sm font-medium text-[#0b2447]">
-                    Type de voyage <span className="text-[#b91c1c]">*</span>
-                  </span>
+                <div>
+                  <label htmlFor={typeId} className={labelClass}>
+                    Type de voyage{" "}
+                    <span aria-hidden="true" className="text-brick">
+                      *
+                    </span>
+                  </label>
                   <select
+                    id={typeId}
                     value={typeVoyage}
                     onChange={(event) => setTypeVoyage(event.target.value as typeof typeVoyage)}
                     required
-                    className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm text-[#0b2447] outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+                    aria-describedby={etat === "erreur" ? errorId : undefined}
+                    className={fieldClass}
                   >
                     <option value="">Choisir un type de voyage</option>
                     {TYPES_VOYAGE.map(([value, label]) => (
@@ -180,46 +222,60 @@ export function TravelRequestForm({ isLoggedIn, onClose }: TravelRequestFormProp
                       </option>
                     ))}
                   </select>
-                </label>
+                </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="block">
-                    <span className="mb-1 block text-sm font-medium text-[#0b2447]">
-                      Date de départ <span className="text-[#b91c1c]">*</span>
-                    </span>
+                  <div>
+                    <label htmlFor={departId} className={labelClass}>
+                      Date de départ{" "}
+                      <span aria-hidden="true" className="text-brick">
+                        *
+                      </span>
+                    </label>
                     <input
+                      id={departId}
                       type="date"
                       value={dateDepart}
                       onChange={(event) => setDateDepart(event.target.value)}
                       required
-                      className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm text-[#0b2447] outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+                      aria-describedby={etat === "erreur" ? errorId : undefined}
+                      className={`meta-nowrap ${fieldClass}`}
                     />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-sm font-medium text-[#0b2447]">
-                      Date de retour <span className="text-[#b91c1c]">*</span>
-                    </span>
+                  </div>
+                  <div>
+                    <label htmlFor={retourId} className={labelClass}>
+                      Date de retour{" "}
+                      <span aria-hidden="true" className="text-brick">
+                        *
+                      </span>
+                    </label>
                     <input
+                      id={retourId}
                       type="date"
                       value={dateRetour}
                       min={dateDepart || undefined}
                       onChange={(event) => setDateRetour(event.target.value)}
                       required
-                      className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm text-[#0b2447] outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+                      aria-describedby={etat === "erreur" ? errorId : undefined}
+                      className={`meta-nowrap ${fieldClass}`}
                     />
-                  </label>
+                  </div>
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-3">
-                  <label className="block">
-                    <span className="mb-1 block text-sm font-medium text-[#0b2447]">
-                      Voyageurs *
-                    </span>
+                  <div>
+                    <label htmlFor={voyageursId} className={labelClass}>
+                      Voyageurs{" "}
+                      <span aria-hidden="true" className="text-brick">
+                        *
+                      </span>
+                    </label>
                     <select
+                      id={voyageursId}
                       value={voyageurs}
                       onChange={(event) => setVoyageurs(event.target.value)}
                       required
-                      className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-3 py-2.5 text-sm text-[#0b2447] outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+                      className={fieldClass}
                     >
                       {[1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20].map((count) => (
                         <option key={count} value={count}>
@@ -227,12 +283,16 @@ export function TravelRequestForm({ isLoggedIn, onClose }: TravelRequestFormProp
                         </option>
                       ))}
                     </select>
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-sm font-medium text-[#0b2447]">
-                      Budget / pers. *
-                    </span>
+                  </div>
+                  <div>
+                    <label htmlFor={budgetId} className={labelClass}>
+                      Budget / pers.{" "}
+                      <span aria-hidden="true" className="text-brick">
+                        *
+                      </span>
+                    </label>
                     <input
+                      id={budgetId}
                       type="number"
                       min={1}
                       max={100000}
@@ -241,47 +301,51 @@ export function TravelRequestForm({ isLoggedIn, onClose }: TravelRequestFormProp
                       onChange={(event) => setBudget(event.target.value)}
                       required
                       placeholder="1500 €"
-                      className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-3 py-2.5 text-sm text-[#0b2447] outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+                      className={`meta-nowrap ${fieldClass}`}
                     />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-sm font-medium text-[#0b2447]">
-                      Aventure *
-                    </span>
+                  </div>
+                  <div>
+                    <label htmlFor={niveauId} className={labelClass}>
+                      Aventure{" "}
+                      <span aria-hidden="true" className="text-brick">
+                        *
+                      </span>
+                    </label>
                     <select
+                      id={niveauId}
                       value={niveau}
                       onChange={(event) => setNiveau(event.target.value)}
                       required
-                      className="w-full rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-3 py-2.5 text-sm text-[#0b2447] outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+                      className={fieldClass}
                     >
                       <option value="">Choisir</option>
                       <option value="calme">Calme</option>
                       <option value="modere">Modéré</option>
                       <option value="intense">Intense</option>
                     </select>
-                  </label>
+                  </div>
                 </div>
 
-                <label className="block">
-                  <span className="mb-1 block text-sm font-medium text-[#0b2447]">
+                <div>
+                  <label htmlFor={enviesId} className={labelClass}>
                     Vos envies et contraintes
-                  </span>
+                  </label>
                   <textarea
+                    id={enviesId}
                     value={envies}
                     onChange={(event) => setEnvies(event.target.value)}
                     rows={3}
                     placeholder="Ex. : montagne, pas de foule, gastronomie locale…"
-                    className="w-full resize-none rounded-xl border border-[#d5e0ee] bg-[#f7fafd] px-4 py-2.5 text-sm text-[#0b2447] outline-none focus:border-[#38bdb8] focus:ring-2 focus:ring-[#38bdb8]/30"
+                    aria-describedby={etat === "erreur" ? errorId : undefined}
+                    className={`resize-none ${fieldClass}`}
                   />
-                </label>
+                </div>
 
-                <p className="text-xs text-[#8ba8c4]">
-                  Les champs marqués d’un * sont obligatoires.
-                </p>
+                <p className="text-xs text-ballast">Les champs marqués d’un * sont obligatoires.</p>
                 <button
                   type="submit"
                   disabled={etat === "en_cours"}
-                  className="w-full rounded-full bg-[#0b2447] px-6 py-3 font-semibold text-base text-white transition outline-none hover:bg-[#12335e] focus-visible:ring-2 focus-visible:ring-[#38bdb8] disabled:opacity-60"
+                  className="w-full rounded-full bg-ink px-6 py-3 font-semibold text-base text-chalk transition outline-none hover:bg-ink/90 disabled:opacity-60"
                 >
                   {etat === "en_cours"
                     ? FORMULAIRE.boutonEnCours

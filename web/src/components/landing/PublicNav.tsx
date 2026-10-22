@@ -2,13 +2,14 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { NAVIGATION } from "../../data/detourContent";
 import type { Session } from "../../types";
+import { BrandLogo } from "../conseiller/BrandLogo";
 
 interface PublicNavProps {
   session: Session | null;
   onLogout: () => Promise<void>;
 }
 
-/** Navigation DÉTOUR — lien de connexion ou menu du compte selon la session. */
+/** Navigation DÉTOUR — session-aware, skip-link + DO monogram (#131). */
 export function PublicNav({ session, onLogout }: PublicNavProps) {
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -25,7 +26,7 @@ export function PublicNav({ session, onLogout }: PublicNavProps) {
   const lienCompte = (
     <Link
       to={destinationCompte}
-      className="block rounded-lg px-3 py-2 text-sm font-medium text-[#334d6b] hover:bg-[#f2f7fc]"
+      className="block rounded-lg px-3 py-2 text-sm font-medium text-ballast outline-none hover:bg-card hover:text-ink"
       onClick={() => {
         setOpen(false);
         setProfileOpen(false);
@@ -36,20 +37,24 @@ export function PublicNav({ session, onLogout }: PublicNavProps) {
   );
 
   return (
-    <header className="sticky top-0 z-40 border-b border-[#e8eef6] bg-white/90 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-ink/10 bg-chalk/90 backdrop-blur">
+      <a href="#contenu-principal" className="skip-link">
+        Aller au contenu
+      </a>
       <nav
         aria-label="Navigation principale"
         className="relative mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6"
       >
-        <Link to="/accueil" className="flex items-center gap-2" onClick={() => setOpen(false)}>
-          <span
-            aria-hidden="true"
-            className="grid h-9 w-9 place-items-center rounded-xl bg-[#0b2447] text-lg font-bold text-white"
-          >
-            D
+        <Link
+          to="/accueil"
+          className="flex min-w-0 items-center gap-2"
+          onClick={() => setOpen(false)}
+        >
+          <BrandLogo width={40} variant="monogram" alt="Détour Voyages" />
+          <span className="truncate font-display text-lg font-semibold tracking-tight text-ink">
+            DÉTOUR
           </span>
-          <span className="text-lg font-bold tracking-wide text-[#0b2447]">DÉTOUR</span>
-          <span className="hidden rounded-full bg-[#f0eefe] px-2 py-0.5 text-xs font-semibold text-[#7a5cd6] sm:inline">
+          <span className="hidden rounded-full bg-sky/50 px-2 py-0.5 text-xs font-semibold text-ink sm:inline">
             Projet fictif
           </span>
         </Link>
@@ -59,7 +64,7 @@ export function PublicNav({ session, onLogout }: PublicNavProps) {
             <li key={item.label}>
               <Link
                 to={item.href}
-                className="rounded-lg px-2 py-1 text-sm font-medium text-[#334d6b] transition outline-none hover:text-[#0b2447] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+                className="rounded-lg px-2 py-1 text-sm font-medium text-ballast transition outline-none hover:text-ink"
               >
                 {item.label}
               </Link>
@@ -72,7 +77,7 @@ export function PublicNav({ session, onLogout }: PublicNavProps) {
             {!connecte && (
               <Link
                 to="/login"
-                className="rounded-full border border-[#d5e0ee] px-4 py-2 text-sm font-semibold text-[#0b2447] transition outline-none hover:border-[#38bdb8] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+                className="rounded-full border border-ink/15 px-4 py-2 text-sm font-semibold text-ink transition outline-none hover:border-ink/40"
               >
                 Se connecter
               </Link>
@@ -83,7 +88,7 @@ export function PublicNav({ session, onLogout }: PublicNavProps) {
             <button
               type="button"
               onClick={() => setProfileOpen((value) => !value)}
-              className="grid h-10 w-10 place-items-center rounded-full border border-[#d5e0ee] bg-[#f7fafd] text-[#0b2447] transition outline-none hover:border-[#38bdb8] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+              className="grid h-10 w-10 place-items-center rounded-full border border-ink/15 bg-card text-ink transition outline-none hover:border-ink/40"
               aria-label="Ouvrir le menu du profil"
               aria-expanded={profileOpen}
               aria-controls="profile-menu"
@@ -106,9 +111,11 @@ export function PublicNav({ session, onLogout }: PublicNavProps) {
           )}
 
           <button
-            className="rounded-lg p-2 text-[#0b2447] outline-none focus-visible:ring-2 focus-visible:ring-[#38bdb8] lg:hidden"
+            type="button"
+            className="rounded-lg p-2 text-ink outline-none lg:hidden"
             aria-label={open ? "Fermer le menu" : "Ouvrir le menu"}
             aria-expanded={open}
+            aria-controls="nav-mobile"
             onClick={() => setOpen((value) => !value)}
           >
             <svg
@@ -136,9 +143,9 @@ export function PublicNav({ session, onLogout }: PublicNavProps) {
       {profileOpen && connecte && (
         <div
           id="profile-menu"
-          className="absolute top-16 right-4 z-50 w-56 rounded-xl border border-[#e8eef6] bg-white p-2 shadow-lg sm:right-[max(1.5rem,calc((100vw-72rem)/2))]"
+          className="absolute top-16 right-4 z-50 w-56 rounded-xl border border-ink/10 bg-white p-2 shadow-lg sm:right-[max(1.5rem,calc((100vw-72rem)/2))]"
         >
-          <p className="px-3 pt-2 text-xs font-medium text-[#8ba8c4]">
+          <p className="px-3 pt-2 text-xs font-medium text-ballast">
             {session?.nom || session?.email || "Compte connecté"}
           </p>
           {lienCompte}
@@ -146,14 +153,14 @@ export function PublicNav({ session, onLogout }: PublicNavProps) {
             <>
               <Link
                 to="/mon-compte/demandes"
-                className="block rounded-lg px-3 py-2 text-sm font-medium text-[#334d6b] hover:bg-[#f2f7fc]"
+                className="block rounded-lg px-3 py-2 text-sm font-medium text-ballast outline-none hover:bg-card hover:text-ink"
                 onClick={() => setProfileOpen(false)}
               >
                 Mes demandes
               </Link>
               <Link
                 to="/mon-compte/parametres"
-                className="block rounded-lg px-3 py-2 text-sm font-medium text-[#334d6b] hover:bg-[#f2f7fc]"
+                className="block rounded-lg px-3 py-2 text-sm font-medium text-ballast outline-none hover:bg-card hover:text-ink"
                 onClick={() => setProfileOpen(false)}
               >
                 Paramètres
@@ -163,7 +170,7 @@ export function PublicNav({ session, onLogout }: PublicNavProps) {
           <button
             type="button"
             onClick={() => void deconnecter()}
-            className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-[#b91c1c] hover:bg-[#fff0f0]"
+            className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-brick outline-none hover:bg-brick/10"
           >
             Déconnexion
           </button>
@@ -171,13 +178,13 @@ export function PublicNav({ session, onLogout }: PublicNavProps) {
       )}
 
       {open && (
-        <div className="border-t border-[#e8eef6] bg-white px-4 py-4 lg:hidden">
+        <div id="nav-mobile" className="border-t border-ink/10 bg-chalk px-4 py-4 lg:hidden">
           <ul className="flex flex-col gap-1">
             {NAVIGATION.map((item) => (
               <li key={item.label}>
                 <Link
                   to={item.href}
-                  className="block rounded-lg px-3 py-2 text-sm font-medium text-[#334d6b] hover:bg-[#f2f7fc]"
+                  className="block rounded-lg px-3 py-2 text-sm font-medium text-ballast outline-none hover:bg-card hover:text-ink"
                   onClick={() => setOpen(false)}
                 >
                   {item.label}
@@ -192,7 +199,7 @@ export function PublicNav({ session, onLogout }: PublicNavProps) {
                     <li>
                       <Link
                         to="/mon-compte/demandes"
-                        className="block rounded-lg px-3 py-2 text-sm font-medium text-[#334d6b] hover:bg-[#f2f7fc]"
+                        className="block rounded-lg px-3 py-2 text-sm font-medium text-ballast outline-none hover:bg-card hover:text-ink"
                         onClick={() => setOpen(false)}
                       >
                         Mes demandes
@@ -201,7 +208,7 @@ export function PublicNav({ session, onLogout }: PublicNavProps) {
                     <li>
                       <Link
                         to="/mon-compte/parametres"
-                        className="block rounded-lg px-3 py-2 text-sm font-medium text-[#334d6b] hover:bg-[#f2f7fc]"
+                        className="block rounded-lg px-3 py-2 text-sm font-medium text-ballast outline-none hover:bg-card hover:text-ink"
                         onClick={() => setOpen(false)}
                       >
                         Paramètres
@@ -213,7 +220,7 @@ export function PublicNav({ session, onLogout }: PublicNavProps) {
                   <button
                     type="button"
                     onClick={() => void deconnecter()}
-                    className="block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-[#b91c1c] hover:bg-[#fff0f0]"
+                    className="block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-brick outline-none hover:bg-brick/10"
                   >
                     Déconnexion
                   </button>
@@ -223,7 +230,7 @@ export function PublicNav({ session, onLogout }: PublicNavProps) {
               <li>
                 <Link
                   to="/login"
-                  className="block rounded-lg px-3 py-2 text-sm font-semibold text-[#0b2447] hover:bg-[#f2f7fc]"
+                  className="block rounded-lg px-3 py-2 text-sm font-semibold text-ink outline-none hover:bg-card"
                   onClick={() => setOpen(false)}
                 >
                   Se connecter
