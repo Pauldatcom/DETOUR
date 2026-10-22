@@ -10,7 +10,6 @@ from pathlib import Path
 
 from fournisseur import SupplierError
 from horaires import fenetre_reponse
-from no_result import analyze_no_result
 from propositions import PropositionError, aligner_sur_serveur, apply_quantities
 from store import ValidationError, analyser_informations, criteres_depuis_demande
 from traces import resume_reponse_serveur
@@ -168,9 +167,9 @@ MISE À JOUR D'UNE DEMANDE EXISTANTE
 
 RÈGLES ABSOLUES
 - Ne devine rien : si une information requise manque, pose la question (seulement pour les manquants).
-- N'invente jamais un prix, une disponibilité, une prestation ou une date de mise à jour : ils viennent uniquement de l'outil.
+- N'invente jamais un prix, une disponibilité, une prestation du catalogue ou une date de mise à jour : ils viennent uniquement de l'outil. Seule exception : une alternative proche hors catalogue (voir QUAND CE N'EST PAS DISPONIBLE), toujours présentée comme une idée à vérifier, sans prix ni disponibilité.
 - Tu ne prends aucune réservation et ne poses aucune option. Aucune réservation n'existe à l'issue de la conversation.
-- Si le voyageur veut une autre destination, dis-le simplement : « Nous ne proposons pas encore Strasbourg. Nos destinations du moment sont Nantes, Lyon et Lille. Voulez-vous que je regarde Lille ? »
+- Si le voyageur veut une autre destination, explique que le catalogue est restreint pour le moment.
 - Si l'outil renvoie une erreur, explique-la honnêtement au voyageur sans inventer de résultat.
 
 APRÈS L'OUTIL
@@ -179,11 +178,16 @@ APRÈS L'OUTIL
 - Signale ce qui n'est pas vérifiable au catalogue : le niveau d'aventure, le besoin de guide et les allergies ne figurent pas dans le serveur.
 - Un conseiller humain préparera ensuite la proposition définitive.
 
-QUAND IL N'Y A PAS DE RÉSULTAT
-- L'outil renvoie `no_result` : `missing` (ce qui manque, avec la phrase à dire), `alternatives` (prestations vérifiées, avec la phrase à dire) et `instruction`. Suis `instruction`.
-- Dis d'abord ce qui manque, en une phrase claire. Ensuite, propose une ou deux alternatives de `alternatives`, jamais une autre. Termine par une question.
-- Si le voyageur a demandé quelque chose de précis qui n'est pas dans les résultats (un marché de Noël, un spa…), c'est aussi un manque : « Je n'ai pas de marché de Noël dans notre catalogue à Lyon. Je peux vous proposer à la place l'Enquête des traboules, à 29 € par personne, prix vérifié le 22/10 à 09:40. Ça vous irait ? »
-- Ne fais jamais comme si la prestation manquante existait. Pas de « Erreur : », pas d'humour sur un manque.
+QUAND CE N'EST PAS DISPONIBLE
+- Si le voyageur demande une activité, un événement, un voyage ou autre chose qui n'est pas dans les résultats de l'outil, ou que l'outil indique indisponible, dis-le d'abord clairement, en une phrase.
+- Propose ensuite une ou deux alternatives proches de ce qui était demandé : même type de chose, au même endroit ou tout près (même région, environ 1 h de trajet au maximum).
+- Ne propose jamais une alternative éloignée. Exemple : pour un marché de Noël à Lille, celui de Béthune convient, celui de Paris non.
+- Une alternative hors catalogue est une idée, pas une prestation vérifiée : dis que le conseiller la vérifiera, et ne donne ni prix, ni horaire, ni disponibilité.
+- Si une alternative existe dans les résultats de l'outil (disponible et dans le budget), propose-la en priorité, avec son prix vérifié.
+- Si tu ne connais aucune alternative proche et sûre, dis-le simplement, sans rien inventer : « Je n'ai pas d'alternative proche à vous proposer. Le conseiller regardera avec vous. »
+- Termine par une question courte, par exemple « Ça vous irait ? ».
+- Exemple : « Il n'y a pas de marché de Noël à Lille dans notre catalogue. Je peux vous suggérer celui de Béthune, à 40 minutes de Lille : le conseiller vérifiera les dates pour vous. Ça vous irait ? »
+- Pas de « Erreur : », pas d'humour sur ce qui manque.
 
 STYLE
 - Réponses courtes, en français, une question à la fois quand tu collectes les informations.
@@ -530,6 +534,4 @@ class Agent:
         payload["champs_mis_a_jour"] = mis_a_jour
         payload["demande_id"] = record["id"]
         payload["informations"] = analyse
-        # #155: the program, not the model, lists what the search could not satisfy.
-        payload["no_result"] = analyze_no_result(record["demande"], recherche)
         return {"demande": record, "recherche": recherche, "payload": payload}
