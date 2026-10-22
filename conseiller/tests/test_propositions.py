@@ -87,6 +87,26 @@ class TestPropositionStore(unittest.TestCase):
         self.assertEqual(updated["titre"], "Modifié")
         self.assertEqual(updated["prix_total_eur"], 0)
 
+    def test_mettre_a_jour_keeps_copied_from_v1_flag(self):
+        """#111: editing the title must not hide that a price was copied from v1."""
+        ligne = {
+            "id": "hotel-nantes-01", "nom": "Hôtel des Machines", "type": "hebergement",
+            "quantite": 2, "verification": "verifie", "prix_unitaire_eur": 96,
+            "disponible": True, "source": "Serveur fictif DÉTOUR",
+            "consulte_le": "2026-10-16T10:00:00+00:00", "copie_depuis_v1": True,
+        }
+        prop = self.store.creer("dem_abc", {"titre": "v2", "prestations": [ligne]})
+        updated = self.store.mettre_a_jour(prop["id"], {
+            "titre": "Titre relu", "description": "", "prestations": prop["prestations"]})
+        self.assertTrue(updated["prestations"][0]["copie_depuis_v1"])
+
+    def test_mettre_a_jour_does_not_add_copied_from_v1_flag(self):
+        prop = self.store.creer("dem_abc", dict(PROPOSITION_VALIDE))
+        updated = self.store.mettre_a_jour(prop["id"], {
+            "titre": "Titre relu", "description": "", "prestations": prop["prestations"]})
+        for ligne in updated["prestations"]:
+            self.assertNotIn("copie_depuis_v1", ligne)
+
     def test_changer_statut(self):
         prop = self.store.creer("dem_abc", dict(PROPOSITION_VALIDE))
         self.assertEqual(

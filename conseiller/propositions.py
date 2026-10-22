@@ -99,7 +99,7 @@ def valider_prestation(data):
         return _ligne_manquante(prest_id, nom.strip(), type_.strip(), quantite)
 
     prix = data["prix_unitaire_eur"]
-    return {
+    ligne = {
         "id": prest_id,
         "nom": nom.strip(),
         "type": type_.strip(),
@@ -111,6 +111,10 @@ def valider_prestation(data):
         "source": data["source"].strip(),
         "consulte_le": data["consulte_le"].strip(),
     }
+    # #111: an edit must not hide that a v2 price was copied from v1, unread.
+    if data.get("copie_depuis_v1") is True:
+        ligne["copie_depuis_v1"] = True
+    return ligne
 
 
 def valider_proposition(data):
