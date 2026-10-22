@@ -81,12 +81,6 @@ export function ConseillersPage({ isLoggedIn, session, onLogout }: ConseillersPa
                 </p>
                 <p className="mt-2 text-lg font-bold">{CONSEILLERS.disponibilite.heures}</p>
               </div>
-              <div className="rounded-2xl border border-[#e8eef6] bg-white p-6 text-center">
-                <p className="text-xs font-semibold tracking-widest text-[#38bdb8] uppercase">
-                  Délai de réponse
-                </p>
-                <p className="mt-2 text-lg font-bold">{CONSEILLERS.disponibilite.delai}</p>
-              </div>
             </div>
             <p className="mt-6 text-center text-sm text-[#4b6480]">
               {CONSEILLERS.disponibilite.precision}
@@ -119,10 +113,7 @@ export function ConseillersPage({ isLoggedIn, session, onLogout }: ConseillersPa
         <section className="bg-[#0b2447] py-16 text-white lg:py-20">
           <div className="mx-auto max-w-2xl px-4 text-center sm:px-6">
             <h2 className="text-2xl font-bold sm:text-3xl">Prêt à décrire votre voyage ?</h2>
-            <p className="mt-4 text-[#c9d9ec]">
-              Un conseiller vous répond sous 24 à 48 heures ouvrées. Aucune réservation réelle —
-              vous gardez la main.
-            </p>
+            <p className="mt-4 text-[#c9d9ec]">Aucune réservation réelle — vous gardez la main.</p>
             <button
               onClick={() => setFormOuvert(true)}
               className="mt-8 rounded-full bg-white px-8 py-3 font-semibold text-[#0b2447] text-base shadow-lg transition outline-none hover:bg-[#eaf4fb] focus-visible:ring-2 focus-visible:ring-[#38bdb8] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b2447]"

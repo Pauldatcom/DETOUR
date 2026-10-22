@@ -69,7 +69,6 @@ export function ChatWidget({ isLoggedIn }: ChatWidgetProps) {
   return (
     <AdvisorChatFrame
       title="PROPO · Assistant DÉTOUR"
-      subtitle="Exemple fictif — conseiller sous 24-48 h"
       open={open}
       onClose={() => setOpen(false)}
       onToggle={() => setOpen((v) => !v)}
@@ -83,10 +82,7 @@ export function ChatWidget({ isLoggedIn }: ChatWidgetProps) {
       error={error}
     >
       {messages.length === 0 && !isLoggedIn && (
-        <ChatBubble role="system">
-          Connectez-vous pour discuter avec l'assistant. Un conseiller vous répond sous 24 à 48 h
-          ouvrées.
-        </ChatBubble>
+        <ChatBubble role="system">Connectez-vous pour discuter avec l'assistant.</ChatBubble>
       )}
 
       {messages.length === 0 && isLoggedIn && (
@@ -94,8 +90,7 @@ export function ChatWidget({ isLoggedIn }: ChatWidgetProps) {
           <ChatBubble role="assistant">
             <p>Bonjour, je suis PROPO.</p>
             <p className="mt-2">
-              Dites-moi où, quand, à combien et votre budget par personne. Je vérifie les prix, et
-              un conseiller vous répond sous 24 à 48 h.
+              Dites-moi où, quand, à combien et votre budget par personne. Je vérifie les prix.
             </p>
           </ChatBubble>
         </div>

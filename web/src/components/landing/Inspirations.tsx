@@ -65,9 +65,8 @@ export function Inspirations({ onDecrir }: InspirationsProps) {
             </p>
             <p className="mt-4 leading-relaxed text-[#4b6480]">{detail.description}</p>
             <div className="mt-6 rounded-xl bg-[#f0eefe] p-4 text-sm text-[#4b3a8f]">
-              {CONSEILLERS.disponibilite.jours}, {CONSEILLERS.disponibilite.heures} · réponse{" "}
-              {CONSEILLERS.disponibilite.delai}. Aucune réservation réelle : un conseiller prépare
-              une proposition, vous décidez ensuite.
+              {CONSEILLERS.disponibilite.jours}, {CONSEILLERS.disponibilite.heures}. Aucune
+              réservation réelle : un conseiller prépare une proposition, vous décidez ensuite.
             </div>
             <button
               onClick={() => {
