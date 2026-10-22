@@ -405,7 +405,8 @@ class DemandStore:
             recalculer_qualification(record)
             self.demandes[dem_id] = record
             self.save()
-            return _publier(record)
+            # #50: expose 24h/48h working-hour deadlines as soon as the request exists.
+            return marquer_echeances(_publier(record))
 
     def lister(self):
         with self.lock:
@@ -415,7 +416,10 @@ class DemandStore:
     def obtenir(self, dem_id):
         with self.lock:
             record = self.demandes.get(dem_id)
-            return _publier(record) if record else None
+            if not record:
+                return None
+            # #50: same deadline fields as the advisor queue (lister).
+            return marquer_echeances(_publier(record))
 
     def mettre_a_jour(self, dem_id, **champs):
         with self.lock:
@@ -497,7 +501,7 @@ class DemandStore:
             recalculer_qualification(record)
             self.demandes[dem_id] = record
             self.save()
-            return _publier(record), mis_a_jour
+            return marquer_echeances(_publier(record)), mis_a_jour
 
     def corriger(self, dem_id, champs, auteur, motif=""):
         """Let the advisor correct fields of a request. Every change is recorded.

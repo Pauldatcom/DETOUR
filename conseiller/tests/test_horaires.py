@@ -290,5 +290,28 @@ class TestSoumissionHorsHoraires(unittest.TestCase):
         self.assertTrue(record["id"].startswith("dem_"))
 
 
+class TestEcheanceSurDemande(unittest.TestCase):
+    """#50: SLA deadlines use working hours only (24h target, 48h max)."""
+
+    def test_lundi_10h_cible_et_max(self):
+        soumis = metier(2026, 1, 5, 10, 0)  # monday 10:00
+        self.assertEqual(
+            echeance_reponse(soumis, DELAI_CIBLE_HEURES_OUVREES),
+            metier(2026, 1, 7, 16, 0),  # +24 working hours
+        )
+        self.assertEqual(
+            echeance_reponse(soumis, DELAI_MAX_HEURES_OUVREES),
+            metier(2026, 1, 12, 13, 0),  # +48 working hours (skips weekend)
+        )
+
+    def test_samedi_compte_depuis_lundi_9h(self):
+        soumis = metier(2026, 1, 10, 15, 0)  # saturday
+        # Count starts Monday 09:00 → +24 working hours = Wednesday 15:00
+        self.assertEqual(
+            echeance_reponse(soumis, DELAI_CIBLE_HEURES_OUVREES),
+            metier(2026, 1, 14, 15, 0),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

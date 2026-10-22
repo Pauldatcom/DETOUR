@@ -203,6 +203,27 @@ class TestDemandStore(unittest.TestCase):
             record.get("echeance_statut"), ("dans_delai", "approche", "depassee")
         )
 
+    def test_creer_et_obtenir_exposent_echeance(self):
+        # #50: deadlines are visible on create and get, not only on list.
+        from horaires import DELAI_CIBLE_HEURES_OUVREES, DELAI_MAX_HEURES_OUVREES, echeance_reponse
+        from datetime import datetime
+
+        created = self.store.creer(dict(VALIDE))
+        self.assertIn(created["echeance_statut"], ("dans_delai", "approche", "depassee"))
+        soumis = datetime.fromisoformat(created["cree_le"])
+        self.assertEqual(
+            created["echeance_cible"],
+            echeance_reponse(soumis, DELAI_CIBLE_HEURES_OUVREES).isoformat(),
+        )
+        self.assertEqual(
+            created["echeance_max"],
+            echeance_reponse(soumis, DELAI_MAX_HEURES_OUVREES).isoformat(),
+        )
+        fetched = self.store.obtenir(created["id"])
+        self.assertEqual(fetched["echeance_cible"], created["echeance_cible"])
+        self.assertEqual(fetched["echeance_max"], created["echeance_max"])
+        self.assertEqual(fetched["echeance_statut"], created["echeance_statut"])
+
     def test_obtenir_inexistant(self):
         self.assertIsNone(self.store.obtenir("dem_inconnu"))
 
