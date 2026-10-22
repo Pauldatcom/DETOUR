@@ -18,6 +18,7 @@ from utils import (
     PROP_STATUTS,
     SOURCE_LABEL,
     STATUT_BROUILLON,
+    STATUT_CORRECTION_DEMANDEE,
     STATUT_PAR_DECISION,
     TRANSITIONS_PROPOSITION,
 )
@@ -100,7 +101,7 @@ def valider_prestation(data):
         return _ligne_manquante(prest_id, nom.strip(), type_.strip(), quantite)
 
     prix = data["prix_unitaire_eur"]
-    return {
+    ligne = {
         "id": prest_id,
         "nom": nom.strip(),
         "type": type_.strip(),
@@ -112,6 +113,10 @@ def valider_prestation(data):
         "source": data["source"].strip(),
         "consulte_le": data["consulte_le"].strip(),
     }
+    # #111: an edit must not hide that a v2 price was copied from v1, unread.
+    if data.get("copie_depuis_v1") is True:
+        ligne["copie_depuis_v1"] = True
+    return ligne
 
 
 def valider_proposition(data):
@@ -304,10 +309,17 @@ class PropositionStore:
             if not record:
                 return None
             champs = valider_proposition(data)
+            # #111: prices are never edited by hand and lines must not be
+            # re-marked "verified" from the browser. Once a proposal is sent or
+            # decided, only the title and message may change: the prestations
+            # are kept as stored by the server.
+            modifiable = record.get("statut") in (
+                STATUT_BROUILLON, STATUT_CORRECTION_DEMANDEE)
             record["titre"] = champs["titre"]
             record["description"] = champs["description"]
-            record["prestations"] = champs["prestations"]
-            record["prix_total_eur"] = champs["prix_total_eur"]
+            if modifiable:
+                record["prestations"] = champs["prestations"]
+                record["prix_total_eur"] = champs["prix_total_eur"]
             record["modifiee_le"] = utc_now_iso()
             self.save()
             return json.loads(json.dumps(record))

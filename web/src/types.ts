@@ -105,6 +105,8 @@ export interface PrestationRecherche {
   prix_total_eur: number;
   disponible: boolean;
   dans_budget: boolean;
+  /** Seats left on the departure date, as read from the server. */
+  places_restantes?: number;
 }
 
 /** Delta between proposal v1 and a newer server reading (never mutates v1). */
