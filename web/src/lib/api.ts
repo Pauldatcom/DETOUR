@@ -73,6 +73,11 @@ export const api = {
     }),
   rechercher: (id: string) =>
     request<{ recherche: unknown }>(`/api/demandes/${id}/recherche`, { method: "POST" }),
+  approveRequest: (id: string, confirmed: boolean) =>
+    request<{ demande: Demande }>(`/api/demandes/${id}/approbation`, {
+      method: "POST",
+      body: JSON.stringify({ confirme: confirmed }),
+    }),
   changerStatut: (id: string, statut: string, motif: string) =>
     request<{ demande: Demande }>(`/api/demandes/${id}/statut`, {
       method: "PATCH",

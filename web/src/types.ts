@@ -54,6 +54,13 @@ export interface Demande {
   recherches?: Recherche[];
   messages?: ChatMessage[];
   decisions?: DecisionStatut[];
+  /** Traveler approval before an advisor gets the request. */
+  approbation_client?: TravelerApproval;
+}
+
+export interface TravelerApproval {
+  statut: "en_attente" | "confirmee" | "refusee";
+  le: string | null;
 }
 
 export interface DemandeData {
