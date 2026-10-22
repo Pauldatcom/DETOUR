@@ -24,6 +24,21 @@ async function postJSON(path, payload) {
   });
 }
 
+/* ---------- Saut du O : confirmation du conseiller (#113) ----------
+   Le geste officiel : le O du logo saute une fois, 1,15 s, sans boucle.
+   Il n'est lancé que par la confirmation du conseiller — l'agent ne peut
+   jamais le déclencher. Sans mouvement réduit, le logo reste immobile
+   et l'état de confirmation reste visible à l'écran. */
+function jouerSautLogo() {
+  const logo = document.querySelector(".brand-mark");
+  if (!logo) return;
+  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  logo.classList.remove("saut");
+  void logo.getBoundingClientRect();
+  logo.classList.add("saut");
+  window.setTimeout(() => logo.classList.remove("saut"), 1150);
+}
+
 /* ---------- Déconnexion (toutes les pages connectées) ---------- */
 
 const logoutButton = document.getElementById("logout-button");

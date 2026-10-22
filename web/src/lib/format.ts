@@ -1,3 +1,5 @@
+import type { DecisionStatut } from "../types";
+
 export const STATUT_LABELS: Record<string, string> = {
   nouvelle: "Nouvelle",
   a_analyser: "À analyser",
@@ -38,6 +40,19 @@ export const STATUT_COLORS: Record<string, string> = {
 
 export function formatEuro(value: number): string {
   return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(value);
+}
+
+/**
+ * Last advisor confirmation of a proposal, if any (#113).
+ * The advisor confirms explicitly: the traveler sees who confirmed, when,
+ * and why. A proposal the agent only drafted has no confirmation yet.
+ */
+export function derniereConfirmation(decisions?: DecisionStatut[]): DecisionStatut | null {
+  if (!decisions) return null;
+  for (let i = decisions.length - 1; i >= 0; i -= 1) {
+    if (decisions[i].action === "accepter") return decisions[i];
+  }
+  return null;
 }
 
 export function formatDate(iso: string): string {

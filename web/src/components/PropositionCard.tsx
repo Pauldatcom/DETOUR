@@ -1,8 +1,9 @@
-import { Link } from "react-router-dom";
+﻿import { Link } from "react-router-dom";
 import type { ChangementLecture, ContrainteVerifiee, Prestation, Proposition } from "../types";
 import {
   PROP_STATUT_LABELS,
   STATUT_COLORS,
+  derniereConfirmation,
   formatEuro,
   formatDate,
   formatDateTime,
@@ -82,6 +83,8 @@ function ChangementLine({ item }: { item: ChangementLecture }) {
 /** Proposal card: title, total, and each line with its source and read time. */
 export function PropositionCard({ proposition: prop, linked = true }: PropositionCardProps) {
   const manquantes = prop.prestations.filter((p) => p.verification !== "verifie").length;
+  // The advisor confirms explicitly: the traveler sees who confirmed, when and why (#113).
+  const confirmation = derniereConfirmation(prop.decisions_statut);
   const advisor = advisorFirstName(prop);
   const body = (
     <>
@@ -98,6 +101,17 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
           {PROP_STATUT_LABELS[prop.statut] ?? prop.statut}
         </span>
       </div>
+
+      {confirmation && (
+        <div className="mt-3 rounded-xl border border-[#e8eef6] bg-[#f7fafd] p-3">
+          <p className="text-xs font-semibold text-[#0b2447]">
+            Confirmée par {confirmation.par} le {formatDateTime(confirmation.le)}
+          </p>
+          {confirmation.motif && (
+            <p className="mt-1 text-xs text-[#4b6480]">« {confirmation.motif} »</p>
+          )}
+        </div>
+      )}
 
       {prop.prestations.length > 0 && (
         <ul className="mt-4 space-y-2 border-t border-line pt-3">

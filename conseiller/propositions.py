@@ -8,6 +8,7 @@ from pathlib import Path
 
 import db
 from utils import (
+    ACTEUR_AGENT,
     DECISION_ACCEPTER,
     DECISION_ACTIONS,
     DECISION_CORRECTION,
@@ -349,12 +350,18 @@ class PropositionStore:
         motif, instructions, proposition visée et version visée. Elle est
         journalisée dans `decisions_statut` et le statut de la proposition
         suit l'action. Une correction et un refus exigent un motif.
+
+        L'agent ne peut jamais porter la décision : seul le conseiller
+        tranche, donc seul son clic peut déclencher la confirmation (#113).
         """
         if action not in DECISION_ACTIONS:
             raise PropositionError(
                 f"action doit être l'une de {', '.join(DECISION_ACTIONS)}.")
         if not isinstance(par, str) or not par.strip():
             raise PropositionError("Le nom du conseiller est obligatoire.")
+        if par.strip().lower() == ACTEUR_AGENT:
+            raise PropositionError(
+                "L'agent ne peut pas confirmer une proposition. Seul le conseiller tranche.")
         motif = (motif or "").strip()
         instructions = (instructions or "").strip()
         if action in DECISIONS_AVEC_MOTIF and not motif:

@@ -26,6 +26,7 @@ from propositions import PropositionError, PropositionStore
 from store import DemandStore
 from users import UserStore
 from utils import (
+    ACTEUR_AGENT,
     DECISION_ACCEPTER,
     DECISION_CORRECTION,
     DECISION_REFUSER,
@@ -369,6 +370,73 @@ class TestRoutesDecision(BaseDecisionProposition):
         self.assertEqual(status, 200)
         self.assertEqual(data["proposition"]["statut"], STATUT_CORRECTION_DEMANDEE)
         self.assertEqual(len(data["proposition"]["decisions_statut"]), 1)
+
+
+# --------------------------------------------- confirmation du conseiller (#113)
+class TestConfirmationConseiller(unittest.TestCase):
+    """La confirmation est explicite, journalisée, et jamais portée par l'agent."""
+
+    def setUp(self):
+        self.store = DemandStore(None)
+        self.props = PropositionStore(None)
+        self.dem_id = self.store.creer(dict(VALIDE, user_id="usr_zoe"))["id"]
+        self.prop = self.props.creer(self.dem_id, dict(PROPOSITION_VALIDE),
+                                     conseiller=CONSEILLER)
+
+    def test_l_agent_ne_peut_pas_confirmer(self):
+        """Seul le conseiller tranche : l'agent ne peut pas porter la décision."""
+        with self.assertRaises(PropositionError):
+            self.props.decider(self.prop["id"], DECISION_ACCEPTER, ACTEUR_AGENT, "ok")
+        record = self.props.obtenir(self.prop["id"])
+        self.assertEqual(record["statut"], STATUT_BROUILLON)
+        self.assertFalse(record.get("decisions_statut"))
+
+    def test_la_confirmation_est_journalisee_avec_son_auteur(self):
+        record = self.props.decider(self.prop["id"], DECISION_ACCEPTER, CONSEILLER,
+                                     "prix conforme au budget")
+        self.assertEqual(record["statut"], STATUT_ENVOYEE)
+        journal = record["decisions_statut"]
+        self.assertEqual(len(journal), 1)
+        self.assertEqual(journal[0]["action"], DECISION_ACCEPTER)
+        self.assertEqual(journal[0]["par"], CONSEILLER)
+        self.assertEqual(journal[0]["motif"], "prix conforme au budget")
+        self.assertTrue(journal[0]["le"])
+
+    def test_le_voyageur_voit_la_confirmation(self):
+        """L'état de confirmation est visible par le voyageur (#113)."""
+        self.props.decider(self.prop["id"], DECISION_ACCEPTER, CONSEILLER,
+                           "prix conforme au budget")
+        vues = self.props.lister_par_user("usr_zoe", self.store)
+        self.assertEqual(len(vues), 1)
+        self.assertEqual(vues[0]["statut"], STATUT_ENVOYEE)
+        journal = vues[0]["decisions_statut"]
+        self.assertEqual(journal[-1]["action"], DECISION_ACCEPTER)
+        self.assertEqual(journal[-1]["par"], CONSEILLER)
+        self.assertEqual(journal[-1]["motif"], "prix conforme au budget")
+
+    def test_une_correction_ne_donne_pas_de_confirmation(self):
+        """Corriger n'est pas confirmer : le voyageur n'a toujours pas de confirmation."""
+        self.props.decider(self.prop["id"], DECISION_CORRECTION, CONSEILLER,
+                           "prix a revoir", "un train moins cher")
+        vues = self.props.lister_par_user("usr_zoe", self.store)
+        journal = vues[0]["decisions_statut"]
+        self.assertEqual([d["action"] for d in journal], [DECISION_CORRECTION])
+
+
+class TestConfirmationParLApi(BaseDecisionProposition):
+    """La confirmation passe par l'API conseiller et reste journalisée."""
+
+    def test_la_confirmation_du_conseiller_est_enregistree(self):
+        client = self.conseiller()
+        status, data = client.post(f"/api/propositions/{self.prop['id']}/accepter",
+                                   {"motif": "prix conforme"})
+        self.assertEqual(status, 200)
+        proposition = data["proposition"]
+        self.assertEqual(proposition["statut"], STATUT_ENVOYEE)
+        journal = proposition["decisions_statut"]
+        self.assertEqual(len(journal), 1)
+        self.assertEqual(journal[0]["action"], DECISION_ACCEPTER)
+        self.assertNotEqual(journal[0]["par"], ACTEUR_AGENT)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"use strict";
+﻿"use strict";
 
 /**
  * Proposal detail UI for the advisor dashboard: provenance, reading deltas,
@@ -21,8 +21,8 @@ const PROP_STATUT_LABELS = {
   correction_requested: "Correction demandée",
 };
 
-/** Service types shown to the advisor (#39). */
-const TYPE_LABELS = {
+/** Prestation types shown to the advisor (#39). */
+const PRESTATION_LABELS = {
   transport: "Transport",
   hebergement: "Hébergement",
   activite: "Activité",
@@ -160,9 +160,11 @@ function blocDecisionProposition(prop, demId) {
       badge.replaceWith(badgeDecision(apres));
       marquerTerminal(libelle);
       champs.hidden = true;
-      // #113 : le conseiller confirme la réservation → le O saute une fois.
-      // L'agent ne déclenche jamais cette animation.
-      if (apres === "validee" && typeof jouerSautLogo === "function") {
+
+      // #113 : la confirmation explicite du conseiller fait sauter le O.
+      // Un seul passage de 1,15 s ; l'agent ne déclenche jamais ce geste.
+      if (decision.action === "accepter" && typeof jouerSautLogo === "function") {
+
         jouerSautLogo();
       }
     } catch (err) {
@@ -314,7 +316,7 @@ async function afficherPropositionsDemande(content, demId, propsData) {
       }
       for (const item of prop.prestations || []) {
         const li = document.createElement("li");
-        const type = TYPE_LABELS[item.type] || item.type;
+        const type = PRESTATION_LABELS[item.type] || item.type;
         if (item.verification === "verifie") {
           const dispo = item.disponible ? "disponible" : "indisponible";
           const prix = parPersonne[item.id] ?? item.prix_unitaire_eur;
