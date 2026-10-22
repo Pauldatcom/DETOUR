@@ -7,14 +7,16 @@ import { InspirationsPage } from "./pages/Inspirations";
 import { ConseillersPage } from "./pages/Conseillers";
 import { MesPropositions } from "./pages/MesPropositions";
 import { PropositionDetail } from "./pages/PropositionDetail";
+import { EspaceConseiller } from "./pages/EspaceConseiller";
 import { api } from "./lib/api";
 import type { Config } from "./types";
 
 /**
- * Routage DÉTOUR — pas de dashboard.
+ * Routage DÉTOUR.
  *
  * Public : / → /accueil, /inspirations, /conseillers, /login
- * Authentifié : /mes-propositions
+ * Client authentifié : /mes-propositions, /propositions/:id
+ * Conseiller authentifié : /espace-conseiller
  */
 export default function App() {
   const { session, loading, refresh } = useSession();
@@ -38,6 +40,7 @@ export default function App() {
   }
 
   const connecte = session?.connecte ?? false;
+  const estConseiller = connecte && session?.role === "conseiller";
 
   return (
     <Routes>
@@ -53,19 +56,25 @@ export default function App() {
         path="/login"
         element={
           connecte ? (
-            <Navigate to="/mes-propositions" replace />
+            estConseiller ? (
+              <Navigate to="/espace-conseiller" replace />
+            ) : (
+              <Navigate to="/mes-propositions" replace />
+            )
           ) : (
             <Login onSession={refresh} googleOauth={config?.google_oauth ?? false} />
           )
         }
       />
 
-      {/* ── Authentifié ────────────────────────────────────────── */}
+      {/* ── Client authentifié ─────────────────────────────────── */}
       <Route
         path="/mes-propositions"
         element={
-          connecte ? (
+          connecte && !estConseiller ? (
             <MesPropositions nom={session?.nom} onLogout={refresh} />
+          ) : estConseiller ? (
+            <Navigate to="/espace-conseiller" replace />
           ) : (
             <Navigate to="/login" replace />
           )
@@ -73,7 +82,21 @@ export default function App() {
       />
       <Route
         path="/propositions/:id"
-        element={connecte ? <PropositionDetail /> : <Navigate to="/login" replace />}
+        element={
+          connecte && !estConseiller ? <PropositionDetail /> : <Navigate to="/login" replace />
+        }
+      />
+
+      {/* ── Conseiller authentifié ─────────────────────────────── */}
+      <Route
+        path="/espace-conseiller"
+        element={
+          estConseiller ? (
+            <EspaceConseiller nom={session?.nom} onLogout={refresh} />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
       />
 
       {/* ── 404 → accueil ──────────────────────────────────────── */}
