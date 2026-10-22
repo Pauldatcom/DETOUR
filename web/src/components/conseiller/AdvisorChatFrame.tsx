@@ -48,7 +48,7 @@ export function AdvisorChatFrame({
       <button
         type="button"
         onClick={onToggle}
-        className="fixed bottom-6 left-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-ink text-chalk shadow-lg transition outline-none hover:bg-ink/90 focus-visible:outline focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-yellow"
+        className="fixed bottom-6 left-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-ink text-chalk shadow-lg transition outline-none hover:bg-ink/90 focus-visible:outline focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-yellow motion-reduce:transition-none"
         aria-label={open ? launcherLabelOpen : launcherLabelClosed}
         aria-expanded={open}
       >
@@ -130,7 +130,7 @@ export function AdvisorChatFrame({
             <button
               type="submit"
               disabled={loading || submitDisabled}
-              className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-full bg-ink text-chalk transition outline-none hover:bg-ink/90 disabled:opacity-50"
+              className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-full bg-ink text-chalk transition outline-none hover:bg-ink/90 disabled:opacity-50 motion-reduce:transition-none"
               aria-label="Envoyer"
             >
               <svg

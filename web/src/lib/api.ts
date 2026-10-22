@@ -8,6 +8,7 @@ import type {
   Proposition,
   ChatMessage,
   ChatResult,
+  ConseillerChatResult,
   ApiError as ApiErrorType,
 } from "../types";
 
@@ -148,6 +149,12 @@ export const api = {
       },
     ),
 
+  /** Advisor assistant (#115): read-only search, never a decision. */
+  conseillerChat: (messages: ChatMessage[], demandeId?: string | null) =>
+    request<ConseillerChatResult>("/api/conseiller/chat", {
+      method: "POST",
+      body: JSON.stringify({ messages, ...(demandeId ? { demande_id: demandeId } : {}) }),
+    }),
   chat: (messages: ChatMessage[], demandeId?: string) =>
     request<ChatResult>("/api/chat", {
       method: "POST",

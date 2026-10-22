@@ -4,6 +4,7 @@ import { PublicNav } from "../components/landing/PublicNav";
 import { Footer } from "../components/landing/Footer";
 import { RequestList } from "../components/conseiller/workspace/RequestList";
 import { RequestFile } from "../components/conseiller/workspace/RequestFile";
+import { AdvisorChat } from "../components/conseiller/AdvisorChat";
 import type { Demande, Session } from "../types";
 
 const NEVER = new Date(8640000000000000).getTime();
@@ -122,6 +123,8 @@ export function EspaceConseiller({ nom, session, onLogout }: EspaceConseillerPro
           </div>
         )}
       </main>
+      {/* #120: one conversation per request; switching request starts a new one. */}
+      <AdvisorChat key={selectedId ?? "aucun"} demandeId={selectedId} />
       <Footer />
     </div>
   );
