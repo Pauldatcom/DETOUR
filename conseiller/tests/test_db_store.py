@@ -102,7 +102,7 @@ class TestDemandStoreSqlite(unittest.TestCase):
         row = store.conn.execute(
             "SELECT statut, user_id, data FROM demandes WHERE id = ?",
             (record["id"],)).fetchone()
-        self.assertEqual(row["statut"], "a_analyser")
+        self.assertEqual(row["statut"], "nouvelle")
         self.assertEqual(row["user_id"], "u1")
         payload = json.loads(row["data"])
         self.assertEqual(payload["id"], record["id"])

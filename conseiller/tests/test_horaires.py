@@ -22,8 +22,10 @@ from horaires import (
     avancer_heures_ouvrees,
     est_ouvert,
     echeance_reponse,
+    evaluer_delai_reponse,
     fenetre_reponse,
     fuseau_metier,
+    heures_ouvrees_entre,
     marquer_echeances,
     prochaine_ouverture,
     vers_metier,
@@ -269,6 +271,282 @@ class TestMarquerEcheances(unittest.TestCase):
         self.assertEqual(marque["id"], "dem_1")
         self.assertEqual(marque["statut"], "a_analyser")
 
+
+class TestSoumissionHorsHoraires(unittest.TestCase):
+    """#49: a request can be submitted when the service is closed."""
+
+    def test_fenetre_samedi_ne_promet_pas_une_reponse_immediate(self):
+        fenetre = fenetre_reponse(metier(2026, 1, 10, 15, 0))  # saturday
+        self.assertFalse(fenetre["ouvert"])
+        self.assertFalse(est_ouvert(metier(2026, 1, 10, 15, 0)))
+        self.assertIn("fermé", fenetre["message"])
+
+    def test_creation_reste_nouvelle_avec_horodatage(self):
+        from store import DemandStore
+        from test_conseiller import VALIDE
+
+        record = DemandStore(None).creer(dict(VALIDE))
+        self.assertEqual(record["statut"], "nouvelle")
+        self.assertTrue(record["cree_le"])
+        # Closed hours must not block persistence (no gate in creer).
+        self.assertTrue(record["id"].startswith("dem_"))
+
+
+class TestEcheanceSurDemande(unittest.TestCase):
+    """#50: SLA deadlines use working hours only (24h target, 48h max)."""
+
+    def test_lundi_10h_cible_et_max(self):
+        soumis = metier(2026, 1, 5, 10, 0)  # monday 10:00
+        self.assertEqual(
+            echeance_reponse(soumis, DELAI_CIBLE_HEURES_OUVREES),
+            metier(2026, 1, 7, 16, 0),  # +24 working hours
+        )
+        self.assertEqual(
+            echeance_reponse(soumis, DELAI_MAX_HEURES_OUVREES),
+            metier(2026, 1, 12, 13, 0),  # +48 working hours (skips weekend)
+        )
+
+    def test_samedi_compte_depuis_lundi_9h(self):
+        soumis = metier(2026, 1, 10, 15, 0)  # saturday
+        # Count starts Monday 09:00 → +24 working hours = Wednesday 15:00
+        self.assertEqual(
+            echeance_reponse(soumis, DELAI_CIBLE_HEURES_OUVREES),
+            metier(2026, 1, 14, 15, 0),
+        )
+
+
+class TestHeuresOuvreesEntre(unittest.TestCase):
+    """#52: the actual response time is counted in working hours only."""
+
+    def test_meme_journee(self):
+        self.assertEqual(
+            heures_ouvrees_entre(
+                metier(2026, 1, 6, 10, 0),
+                metier(2026, 1, 6, 14, 30),
+            ),
+            4.5,
+        )
+
+    def test_saut_par_dessus_la_nuit(self):
+        # Mardi 16h -> mercredi 11h = 2h mardi + 2h mercredi.
+        self.assertEqual(
+            heures_ouvrees_entre(
+                metier(2026, 1, 6, 16, 0),
+                metier(2026, 1, 7, 11, 0),
+            ),
+            4,
+        )
+
+    def test_vendredi_soir_a_lundi_saute_le_weekend(self):
+        # Vendredi 17h -> lundi 10h = 1h vendredi + 1h lundi.
+        self.assertEqual(
+            heures_ouvrees_entre(
+                metier(2026, 1, 9, 17, 0),
+                metier(2026, 1, 12, 10, 0),
+            ),
+            2,
+        )
+
+    def test_depart_hors_ouverture_compte_a_partir_de_l_ouverture(self):
+        # Samedi 10h -> lundi 10h : seule la premiere heure de lundi compte.
+        self.assertEqual(
+            heures_ouvrees_entre(
+                metier(2026, 1, 10, 10, 0),
+                metier(2026, 1, 12, 10, 0),
+            ),
+            1,
+        )
+
+        # Lundi 7h -> lundi 10h : le compte demarre a 9h.
+        self.assertEqual(
+            heures_ouvrees_entre(
+                metier(2026, 1, 5, 7, 0),
+                metier(2026, 1, 5, 10, 0),
+            ),
+            1,
+        )
+
+    def test_reponse_hors_ouverture_ne_compte_pas_la_nuit(self):
+        # Mardi 17h -> mardi 23h : 1h seulement (fermeture a 18h).
+        self.assertEqual(
+            heures_ouvrees_entre(
+                metier(2026, 1, 6, 17, 0),
+                metier(2026, 1, 6, 23, 0),
+            ),
+            1,
+        )
+
+    def test_fin_avant_ou_egale_au_debut_donne_zero(self):
+        moment = metier(2026, 1, 6, 10, 0)
+
+        self.assertEqual(
+            heures_ouvrees_entre(moment, moment),
+            0.0,
+        )
+        self.assertEqual(
+            heures_ouvrees_entre(
+                moment,
+                metier(2026, 1, 6, 9, 0),
+            ),
+            0.0,
+        )
+
+    def test_aller_retour_avec_avancer_heures_ouvrees(self):
+        depart = metier(2026, 1, 6, 10, 0)
+
+        for heures in (1, 9, 24, 48):
+            self.assertEqual(
+                heures_ouvrees_entre(
+                    depart,
+                    avancer_heures_ouvrees(depart, heures),
+                ),
+                heures,
+            )
+
+    def test_instants_naifs_et_utc_acceptes(self):
+        debut = datetime(
+            2026, 1, 6, 9, 0, tzinfo=timezone.utc
+        )  # 10h a Paris
+
+        fin = datetime(
+            2026, 1, 6, 13, 0, tzinfo=timezone.utc
+        )  # 14h a Paris
+
+        self.assertEqual(
+            heures_ouvrees_entre(debut, fin),
+            4,
+        )
+
+
+class TestEvaluerDelaiReponse(unittest.TestCase):
+    """#52: the advisor sees if the answer came within 24h or after the 48h maximum."""
+
+    SOUMIS = metier(2026, 1, 6, 10, 0)  # mardi 10h
+
+    def test_dans_le_delai_de_24_heures(self):
+        res = evaluer_delai_reponse(
+            self.SOUMIS,
+            metier(2026, 1, 7, 10, 0),
+        )
+
+        self.assertEqual(res["statut"], ECHEANCE_DANS_DELAI)
+        self.assertEqual(res["heures_ouvrees"], 9)
+
+    def test_juste_avant_la_cible(self):
+        # Cible = jeudi 16h : 15h59 est encore dans le delai.
+        res = evaluer_delai_reponse(
+            self.SOUMIS,
+            metier(2026, 1, 8, 15, 59),
+        )
+
+        self.assertEqual(res["statut"], ECHEANCE_DANS_DELAI)
+
+    def test_cible_depassee_mais_avant_le_maximum(self):
+        res = evaluer_delai_reponse(
+            self.SOUMIS,
+            metier(2026, 1, 8, 17, 0),
+        )
+
+        self.assertEqual(res["statut"], ECHEANCE_APPROCHE)
+        self.assertEqual(res["heures_ouvrees"], 25)
+
+    def test_apres_le_maximum_de_48_heures(self):
+        res = evaluer_delai_reponse(
+            self.SOUMIS,
+            metier(2026, 1, 13, 14, 0),
+        )
+
+        self.assertEqual(res["statut"], ECHEANCE_DEPASSEE)
+        self.assertEqual(res["heures_ouvrees"], 49)
+
+    def test_memes_seuils_que_la_file_conseiller(self):
+        # Meme instant, meme verdict que marquer_echeances (#51).
+        for repondu in (
+            metier(2026, 1, 7, 10, 0),
+            metier(2026, 1, 8, 16, 0),
+            metier(2026, 1, 8, 17, 0),
+            metier(2026, 1, 13, 14, 0),
+        ):
+            file_ = marquer_echeances(
+                {"cree_le": self.SOUMIS.isoformat()},
+                maintenant=repondu,
+            )
+
+            self.assertEqual(
+                evaluer_delai_reponse(
+                    self.SOUMIS,
+                    repondu,
+                )["statut"],
+                file_["echeance_statut"],
+            )
+
+    def test_demande_du_weekend_compte_depuis_lundi(self):
+        # Soumise samedi 15h, repondue lundi 11h : 2h ouvrees seulement.
+        res = evaluer_delai_reponse(
+            metier(2026, 1, 10, 15, 0),
+            metier(2026, 1, 12, 11, 0),
+        )
+
+        self.assertEqual(res["statut"], ECHEANCE_DANS_DELAI)
+        self.assertEqual(res["heures_ouvrees"], 2)
+
+
+class TestEcheanceFigeeApresReponse(unittest.TestCase):
+    """#52: an answered request keeps the deadline status it had when answered."""
+
+    def test_statut_fige_au_moment_de_la_reponse(self):
+        record = {
+            "cree_le": metier(2026, 1, 6, 10, 0).isoformat(),
+            "reponse": {
+                "le": metier(2026, 1, 7, 10, 0).isoformat()
+            },
+        }
+
+        # Un mois plus tard, la demande n'est pas « depassee » :
+        # elle a ete repondue a temps.
+        marque = marquer_echeances(
+            record,
+            maintenant=metier(2026, 2, 10, 10, 0),
+        )
+
+        self.assertEqual(
+            marque["echeance_statut"],
+            ECHEANCE_DANS_DELAI,
+        )
+
+    def test_reponse_tardive_reste_depassee(self):
+        record = {
+            "cree_le": metier(2026, 1, 6, 10, 0).isoformat(),
+            "reponse": {
+                "le": metier(2026, 1, 13, 14, 0).isoformat()
+            },
+        }
+
+        marque = marquer_echeances(
+            record,
+            maintenant=metier(2026, 1, 13, 15, 0),
+        )
+
+        self.assertEqual(
+            marque["echeance_statut"],
+            ECHEANCE_DEPASSEE,
+        )
+
+    def test_reponse_illisible_retombe_sur_le_comportement_habituel(self):
+        record = {
+            "cree_le": metier(2026, 1, 6, 10, 0).isoformat(),
+            "reponse": {"le": "pas une date"},
+        }
+
+        marque = marquer_echeances(
+            record,
+            maintenant=metier(2026, 1, 7, 10, 0),
+        )
+
+        self.assertEqual(
+            marque["echeance_statut"],
+            ECHEANCE_DANS_DELAI,
+        )
 
 if __name__ == "__main__":
     unittest.main()

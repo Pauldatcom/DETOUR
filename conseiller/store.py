@@ -7,12 +7,14 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from horaires import marquer_echeances
+from horaires import evaluer_delai_reponse, marquer_echeances
 import db
 from utils import (ACTIVITES_POSSIBLES, ACTEUR_AGENT, NIVEAUX_AVENTURE,
                    QUALIF_EN_COURS,
                    QUALIF_INCOMPLET, QUALIF_PRET_PROPOSITION, QUALIF_PRET_RELECTURE,
-                   STATUTS, STATUT_A_ANALYSER, STATUT_PROPOSE, STATUT_VALIDE,
+                   REPONSE_MAX_CARACTERES,
+                   STATUTS, STATUT_A_ANALYSER, STATUT_NOUVELLE, STATUT_PROPOSE,
+                   STATUT_REPONDUE, STATUT_VALIDE,
                    TYPES_ACTIVITE_PHYSIQUE, TYPES_AVEC_GUIDE, TYPES_VOYAGE,
                    TRANSITIONS_DEMANDE)
 
@@ -394,7 +396,9 @@ class DemandStore:
             dem_id = "dem_" + secrets.token_hex(6)
             record = {
                 "id": dem_id,
-                "statut": STATUT_A_ANALYSER,
+                # #49: customer submission is always accepted (Submitted → nouvelle),
+                # including outside advisor working hours.
+                "statut": STATUT_NOUVELLE,
                 "cree_le": utc_now_iso(),
                 "demande": valide,
                 "qualification_retenue": None,
@@ -403,7 +407,8 @@ class DemandStore:
             recalculer_qualification(record)
             self.demandes[dem_id] = record
             self.save()
-            return _publier(record)
+            # #50: expose 24h/48h working-hour deadlines as soon as the request exists.
+            return marquer_echeances(_publier(record))
 
     def lister(self):
         with self.lock:
@@ -413,7 +418,32 @@ class DemandStore:
     def obtenir(self, dem_id):
         with self.lock:
             record = self.demandes.get(dem_id)
-            return _publier(record) if record else None
+            if not record:
+                return None
+            # #50: same deadline fields as the advisor queue (lister).
+            return marquer_echeances(_publier(record))
+
+    def obtenir_pour_voyageur(self, dem_id, user_id):
+        """Load a request for chat resume (#23). Unknown or foreign ids fail.
+
+        Unlike `obtenir`, this never returns None: the caller must not silently
+        start a new conversation when the client sent a demande_id.
+        """
+        if not isinstance(user_id, str):
+            user_id = ""
+        user_id = user_id.strip()
+        with self.lock:
+            record = self.demandes.get(dem_id)
+            if not record:
+                raise ValidationError("Demande introuvable.")
+            existant_uid = (record.get("demande") or {}).get("user_id", "")
+            if not isinstance(existant_uid, str):
+                existant_uid = ""
+            existant_uid = existant_uid.strip()
+            if existant_uid and existant_uid != user_id:
+                raise ValidationError(
+                    "This request belongs to another traveler.")
+            return _publier(record)
 
     def mettre_a_jour(self, dem_id, **champs):
         with self.lock:
@@ -485,7 +515,8 @@ class DemandStore:
                 merged = valider_demande(merged)
             record = {
                 "id": dem_id,
-                "statut": STATUT_A_ANALYSER,
+                # #49: draft-from-answers is still a customer submission (nouvelle).
+                "statut": STATUT_NOUVELLE,
                 "cree_le": utc_now_iso(),
                 "demande": merged,
                 "qualification_retenue": None,
@@ -494,7 +525,7 @@ class DemandStore:
             recalculer_qualification(record)
             self.demandes[dem_id] = record
             self.save()
-            return _publier(record), mis_a_jour
+            return marquer_echeances(_publier(record)), mis_a_jour
 
     def corriger(self, dem_id, champs, auteur, motif=""):
         """Let the advisor correct fields of a request. Every change is recorded.
@@ -639,11 +670,81 @@ class DemandStore:
             self.save()
             return _publier(record)
 
-    def _appliquer_statut(self, record, statut):
+    def repondre(self, dem_id, message, par, maintenant=None):
+        """Le conseiller enregistre sa réponse à la demande du voyageur (#52).
+
+        La réponse garde son auteur, sa date et son heure. La demande passe au
+        statut « Répondue » et le temps de réponse réel (en heures ouvrées) est
+        calculé, puis comparé à la cible de 24 h et au maximum de 48 h.
+        Une demande n'a qu'une réponse : le délai mesuré est celui de la
+        première. Retourne None si la demande est inconnue.
+        """
+        _refuser_agent(par)
+        _valider_auteur(par)
+
+        if not isinstance(message, str) or not message.strip():
+            raise ValidationError("La réponse ne peut pas être vide.")
+
+        message = message.strip()
+
+        if len(message) > REPONSE_MAX_CARACTERES:
+            raise ValidationError(
+                f"La réponse ne peut pas dépasser {REPONSE_MAX_CARACTERES} caractères."
+            )
+
+        maintenant = maintenant or datetime.now(timezone.utc)
+
+        with self.lock:
+            record = self.demandes.get(dem_id)
+
+            if not record:
+                return None
+
+            if record.get("reponse"):
+                raise ValidationError("Cette demande a déjà reçu une réponse.")
+
+            avant = self._appliquer_statut(
+                record,
+                STATUT_REPONDUE,
+                via_reponse=True,
+            )
+
+            delai = evaluer_delai_reponse(
+                datetime.fromisoformat(record["cree_le"]),
+                maintenant,
+            )
+
+            record["reponse"] = {
+                "message": message,
+                "par": par.strip(),
+                "le": maintenant.isoformat(),
+                "delai_heures_ouvrees": delai["heures_ouvrees"],
+                "delai_statut": delai["statut"],
+            }
+
+            _journaliser(
+                record,
+                "reponse",
+                par,
+                "",
+                avant=avant,
+                apres=STATUT_REPONDUE,
+            )
+
+            self.save()
+            return marquer_echeances(_publier(record))
+
+    def _appliquer_statut(self, record, statut, via_reponse=False):
         """Applique un statut en vérifiant la transition et la qualification.
 
-        Retourne le statut précédent.
+        Le statut « Répondue » ne s'obtient qu'en enregistrant une réponse
+        (`repondre`) : un changement de statut seul laisserait une demande
+        « répondue » sans auteur, sans date ni délai. Retourne le statut précédent.
         """
+        if statut == STATUT_REPONDUE and not via_reponse:
+            raise ValidationError(
+                "Le statut « Répondue » s'obtient en envoyant une réponse au voyageur."
+            )
         actuel = record.get("statut")
         if statut not in TRANSITIONS_DEMANDE.get(actuel, frozenset()):
             raise ValidationError(

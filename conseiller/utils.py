@@ -32,6 +32,9 @@ TYPES_AVEC_GUIDE = ("trek-randonnee",)
 STATUT_NOUVELLE = "nouvelle"
 STATUT_A_ANALYSER = "a_analyser"
 STATUT_A_REVOIR = "a_revoir"  # To review — price or availability changed after v1.
+# #52: Answered — set only by recording the advisor's response (never by a bare
+# status change), so an answered request always carries who answered and when.
+STATUT_REPONDUE = "repondue"
 STATUT_PROPOSE = "propose"
 STATUT_VALIDE = "valide"
 STATUT_REFUSE = "refuse"
@@ -39,6 +42,7 @@ STATUTS = (
     STATUT_NOUVELLE,
     STATUT_A_ANALYSER,
     STATUT_A_REVOIR,
+    STATUT_REPONDUE,
     STATUT_PROPOSE,
     STATUT_VALIDE,
     STATUT_REFUSE,
@@ -64,6 +68,7 @@ STATUT_LABELS = {
     STATUT_NOUVELLE: "Nouvelle",
     STATUT_A_ANALYSER: "À analyser",
     STATUT_A_REVOIR: "À revoir",
+    STATUT_REPONDUE: "Répondue",
     STATUT_PROPOSE: "Proposée",
     STATUT_VALIDE: "Validée",
     STATUT_REFUSE: "Refusée",
@@ -72,13 +77,20 @@ STATUT_LABELS = {
 # Transitions de statut autorisées pour une demande. Un statut absent de la
 # liste est terminal : aucune décision ne peut le faire bouger.
 TRANSITIONS_DEMANDE = {
-    STATUT_NOUVELLE: frozenset({STATUT_A_ANALYSER, STATUT_REFUSE}),
-    STATUT_A_ANALYSER: frozenset({STATUT_A_REVOIR, STATUT_PROPOSE, STATUT_VALIDE, STATUT_REFUSE}),
-    STATUT_A_REVOIR: frozenset({STATUT_A_ANALYSER, STATUT_PROPOSE, STATUT_VALIDE, STATUT_REFUSE}),
+    # #49: submitted (nouvelle) can be taken in charge, refused, or flagged
+    # to review after a re-read — without claiming an advisor already analysed it.
+    # #52: it can also be answered (Answered) by the advisor.
+    STATUT_NOUVELLE: frozenset({STATUT_A_ANALYSER, STATUT_A_REVOIR, STATUT_REPONDUE, STATUT_REFUSE}),
+    STATUT_A_ANALYSER: frozenset({STATUT_A_REVOIR, STATUT_REPONDUE, STATUT_PROPOSE, STATUT_VALIDE, STATUT_REFUSE}),
+    STATUT_A_REVOIR: frozenset({STATUT_A_ANALYSER, STATUT_REPONDUE, STATUT_PROPOSE, STATUT_VALIDE, STATUT_REFUSE}),
+    # #52: once answered, the request goes on with the usual workflow.
+    STATUT_REPONDUE: frozenset({STATUT_A_ANALYSER, STATUT_A_REVOIR, STATUT_PROPOSE, STATUT_VALIDE, STATUT_REFUSE}),
     STATUT_PROPOSE: frozenset({STATUT_VALIDE, STATUT_REFUSE, STATUT_A_ANALYSER, STATUT_A_REVOIR}),
     STATUT_VALIDE: frozenset(),
     STATUT_REFUSE: frozenset(),
 }
+# #52: maximum length of the advisor's written response to a request.
+REPONSE_MAX_CARACTERES = 5000
 
 # Comptes voyageurs.
 ITERATIONS = 260_000

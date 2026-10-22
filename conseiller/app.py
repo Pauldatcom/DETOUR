@@ -32,6 +32,7 @@ from lecture import (
 from propositions import PropositionError, PropositionStore
 
 from store import DemandStore, ValidationError, criteres_depuis_demande
+from traces import finaliser_et_persister
 from users import UserStore, UserError
 from utils import (DECISION_ACCEPTER, DECISION_CORRECTION, DECISION_REFUSER,
                    GOOGLE_OAUTH_URL, GOOGLE_TOKEN_URL, GOOGLE_USERINFO_URL,
@@ -39,6 +40,17 @@ from utils import (DECISION_ACCEPTER, DECISION_CORRECTION, DECISION_REFUSER,
 
 ROOT = Path(__file__).resolve().parent
 WEB_ROOT = ROOT.parent / "web" / "dist"
+
+# Logo officiel DÉTOUR : source unique, le kit brand-2026 à la racine du dépôt.
+DOSSIER_LOGOS = ROOT.parent / "brand-2026" / "logo"
+LOGOS_OFFICIELS = {
+    "detour-logo.svg",
+    "detour-logo-negatif.svg",
+    "detour-logo-negatif-transparent.svg",
+    "detour-logo-mono-encre.svg",
+    "detour-logo-mono-blanc.svg",
+    "detour-monogramme.svg",
+}
 
 
 def load_env_file(path=None):
@@ -72,7 +84,7 @@ class SessionError(Exception):
 
 
 def make_handler(store, supplier=None, agent=None, users=None, team_key="",
-                 propositions=None):
+                 propositions=None, traces_dir=None):
     """Construit le handler HTTP.
 
     - `users=None` : mode développement/tests, aucune authentification requise
@@ -80,6 +92,7 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
     - `users=UserStore(...)` : portail actif — les pages et les routes
       protégées exigent une session (voyageur ou conseiller).
     - `propositions=None` : store de propositions en mémoire (mode tests).
+    - `traces_dir` : dossier pour les traces agent expurgées (#5); None = pas d'écriture.
     """
 
     if propositions is None:
@@ -99,6 +112,12 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
     def session_supprimer(token):
         with sessions_lock:
             sessions.pop(token, None)
+
+    def session_invalider_utilisateur(user_id, token_conserve=None):
+        with sessions_lock:
+            for t in [t for t, s in sessions.items()
+                      if s.get("user_id") == user_id and t != token_conserve]:
+                sessions.pop(t, None)
 
     def session_lire(token):
         if not token:
@@ -176,6 +195,24 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
             self.send_response(200)
             self.send_header("Content-Type", f"{mime or 'application/octet-stream'}; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def send_brand_asset(self, filename):
+            """Logo officiel (brand-2026) servi tel quel : ni déformé, ni recoloré.
+
+            `detour-logo-negatif-transparent.svg` est le négatif officiel sans le
+            fond Encre du kit, pour les surfaces sombres legacy (#07101E).
+            """
+            if filename not in LOGOS_OFFICIELS:
+                raise ApiError(404, "not_found", "Logo introuvable.")
+            body = (DOSSIER_LOGOS / filename).read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/svg+xml")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'self'; img-src 'self' data:; base-uri 'none'")
             self.end_headers()
             self.wfile.write(body)
 
@@ -266,6 +303,9 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                             return self.redirect("/login")
                     return self.send_static("conseiller.html")
 
+                if method == "GET" and path.startswith("/brand/"):
+                    return self.send_brand_asset(path.rsplit("/", 1)[-1])
+
                 # ---------- React SPA (web/dist) ----------
                 if method == "GET" and WEB_ROOT.exists() \
                         and not path.startswith("/api/") \
@@ -317,7 +357,8 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                 if method == "GET" and path == "/api/session":
                     if session:
                         return self.send_json(200, {"connecte": True, "role": session["role"],
-                                                    "nom": session.get("nom", "")})
+                                                    "nom": session.get("nom", ""),
+                                                    "email": session.get("email", "")})
                     if users is None:  # tests/dev mode: access without account
                         return self.send_json(200, {"connecte": True, "role": "client", "nom": ""})
                     return self.send_json(200, {"connecte": False})
@@ -337,10 +378,19 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                     admin = session and session["role"] == "conseiller"
                     client = session and session["role"] == "client"
 
-                    if path in ("/api/mes-demandes", "/api/mes-propositions"):
+                    if path in ("/api/mes-demandes", "/api/mes-propositions",
+                                "/api/account", "/api/account/password"):
                         if not client:
-                            raise ApiError(401, "auth_requise", "Connectez-vous pour voir vos demandes.")
+                            raise ApiError(401, "auth_requise", "Connectez-vous avec un compte voyageur.")
+                    elif method == "POST" and path == "/api/demandes":
+                        if not client:
+                            raise ApiError(401, "auth_requise", "Connectez-vous pour envoyer une demande.")
                     elif path in ("/api/stats", "/api/propositions") and method == "GET":
+                        if not admin:
+                            raise ApiError(401, "auth_requise", "Accès conseiller requis.")
+                    elif method == "POST" and re.fullmatch(
+                            r"/api/demandes/(dem_[a-f0-9]+)/reponse", path):
+                        # #52: only an advisor answers a customer request.
                         if not admin:
                             raise ApiError(401, "auth_requise", "Accès conseiller requis.")
                     elif method == "GET" and (m := re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)", path)):
@@ -493,6 +543,16 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                             d["client"] = users.obtenir(d.get("demande", {}).get("user_id", ""))
                     return self.send_json(200, {"demandes": demandes, "simulation": True})
 
+                if method == "GET" and path == "/api/account":
+                    session = client_exige(self)
+                    if users is None:
+                        raise ApiError(503, "auth_desactivee", "Portail non configuré (users).")
+                    compte = users.obtenir(session.get("user_id", ""))
+                    if compte is None:
+                        raise UserError("Compte introuvable.", 404, "compte_introuvable")
+                    compte["mot_de_passe_defini"] = users.mot_de_passe_defini(session["user_id"])
+                    return self.send_json(200, {"compte": compte})
+
                 if method == "GET" and path == "/api/catalogue":
                     if supplier is None:
                         raise ApiError(503, "supplier_not_configured", "Serveur fictif non configuré.")
@@ -535,8 +595,43 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                             "demande": dem,
                             "simulation": True,
                         })
+                if method == "POST":
+                    # #52: the advisor sends a written response to the customer request.
+                    # Author, date and time are set by the server, never by the client.
+                    match = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/reponse", path)
+                    if match:
+                        session = admin_exige(self)
+                        data = self.read_json()
+                        record = store.repondre(match.group(1), data.get("message"),
+                                                _nom_conseiller(session))
+                        if record is None:
+                            raise ApiError(404, "demande_not_found", "Demande introuvable.")
+                        if users is not None:
+                            record["client"] = users.obtenir(record.get("demande", {}).get("user_id", ""))
+                        return self.send_json(201, {"demande": record, "simulation": True})
 
                 if method == "PATCH":
+                    if path == "/api/account":
+                        session = client_exige(self)
+                        if users is None:
+                            raise ApiError(503, "auth_desactivee", "Portail non configuré (users).")
+                        data = self.read_json()
+                        if users.mot_de_passe_defini(session.get("user_id", "")):
+                            if not users.verifier_mot_de_passe(
+                                    session.get("user_id", ""),
+                                    data.get("mot_de_passe_actuel", "")):
+                                raise UserError("Le mot de passe actuel est incorrect.",
+                                                401, "mot_de_passe_actuel_invalide")
+                        compte = users.mettre_a_jour_profil(
+                            session.get("user_id", ""), data.get("email"), data.get("nom"))
+                        compte["mot_de_passe_defini"] = users.mot_de_passe_defini(session["user_id"])
+                        token = _token_depuis_cookie(self.headers)
+                        with sessions_lock:
+                            session_stockee = sessions.get(token)
+                            if session_stockee is not None:
+                                session_stockee.update(email=compte["email"], nom=compte["nom"])
+                        return self.send_json(200, {"compte": compte})
+
                     match = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/qualification", path)
                     if match:
                         session = admin_exige(self)
@@ -601,9 +696,16 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                         user_id=session.get("user_id", "") if isinstance(session, dict) else "",
                         demande_id=demande_id,
                     )
+                    # #5: persist a redacted trace (also printed for local debug).
+                    thread_id = demande_id or (result.get("demande") or {}).get("id")
+                    result["trace"] = finaliser_et_persister(
+                        result.get("trace") or {},
+                        traces_dir,
+                        request_id=thread_id or (result.get("trace") or {}).get("request_id"),
+                        reponse_finale=result.get("reply") or "",
+                    )
                     print("[agent] " + json.dumps(result["trace"], ensure_ascii=False), flush=True)
 
-                    thread_id = demande_id or (result.get("demande") or {}).get("id")
                     if thread_id and (result.get("reply") or "").strip():
                         historique = [dict(m) for m in messages]
                         historique.append({"role": "assistant", "content": result["reply"]})
@@ -613,8 +715,28 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                             pass
                     return self.send_json(200, {**result, "simulation": True})
 
+                if method == "POST" and path == "/api/account/password":
+                    session = client_exige(self)
+                    if users is None:
+                        raise ApiError(503, "auth_desactivee", "Portail non configuré (users).")
+                    data = self.read_json()
+                    users.changer_mot_de_passe(
+                        session.get("user_id", ""),
+                        data.get("mot_de_passe_actuel", ""),
+                        data.get("nouveau_mot_de_passe"),
+                    )
+                    session_invalider_utilisateur(
+                        session.get("user_id", ""),
+                        _token_depuis_cookie(self.headers),
+                    )
+                    return self.send_json(200, {"mot_de_passe_modifie": True})
+
                 if method == "POST" and path == "/api/demandes":
                     data = self.read_json()
+                    if users is not None:
+                        session = client_exige(self)
+                        # Never trust a client-supplied owner id.
+                        data["user_id"] = session.get("user_id", "")
                     record = store.creer(data)
                     return self.send_json(201, {"demande": record, "simulation": True})
 
@@ -818,6 +940,8 @@ def main():
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--db-file", default=str(ROOT / ".local" / "detour.db"))
     parser.add_argument("--users-file", default=str(ROOT / ".local" / "users.json"))
+    parser.add_argument("--traces-dir", default=str(ROOT / ".local" / "traces"),
+                        help="Directory for redacted agent traces (#5).")
     parser.add_argument("--supplier-url", default=os.environ.get("TRAVEL_API_URL", DEFAULT_URL))
     args = parser.parse_args()
 
@@ -837,7 +961,8 @@ def main():
     agent = Agent(supplier, store, api_key=api_key, model=model)
     server = ThreadingHTTPServer((args.host, args.port),
                                   make_handler(store, supplier, agent, users, team_key,
-                                               propositions=propositions))
+                                               propositions=propositions,
+                                               traces_dir=args.traces_dir))
     print(f"Portail sur http://{args.host}:{server.server_port} "
           "(voyageur : /login · conseiller : clé TRAVEL_TEAM_KEY)", flush=True)
     print(f"Serveur de prestations : {args.supplier_url}", flush=True)

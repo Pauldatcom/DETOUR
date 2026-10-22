@@ -3,7 +3,7 @@
 import json
 import secrets
 import threading
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import db
@@ -192,6 +192,41 @@ def aligner_sur_serveur(data, resultats, source_label=None, consulte_le=None):
             "verification": VERIFICATION_VERIFIE,
         })
     return {**data, "prestations": prestations}
+
+# Quantities are computed by the program from the request, never by the model (#34).
+ACCOMMODATION_TYPES = ("hebergement", "hébergement")
+
+
+def count_nights(demande):
+    """Return the number of nights between departure and return dates.
+
+    Missing, invalid or reversed dates count as one night.
+    """
+    try:
+        departure = date.fromisoformat(str(demande.get("date_depart") or ""))
+        return_date = date.fromisoformat(str(demande.get("date_retour") or ""))
+    except ValueError:
+        return 1
+    return max((return_date - departure).days, 1)
+
+
+def apply_quantities(data, demande):
+    """Set each line quantity from the request.
+
+    Transport and activities: one per traveler.
+    Accommodation: one per traveler and per night (server price is per person per night).
+    """
+    travelers = demande.get("nombre_voyageurs", 1)
+    if type(travelers) is not int or travelers < 1:
+        travelers = 1
+    nights = count_nights(demande)
+    lines = []
+    for line in data.get("prestations", []):
+        quantity = travelers
+        if str(line.get("type") or "").strip().lower() in ACCOMMODATION_TYPES:
+            quantity = travelers * nights
+        lines.append({**line, "quantite": quantity})
+    return {**data, "prestations": lines}
 
 
 class PropositionStore:

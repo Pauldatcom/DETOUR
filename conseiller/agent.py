@@ -10,10 +10,71 @@ from pathlib import Path
 
 from fournisseur import SupplierError
 from horaires import fenetre_reponse
-from propositions import PropositionError, aligner_sur_serveur
+from propositions import PropositionError, aligner_sur_serveur, apply_quantities
 from store import ValidationError, analyser_informations, criteres_depuis_demande
+from traces import resume_reponse_serveur
 from utils import (DEFAULT_MODEL, MAX_MESSAGES, MAX_TOOL_ITERATIONS,
                    OPENROUTER_URL, TOOL_NAME)
+
+
+def _rapport_erreur_fournisseur(err):
+    """Map SupplierError to a distinct trace statut + model consigne (#6).
+
+    The model must not invent a service when the server refused the call.
+    """
+    status = getattr(err, "status", 502)
+    base = (
+        "La demande est enregistrée mais le serveur de prestations a renvoyé "
+        "une erreur. Informe le voyageur sans inventer de prestation. "
+    )
+    if status in (401, 403):
+        return "auth_refusee", base + (
+            "Explique qu'il s'agit d'un problème d'authentification ou de permission."
+        )
+    if status == 404:
+        return "prestation_introuvable", base + (
+            "Explique qu'une prestation ou ressource est introuvable."
+        )
+    if status == 409:
+        return "prestation_indisponible", base + (
+            "Explique qu'une prestation est indisponible ou inutilisable."
+        )
+    return "serveur_indisponible", base + (
+        "Explique que le résultat n'a pas pu être vérifié (serveur injoignable)."
+    )
+
+
+def _contexte_reprise(demande_record):
+    """Build a short system note so the model resumes on missing fields (#23)."""
+    if not isinstance(demande_record, dict):
+        return None
+    dem_id = demande_record.get("id") or ""
+    corps = demande_record.get("demande") or {}
+    if not isinstance(corps, dict):
+        corps = {}
+    analyse = analyser_informations(corps)
+    labels = analyse.get("labels") or {}
+    fournis_cles = analyse.get("fournis") or []
+    manquants_cles = analyse.get("manquants") or []
+    if fournis_cles:
+        details = []
+        for cle in fournis_cles:
+            valeur = corps.get(cle)
+            details.append(f"{labels.get(cle, cle)}={valeur!r}")
+        fournis_txt = ", ".join(details)
+    else:
+        fournis_txt = "(aucun)"
+    manquants_txt = (
+        ", ".join(labels.get(c, c) for c in manquants_cles)
+        if manquants_cles else "(aucun — demande complète)"
+    )
+    return "\n".join([
+        f"DEMANDE EN COURS (id={dem_id}).",
+        f"Champs déjà enregistrés : {fournis_txt}",
+        f"Champs manquants : {manquants_txt}",
+        "Ne redemande pas les champs déjà enregistrés. "
+        "Pose la prochaine question uniquement sur les manquants.",
+    ])
 
 # Arguments de décision : le modèle ne tranche jamais. Toute tentative est
 # refusée, tracée, puis ignorée. Seul le conseiller humain décide.
@@ -49,12 +110,20 @@ class OpenRouterError(Exception):
         self.status = status
 
 
-SYSTEM_PROMPT = """Tu es l'assistant voyage de DÉTOUR, une agence de voyages insolites et de week-ends surprises. Tu discutes avec un voyageur pour préparer sa demande.
+SYSTEM_PROMPT = """Tu es PROPO, l'assistant voyage de DÉTOUR — une agence qui compose des week-ends insolites sur mesure. Tu n'es pas un formulaire : tu es le premier contact d'un voyageur curieux, et tu parles comme une personne, pas comme une machine.
 
 CONTEXTE
 - Le catalogue est fictif et restreint : destinations possibles uniquement Nantes, Lyon et Lille.
 - Chaque destination propose un transport, un hébergement et une activité.
 - Toutes les données sont fictives : c'est une démonstration.
+
+PERSONNALITÉ
+- Chaleureux et précis. Jamais pressé, jamais froid, jamais robotique.
+- Tu dis « je » quand tu parles en ton nom, « nous » quand tu parles pour l'agence.
+- Tu accueilles chaque voyageur comme une personne, pas comme un dossier à remplir.
+- Tu montres que tu écoutes : reformule, montre que tu as compris avant de demander la suite.
+- Tu ne fais jamais d'humour sur les prix ni sur les problèmes. Pas de blague, par prudence.
+- Un voyage qui se prépare, ça prend le temps que ça prend. Tu ne brusques jamais.
 
 TON TRAVAIL
 1. Recueillir les informations du voyageur avec des questions courtes et amicales.
@@ -98,7 +167,7 @@ MISE À JOUR D'UNE DEMANDE EXISTANTE
 
 RÈGLES ABSOLUES
 - Ne devine rien : si une information requise manque, pose la question (seulement pour les manquants).
-- N'invente jamais un prix, une disponibilité, une prestation ou une date de mise à jour : ils viennent uniquement de l'outil.
+- N'invente jamais un prix, une disponibilité, une prestation du catalogue ou une date de mise à jour : ils viennent uniquement de l'outil. Seule exception : une alternative proche hors catalogue (voir QUAND CE N'EST PAS DISPONIBLE), toujours présentée comme une idée à vérifier, sans prix ni disponibilité.
 - Tu ne prends aucune réservation et ne poses aucune option. Aucune réservation n'existe à l'issue de la conversation.
 - Si le voyageur veut une autre destination, explique que le catalogue est restreint pour le moment.
 - Si l'outil renvoie une erreur, explique-la honnêtement au voyageur sans inventer de résultat.
@@ -109,8 +178,22 @@ APRÈS L'OUTIL
 - Signale ce qui n'est pas vérifiable au catalogue : le niveau d'aventure, le besoin de guide et les allergies ne figurent pas dans le serveur.
 - Un conseiller humain préparera ensuite la proposition définitive.
 
+QUAND CE N'EST PAS DISPONIBLE
+- Si le voyageur demande une activité, un événement, un voyage ou autre chose qui n'est pas dans les résultats de l'outil, ou que l'outil indique indisponible, dis-le d'abord clairement, en une phrase.
+- Propose ensuite une ou deux alternatives proches de ce qui était demandé : même type de chose, au même endroit ou tout près (même région, environ 1 h de trajet au maximum).
+- Ne propose jamais une alternative éloignée. Exemple : pour un marché de Noël à Lille, celui de Béthune convient, celui de Paris non.
+- Une alternative hors catalogue est une idée, pas une prestation vérifiée : dis que le conseiller la vérifiera, et ne donne ni prix, ni horaire, ni disponibilité.
+- Si une alternative existe dans les résultats de l'outil (disponible et dans le budget), propose-la en priorité, avec son prix vérifié.
+- Si tu ne connais aucune alternative proche et sûre, dis-le simplement, sans rien inventer : « Je n'ai pas d'alternative proche à vous proposer. Le conseiller regardera avec vous. »
+- Termine par une question courte, par exemple « Ça vous irait ? ».
+- Exemple : « Il n'y a pas de marché de Noël à Lille dans notre catalogue. Je peux vous suggérer celui de Béthune, à 40 minutes de Lille : le conseiller vérifiera les dates pour vous. Ça vous irait ? »
+- Pas de « Erreur : », pas d'humour sur ce qui manque.
+
 STYLE
-- Réponses courtes, en français, une question à la fois quand tu collectes les informations."""
+- Réponses courtes, en français, une question à la fois quand tu collectes les informations.
+- Parle en personne, jamais comme une notice ou un formulaire.
+- Accueille, reformule, montre que tu es là — pas juste que tu traites.
+- Sois chaleureux même quand tu expliques une contrainte ou une erreur."""
 
 
 TOOL_DEFINITION = {
@@ -198,18 +281,29 @@ class Agent:
             "- Never promise an immediate answer when the service is closed.\n"
             "- Never claim a reservation has been made.")
         conversation: list = [{"role": "system", "content": system_prompt}]
-        conversation += [{"role": m["role"], "content": m["content"]}
-                         for m in messages[-MAX_MESSAGES:]]
         demande, recherche = None, None
         if demande_id:
-            demande = self.store.obtenir(demande_id)
+            # #23: strict load — unknown/foreign ids must not start a silent new thread.
+            demande = self.store.obtenir_pour_voyageur(demande_id, user_id)
+            reprise = _contexte_reprise(demande)
+            if reprise:
+                conversation.append({"role": "system", "content": reprise})
+        conversation += [{"role": m["role"], "content": m["content"]}
+                         for m in messages[-MAX_MESSAGES:]]
+
+        def _retour(reply):
+            # #5: contract fields before persistence (redaction happens in traces.py).
+            rid = demande_id or (demande or {}).get("id")
+            trace["request_id"] = rid
+            trace["reponse_finale"] = reply or ""
+            return {"reply": reply or "",
+                    "demande": demande, "recherche": recherche, "trace": trace}
 
         for _ in range(MAX_TOOL_ITERATIONS):
             message = self._call_model(conversation)
             tool_calls = message.get("tool_calls") or []
             if not tool_calls:
-                return {"reply": message.get("content") or "",
-                        "demande": demande, "recherche": recherche, "trace": trace}
+                return _retour(message.get("content") or "")
             conversation.append({"role": "assistant", "content": message.get("content") or "",
                                  "tool_calls": tool_calls})
             for call in tool_calls:
@@ -226,8 +320,7 @@ class Agent:
                 })
 
         message = self._call_model(conversation, with_tools=False)
-        return {"reply": message.get("content") or "",
-                "demande": demande, "recherche": recherche, "trace": trace}
+        return _retour(message.get("content") or "")
 
     def generer_proposition(self, demande_record, recherche):
         """Generate a structured proposition via OpenRouter (no tools)."""
@@ -266,12 +359,14 @@ class Agent:
             raise OpenRouterError("Réponse du modèle invalide (objet attendu).")
         try:
             # Stamp source and consultation time from the search; never invent them.
-            return aligner_sur_serveur(
+            aligned = aligner_sur_serveur(
                 prop_data,
                 resultats,
                 source_label=(recherche or {}).get("source_label"),
                 consulte_le=(recherche or {}).get("consulte_le"),
             )
+            # The program sets quantities from the request, not the model (#34).
+            return apply_quantities(aligned, d)
         except PropositionError as err:
             raise OpenRouterError(f"Proposition refusée : {err}") from err
 
@@ -315,6 +410,7 @@ class Agent:
         entry = {"outil": name, "statut": "refuse"}
         if name != TOOL_NAME:
             entry["erreur"] = f"Outil inconnu : {name}. Seul {TOOL_NAME} est autorisé."
+            entry["validation"] = "outil_inconnu"
             trace["tool_calls"].append(entry)
             return {"payload": {"erreur": entry["erreur"]}}
         try:
@@ -323,6 +419,7 @@ class Agent:
                 raise ValueError
         except (json.JSONDecodeError, ValueError):
             entry["erreur"] = "Arguments invalides : un objet JSON était attendu."
+            entry["validation"] = "arguments_invalides"
             trace["tool_calls"].append(entry)
             return {"payload": {"erreur": entry["erreur"]}}
         if args.get("qualification") == "pret_proposition":
@@ -340,12 +437,15 @@ class Agent:
             args.pop(cle, None)
         args.pop("user_id", None)
         args.pop("demande_id", None)
+        # #5: sanitized arguments (decision keys already stripped).
+        entry["arguments"] = dict(args)
 
         try:
             record, mis_a_jour = self.store.enregistrer_reponses(
                 demande_id, args, user_id=user_id)
         except ValidationError as err:
             entry["statut"] = "echec_mise_a_jour"
+            entry["validation"] = "echec"
             entry["erreur"] = str(err)
             trace["tool_calls"].append(entry)
             return {"payload": {
@@ -358,6 +458,7 @@ class Agent:
             }}
         if record is None:
             entry["statut"] = "echec_mise_a_jour"
+            entry["validation"] = "demande_introuvable"
             entry["erreur"] = "Demande introuvable."
             trace["tool_calls"].append(entry)
             return {"payload": {
@@ -375,6 +476,7 @@ class Agent:
             "fournis": analyse["fournis"],
             "manquants": analyse["manquants"],
         }
+        entry["validation"] = "ok"
         labels = analyse["labels"]
         confirmation = (
             f"Réponse enregistrée sur la demande {record['id']}."
@@ -383,6 +485,7 @@ class Agent:
         )
         if not analyse["complet"]:
             entry["statut"] = "informations_manquantes"
+            entry["http_status"] = None
             trace["tool_calls"].append(entry)
             manquants_lisible = [labels.get(c, c) for c in analyse["manquants"]]
             fournis_lisible = [labels.get(c, c) for c in analyse["fournis"]]
@@ -409,19 +512,22 @@ class Agent:
             resultat = self.supplier.rechercher(criteres_depuis_demande(record))
             recherche = self.store.ajouter_recherche(record["id"], resultat)
         except SupplierError as err:
-            entry["statut"] = "serveur_indisponible"
+            statut, consigne = _rapport_erreur_fournisseur(err)
+            entry["statut"] = statut
             entry["erreur"] = str(err)
+            entry["http_status"] = getattr(err, "status", None)
+            entry["reponse_serveur"] = None
             trace["tool_calls"].append(entry)
             return {"demande": record,
                     "payload": {
                         "confirmation": confirmation,
                         "erreur": str(err),
-                        "consigne": (
-                            "La demande est enregistrée mais le serveur de prestations "
-                            "est indisponible. Informe le voyageur sans inventer de prestation."
-                        ),
+                        "http_status": getattr(err, "status", None),
+                        "consigne": consigne,
                     }}
         entry["statut"] = "ok"
+        entry["http_status"] = 200
+        entry["reponse_serveur"] = resume_reponse_serveur(recherche)
         trace["tool_calls"].append(entry)
         payload = dict(recherche) if isinstance(recherche, dict) else {"recherche": recherche}
         payload["confirmation"] = confirmation

@@ -12,8 +12,8 @@ In V1, the agent can only:
 
 - read a traveler request;
 - identify missing information;
-- consult the fictional DÉTOUR server;
-- check the availability and price of a known service;
+- record validated answers on the current request;
+- consult the fictional DÉTOUR server with a multi-service search;
 - return a response based on verified server data;
 - distinguish verified facts from assumptions or missing information.
 
@@ -30,39 +30,53 @@ The agent cannot:
 The only tool exposed to the model in V1 is:
 
 ```text
-verifier_disponibilite(prestation_id, date, participants)
+chercher_voyages(...)
 ```
 
-The tool checks the fictional price and availability of a service for a date and a number of participants.
+Decision (#4): the contract follows the code. V1 keeps `chercher_voyages`, not
+`verifier_disponibilite(prestation_id, date, participants)`.
 
-The tool does not create an option and does not make a reservation.
+Why:
+
+- the chat flow collects a full travel request, then searches the fictional
+  catalogue (transport, lodging, activity) in one call;
+- a single-service availability check would not match how requests and proposals
+  are stored today;
+- `verifier_disponibilite` stays out of scope for V1 (a later, narrower tool
+  could reuse that shape).
+
+`chercher_voyages` records validated traveler answers on the current request
+and, when the minimum is complete, calls `GET /api/v1/recherche` on the
+fictional server. It does not create an option and does not make a reservation.
 
 ## Tool arguments
 
-### `prestation_id`
+The program validates every argument before any server call (`DemandStore` /
+`enregistrer_reponses`). Invalid values are rejected; the model must not invent
+catalogue facts.
 
-Rules:
+### Required (minimum before search)
 
-- must be a known service identifier;
-- must come from the fictional catalogue;
-- must be a string;
-- must not be invented by the model.
+| Argument | Rules |
+|---|---|
+| `type_voyage` | one of `trek-randonnee`, `lune-de-miel`, `voyage-familial`, `autres` |
+| `destination` | one of `Nantes`, `Lyon`, `Lille` |
+| `date_depart` / `date_retour` | `YYYY-MM-DD`, valid calendar dates, return on or after departure |
+| `nombre_voyageurs` | integer from 1 to 20 |
+| `budget_max_par_personne` | positive integer (euros) |
+| `niveau_aventure` | one of `calme`, `modere`, `intense` |
 
-### `date`
+### Optional (collected when useful)
 
-Rules:
+| Argument | Rules |
+|---|---|
+| `has_enfants` / `nombre_enfants` | booleans / non-negative integer |
+| `besoin_guide` / `avec_voiture` / `permis_conduire` | booleans; conditional questions come from the program |
+| `activites` | list of known tags (`créatif`, `jeu`, `cuisine`, `intérieur`, `extérieur`, …) |
+| `contraintes` / `souhaits` | free text |
 
-- must use the format `YYYY-MM-DD`;
-- must be a valid calendar date;
-- must be validated by the program before the server call.
-
-### `participants`
-
-Rules:
-
-- must be an integer;
-- must be between 1 and 100;
-- must be validated by the program before the server call.
+Decision arguments (`qualification`, `statut`, `motif`, `decisions`, …) are
+never accepted from the model (see Human validation).
 
 ## Permissions
 
@@ -107,11 +121,13 @@ The model proposes. The program validates and executes.
 
 The agent must:
 
-- use the tool when availability or price needs to be verified;
-- ask a clarification question when a required argument is missing;
+- call `chercher_voyages` once the traveler draft is ready (partial drafts are
+  allowed; the program returns `informations.manquants` when needed);
+- ask only for fields listed in `informations.manquants`;
 - state when a fact comes from the fictional server;
-- mention the date, number of participants and service identifier used for the check;
-- state when information is unavailable;
+- present each verified service with name, type, unit price, group total and
+  availability for the departure date;
+- state when information is unavailable or not in the catalogue;
 - explain server errors without hiding them;
 - avoid presenting an assumption as a verified fact;
 - never claim that a service is reserved.
@@ -127,10 +143,10 @@ Unknown or missing
 Example:
 
 ```text
-The fictional server confirms that train-nantes-01 is available
-for 2 participants on 2026-11-07.
+The fictional server returns three services for Nantes, 2 travelers,
+2026-11-07 → 2026-11-09.
 
-The verified total price is 96 EUR.
+train-nantes-01 is available at 48 EUR per person (96 EUR for the group).
 
 No option or reservation has been created.
 ```
@@ -142,9 +158,9 @@ The program must handle at least these cases:
 | Situation | Expected behavior |
 |---|---|
 | Unknown tool | Reject the call and do not contact the server |
-| Invalid service identifier | Return a validation error |
+| Invalid destination, trip type or adventure level | Return a validation error |
 | Invalid date | Return a validation error |
-| Invalid number of participants | Return a validation error |
+| Invalid number of travelers or budget | Return a validation error |
 | HTTP 401 or 403 | Report an authentication or permission problem |
 | HTTP 404 | Report that the service was not found |
 | HTTP 409 | Report that the service is unavailable or cannot be used |
@@ -267,8 +283,8 @@ What did the agent tell the advisor?
 
 The V1 agent is acceptable when:
 
-1. it asks for missing date or participant information instead of inventing it;
-2. it calls only `verifier_disponibilite`;
+1. it asks for missing required fields instead of inventing them;
+2. it calls only `chercher_voyages`;
 3. invalid tool arguments are rejected before the server call;
 4. the server response is returned to the model with the correct `tool_call_id`;
 5. the final response clearly identifies verified information;
@@ -292,6 +308,14 @@ The following features are not part of the first contract:
 - automatic decision without advisor validation.
 
 ## Decisions on the open questions
+
+### V1 tool shape (`chercher_voyages` vs `verifier_disponibilite`) — #4
+
+Answered: V1 uses `chercher_voyages` (see Available tool). The contract was
+aligned with the running agent; `verifier_disponibilite` is not exposed in V1.
+
+Follow-up tickets that depended on this decision: #5 (traces), #6 (supplier
+errors), #9 (tool-loop tests).
 
 The open questions of this contract were answered or deferred in issue #8.
 

@@ -149,3 +149,70 @@ class UserStore:
             if not compte:
                 return None
             return {"id": compte["id"], "email": compte["email"], "nom": compte["nom"]}
+
+    def mettre_a_jour_profil(self, user_id, email, nom):
+        email = email.strip().lower() if isinstance(email, str) else ""
+        nom = nom.strip() if isinstance(nom, str) else ""
+        if not EMAIL_RE.fullmatch(email):
+            raise UserError("Adresse e-mail invalide.", 400, "email_invalide")
+        if not nom:
+            raise UserError("Le nom est obligatoire.", 400, "nom_requis")
+        if len(nom) > 120:
+            raise UserError("Le nom ne peut pas dépasser 120 caractères.", 400, "nom_trop_long")
+
+        with self.lock:
+            compte = self.users.get(user_id)
+            if not compte:
+                raise UserError("Compte introuvable.", 404, "compte_introuvable")
+            email_utilise = any(
+                identifiant != user_id and utilisateur.get("email", "").lower() == email
+                for identifiant, utilisateur in self.users.items()
+            )
+            if email_utilise:
+                raise UserError("Un compte existe déjà avec cette adresse e-mail.",
+                                409, "compte_existant")
+            compte["email"] = email
+            compte["nom"] = nom
+            self.save()
+            return {"id": compte["id"], "email": compte["email"], "nom": compte["nom"]}
+
+    def mot_de_passe_defini(self, user_id):
+        with self.lock:
+            compte = self.users.get(user_id)
+            return bool(compte and compte.get("hash"))
+
+    def verifier_mot_de_passe(self, user_id, mot_de_passe):
+        with self.lock:
+            compte = self.users.get(user_id)
+            if not compte:
+                return False
+            hash_actuel = compte.get("hash", "")
+            if not hash_actuel:
+                return True
+            if not isinstance(mot_de_passe, str) or not mot_de_passe:
+                return False
+            return secrets.compare_digest(self._hasher(mot_de_passe, compte["sel"]), hash_actuel)
+
+    def changer_mot_de_passe(self, user_id, mot_de_passe_actuel, nouveau_mot_de_passe):
+        if not isinstance(nouveau_mot_de_passe, str) or len(nouveau_mot_de_passe) < 6:
+            raise UserError("Le mot de passe doit contenir au moins 6 caractères.",
+                            400, "mot_de_passe_trop_court")
+        if len(nouveau_mot_de_passe) > 1024:
+            raise UserError("Le mot de passe est trop long.", 400, "mot_de_passe_trop_long")
+
+        with self.lock:
+            compte = self.users.get(user_id)
+            if not compte:
+                raise UserError("Compte introuvable.", 404, "compte_introuvable")
+            hash_actuel = compte.get("hash", "")
+            if hash_actuel:
+                if not isinstance(mot_de_passe_actuel, str) or not mot_de_passe_actuel:
+                    raise UserError("Mot de passe actuel requis.", 400, "mot_de_passe_actuel_requis")
+                candidat = self._hasher(mot_de_passe_actuel, compte["sel"])
+                if not secrets.compare_digest(candidat, hash_actuel):
+                    raise UserError("Le mot de passe actuel est incorrect.",
+                                    401, "mot_de_passe_actuel_invalide")
+            sel = secrets.token_hex(16)
+            compte["sel"] = sel
+            compte["hash"] = self._hasher(nouveau_mot_de_passe, sel)
+            self.save()
