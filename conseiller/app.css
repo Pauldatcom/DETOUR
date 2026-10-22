@@ -464,6 +464,10 @@ h1, h2, h3 {
 .badge-ko { color: var(--brick); border-color: var(--brick); background: rgba(196, 85, 58, 0.08); }
 .badge-warn { color: var(--ink); border-color: var(--yellow); background: rgba(242, 183, 5, 0.15); }
 .badge-info { color: var(--ballast); border-color: var(--line); background: var(--chalk); }
+/* #128 : badges de décision — agent suggère, conseiller relit et confirme. */
+.badge-agent { color: var(--ballast); border-color: var(--line); background: var(--card); }
+.badge-relu { color: var(--ink); border-color: var(--sky); background: var(--sky); }
+.badge-confirme { color: var(--chalk); border-color: var(--ink); background: var(--ink); }
 .offer-bottom {
   display: flex;
   align-items: end;

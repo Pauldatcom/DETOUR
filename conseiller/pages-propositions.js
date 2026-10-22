@@ -34,6 +34,28 @@ const DECISION_PROPOSITION = [
 ];
 
 /**
+ * #128 : badge de décision distinguant la provenance et l'étape de validation.
+ * L'agent propose ("Suggestion de l'agent"), le conseiller relit et confirme.
+ * L'agent ne apparaît jamais comme l'auteur de la confirmation.
+ */
+const DECISION_BADGE = {
+  brouillon: { label: "Suggestion de l'agent · à relire", kind: "agent" },
+  envoyee: { label: "Relu par le conseiller", kind: "relu" },
+  correction_requested: { label: "Relu par le conseiller", kind: "relu" },
+  validee: { label: "Confirmé par le conseiller", kind: "confirme" },
+  refusee: { label: "Refusé par le conseiller", kind: "ko" },
+};
+
+/** Crée un badge de décision avec la classe appropriée. */
+function badgeDecision(statut) {
+  const def = DECISION_BADGE[statut] || { label: statut, kind: "info" };
+  const span = document.createElement("span");
+  span.className = `badge badge-${def.kind}`;
+  span.textContent = def.label;
+  return span;
+}
+
+/**
  * Bloc de décision du conseiller sur une proposition.
  *
  * Affiche le statut, propose Accepter / Demander une correction / Refuser,
@@ -47,6 +69,10 @@ function blocDecisionProposition(prop, demId) {
   const statut = document.createElement("div");
   statut.className = "prop-statut";
   statut.textContent = `Statut : ${PROP_STATUT_LABELS[prop.statut] || prop.statut}`;
+
+  // #128 : badge de décision distinguant l'origine de la proposition.
+  // L'agent suggère, le conseiller relit et confirme — jamais l'inverse.
+  const badge = badgeDecision(prop.statut);
 
   const champs = document.createElement("div");
   champs.className = "prop-motif";
@@ -95,6 +121,8 @@ function blocDecisionProposition(prop, demId) {
       const apres = (data.proposition || {}).statut;
       const libelle = PROP_STATUT_LABELS[apres] || apres;
       statut.textContent = `Statut : ${libelle}`;
+      // #128 : met à jour le badge de décision après l'action du conseiller.
+      badge.replaceWith(badgeDecision(apres));
       confirmation.textContent = `${decision.label} — nouveau statut : ${libelle}.`;
       champs.hidden = true;
     } catch (err) {
@@ -127,7 +155,7 @@ function blocDecisionProposition(prop, demId) {
     actions.append(btn);
   }
 
-  wrap.append(statut, actions, champs, confirmation, erreur);
+  wrap.append(statut, badge, actions, champs, confirmation, erreur);
   return wrap;
 }
 
