@@ -554,7 +554,7 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                             raise ApiError(404, "demande_not_found", "Demande introuvable.")
                         if users is not None:
                             record["client"] = users.obtenir(record.get("demande", {}).get("user_id", ""))
-                        return self.send_json(201, {"demande": record, "simulation": True})   
+                        return self.send_json(201, {"demande": record, "simulation": True})
 
                 if method == "PATCH":
                     match = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/qualification", path)

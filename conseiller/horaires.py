@@ -247,4 +247,5 @@ def marquer_echeances(record, maintenant=None):
     record["echeance_cible"] = cible.isoformat()
     record["echeance_max"] = maximum.isoformat()
     record["echeance_statut"] = _statut_echeance(present, cible, maximum)
+
     return record

@@ -201,31 +201,28 @@ function dashRow(demande) {
   const tdEcheance = document.createElement("td");
   tdEcheance.className = "dash-echeance";
 
- if (demande.reponse) {
-  // #52 : an answered request shows its actual response time and the verdict
-  // (within 24h / after 24h / after the 48h maximum) instead of a deadline.
-  const delai = demande.reponse.delai_statut;
-  tdEcheance.classList.add(
-    "dash-reponse",
-    REPONSE_DELAI_CLASSE[delai] || "echeance-ok"
-  );
-  tdEcheance.textContent =
-    `${REPONSE_DELAI_COURT[delai] || "Répondue"} · ${formatHeuresOuvrees(demande.reponse.delai_heures_ouvrees)}`;
-  tdEcheance.title = REPONSE_DELAI_LONG[delai] || "";
-
-} 
-else {
-  // #51 : deadline status (target 24h open hours, max 48h) drives the badge.
-  if (demande.echeance_statut === "depassee") {
-    tdEcheance.classList.add("echeance-depassee");
-  } else if (demande.echeance_statut === "approche") {
-    tdEcheance.classList.add("echeance-approche");
+  if (demande.reponse) {
+    // #52 : an answered request shows its actual response time and the verdict
+    // (within 24h / after 24h / after the 48h maximum) instead of a deadline.
+    const delai = demande.reponse.delai_statut;
+    tdEcheance.classList.add(
+      "dash-reponse",
+      REPONSE_DELAI_CLASSE[delai] || "echeance-ok"
+    );
+    tdEcheance.textContent =
+      `${REPONSE_DELAI_COURT[delai] || "Répondue"} · ${formatHeuresOuvrees(demande.reponse.delai_heures_ouvrees)}`;
+    tdEcheance.title = REPONSE_DELAI_LONG[delai] || "";
+  } else {
+    // #51 : deadline status (target 24h open hours, max 48h) drives the badge.
+    if (demande.echeance_statut === "depassee") {
+      tdEcheance.classList.add("echeance-depassee");
+    } else if (demande.echeance_statut === "approche") {
+      tdEcheance.classList.add("echeance-approche");
+    }
+    tdEcheance.textContent =
+      demande.echeance_cible ? formatDateTime(demande.echeance_cible) : "—";
   }
-  tdEcheance.textContent =
-    demande.echeance_cible ? formatDateTime(demande.echeance_cible) : "—";
 
-  }
-  
 
   const tdQualification = document.createElement("td");
   tdQualification.append(blocQualification(demande));
