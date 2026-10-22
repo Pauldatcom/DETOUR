@@ -73,6 +73,7 @@ observability/    Grafana + Prometheus + Loki (+ Alloy for Grafana Cloud)
 | `/api/demandes/{id}` | GET | advisor/owner | Detail |
 | `/api/demandes/{id}/recherche` | POST | advisor/owner | Supplier search |
 | `/api/demandes/{id}/statut` | PATCH | advisor | Change status |
+| `/api/demandes/{id}/reponse` | POST | advisor | Send the response to a request (status `repondue`, response time vs 24h / 48h) |
 | `/api/demandes/{id}/propositions` | POST | advisor | Create proposition |
 | `/api/demandes/{id}/propositions/generer` | POST | advisor | Generate via AI |
 | `/api/propositions` | GET | advisor | List propositions |
