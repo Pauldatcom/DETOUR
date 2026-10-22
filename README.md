@@ -65,7 +65,7 @@ observability/    Grafana + Prometheus + Loki (+ Alloy for Grafana Cloud)
 | `/api/session` | GET | public | Current session |
 | `/api/login` | POST | public | Traveler login |
 | `/api/register` | POST | public | Traveler registration |
-| `/api/login-conseiller` | POST | public | Advisor login (team key) |
+| `/api/login-conseiller` | POST | public | Advisor login (team key + first name, which signs proposals) |
 | `/api/auth/google` | GET | public | Google OAuth (PKCE) |
 | `/api/auth/google/callback` | GET | public | OAuth callback |
 | `/api/demandes` | GET | advisor | List demandes |
@@ -84,7 +84,7 @@ observability/    Grafana + Prometheus + Loki (+ Alloy for Grafana Cloud)
 | `/api/propositions/{id}/correction` | POST | advisor | Request a correction (reason + instructions) |
 | `/api/propositions/{id}/refuser` | POST | advisor | Reject a proposal (reason) |
 | `/api/mes-demandes` | GET | client | My demandes |
-| `/api/mes-propositions` | GET | client | My propositions |
+| `/api/mes-propositions` | GET | client | My propositions (only those sent by an advisor, never drafts) |
 | `/api/stats` | GET | advisor | Statistics |
 | `/api/catalogue` | GET | client | Supplier catalogue |
 | `/api/chat` | POST | client | Agent chat |

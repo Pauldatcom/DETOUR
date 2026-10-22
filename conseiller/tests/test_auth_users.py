@@ -736,7 +736,9 @@ class TestPropositionRoutes(unittest.TestCase):
                                         "mot_de_passe": "motdepasse"})
         user_id = self.users.authentifier("mesprop@test.fr", "motdepasse")["id"]
         dem = self.store.creer({**VALIDE, "user_id": user_id})
-        self.props.creer(dem["id"], dict(PROPOSITION_VALIDE))
+        prop = self.props.creer(dem["id"], dict(PROPOSITION_VALIDE))
+        # #112: only a proposal sent by an advisor reaches the traveler.
+        self.props.changer_statut(prop["id"], "envoyee", "Alice")
         status, data, _ = client.get("/api/mes-propositions")
         self.assertEqual(status, 200)
         self.assertTrue(any(p["demande_id"] == dem["id"] for p in data["propositions"]))

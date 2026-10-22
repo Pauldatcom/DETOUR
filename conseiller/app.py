@@ -29,14 +29,14 @@ from lecture import (
     marquer_a_revoir_si_ecart,
     proposition_avec_changements,
 )
-from propositions import PropositionError, PropositionStore
+from propositions import PropositionError, PropositionStore, visible_par_voyageur
 
 from store import DemandStore, ValidationError, criteres_depuis_demande
 from traces import finaliser_et_persister
 from users import UserStore, UserError
 from utils import (DECISION_ACCEPTER, DECISION_CORRECTION, DECISION_REFUSER,
                    GOOGLE_OAUTH_URL, GOOGLE_TOKEN_URL, GOOGLE_USERINFO_URL,
-                   PROP_STATUTS, SESSION_COOKIE, SESSION_MAX)
+                   PROP_STATUTS, SESSION_COOKIE, SESSION_MAX, valider_prenom_conseiller)
 
 ROOT = Path(__file__).resolve().parent
 WEB_ROOT = ROOT.parent / "web" / "dist"
@@ -397,7 +397,8 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                         if not (admin or (client and _proprietaire(store, m.group(1), session))):
                             raise ApiError(404, "demande_not_found", "Demande introuvable.")
                     elif method == "GET" and (m := re.fullmatch(r"/api/propositions/(prop_[a-f0-9]+)", path)):
-                        if not (admin or (client and _proprietaire_proposition(propositions, store, m.group(1), session))):
+                        if not (admin or (client and _proprietaire_proposition(propositions, store, m.group(1), session)
+                                          and visible_par_voyageur(propositions.obtenir(m.group(1))))):
                             raise ApiError(404, "proposition_not_found", "Proposition introuvable.")
                     elif method == "POST" and (m2 := re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/approbation", path)):
                         if not (client and _proprietaire(store, m2.group(1), session)):
@@ -453,8 +454,10 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                     cle = data.get("cle")
                     if not isinstance(cle, str) or not cle or not secrets.compare_digest(cle, team_key or ""):
                         raise ApiError(401, "cle_invalide", "Clé d'accès incorrecte.")
-                    token = session_creer("conseiller", nom="Conseiller DÉTOUR")
-                    return self.send_json(200, {"session": {"role": "conseiller", "nom": "Conseiller DÉTOUR"}},
+                    # #112: the first name signs the advisor's proposals and decisions.
+                    nom = _prenom_conseiller(data.get("prenom"))
+                    token = session_creer("conseiller", nom=nom)
+                    return self.send_json(200, {"session": {"role": "conseiller", "nom": nom}},
                                           extra_headers=self._session_cookie(token))
 
                 # ---------- Google OAuth (PKCE) ----------
@@ -773,7 +776,8 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                 # ---------- Mes propositions (voyageur) ----------
                 if method == "GET" and path == "/api/mes-propositions":
                     session = client_exige(self)
-                    props = propositions.lister_par_user(session.get("user_id", ""), store)
+                    props = [p for p in propositions.lister_par_user(session.get("user_id", ""), store)
+                             if visible_par_voyageur(p)]
                     props = enrichir_propositions(props, store)
                     props.sort(key=lambda p: p.get("cree_le", ""), reverse=True)
                     return self.send_json(200, {"propositions": props, "simulation": True})
@@ -938,6 +942,14 @@ def _token_depuis_cookie(headers):
 def _proprietaire(store, dem_id, session):
     record = store.obtenir(dem_id)
     return bool(record) and record.get("demande", {}).get("user_id") == session.get("user_id")
+
+
+def _prenom_conseiller(valeur):
+    """Advisor first name from the login form, as an API error when invalid."""
+    try:
+        return valider_prenom_conseiller(valeur)
+    except ValueError as err:
+        raise ApiError(400, "prenom_invalide", str(err)) from err
 
 
 def _proprietaire_proposition(prop_store, demand_store, prop_id, session):

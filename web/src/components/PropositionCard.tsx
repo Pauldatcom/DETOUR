@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+﻿import { Link } from "react-router-dom";
 import type { ChangementLecture, ContrainteVerifiee, Prestation, Proposition } from "../types";
 import {
   PROP_STATUT_LABELS,
@@ -8,6 +8,7 @@ import {
   formatDate,
   formatDateTime,
 } from "../lib/format";
+import { advisorFirstName } from "../lib/tone";
 
 interface PropositionCardProps {
   proposition: Proposition;
@@ -21,7 +22,6 @@ function PrestationLine({ item }: { item: Prestation }) {
     return (
       <li className="text-sm text-ballast">
         <span className="font-medium text-ink">{item.nom}</span>
-        <span className="text-ballast/60"> ({item.id})</span>
         <span> — prix non vérifié</span>
         {item.copie_depuis_v1 && (
           <span className="text-ballast/60"> · repris de v1 (non relu)</span>
@@ -32,7 +32,6 @@ function PrestationLine({ item }: { item: Prestation }) {
   return (
     <li className="text-sm text-ballast">
       <span className="font-medium text-ink">{item.nom}</span>
-      <span className="text-ballast/60"> ({item.id})</span>
       <span className="meta-nowrap">
         {" "}
         — {formatEuro(item.prix_unitaire_eur ?? 0)} / pers
@@ -47,16 +46,16 @@ function PrestationLine({ item }: { item: Prestation }) {
 }
 
 const CONTRAINTE_MARQUE: Record<ContrainteVerifiee["statut"], string> = {
-  ok: "✅",
-  a_verifier: "⚠️",
-  non_respectee: "❌",
+  ok: "Respecté",
+  a_verifier: "À confirmer",
+  non_respectee: "Non respecté",
 };
 
 /** One program-checked customer constraint (#41). */
 function ContrainteLine({ item }: { item: ContrainteVerifiee }) {
   return (
     <li className="text-xs text-ballast">
-      {CONTRAINTE_MARQUE[item.statut]} {item.detail}
+      {CONTRAINTE_MARQUE[item.statut]} · {item.detail}
     </li>
   );
 }
@@ -86,6 +85,7 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
   const manquantes = prop.prestations.filter((p) => p.verification !== "verifie").length;
   // The advisor confirms explicitly: the traveler sees who confirmed, when and why (#113).
   const confirmation = derniereConfirmation(prop.decisions_statut);
+  const advisor = advisorFirstName(prop);
   const body = (
     <>
       <div className="flex items-start justify-between gap-3">
@@ -132,7 +132,7 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
 
       {prop.changements && prop.changements.length > 0 && (
         <ul className="mt-3 space-y-1 border-t border-dashed border-line pt-3">
-          <li className="text-xs font-semibold text-ink">Nouvelle lecture</li>
+          <li className="text-xs font-semibold text-ink">Ce qui a changé depuis</li>
           {prop.changements.map((item) => (
             <ChangementLine key={item.id} item={item} />
           ))}
@@ -144,10 +144,10 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
           <span>{prop.prestations.length} prestations</span>
           <span>·</span>
           <span>{formatDate(prop.cree_le)}</span>
-          {prop.conseiller && (
+          {advisor && (
             <>
               <span>·</span>
-              <span>par {prop.conseiller}</span>
+              <span>par {advisor}</span>
             </>
           )}
         </div>

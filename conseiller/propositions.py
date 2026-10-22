@@ -20,7 +20,10 @@ from utils import (
     SOURCE_LABEL,
     STATUT_BROUILLON,
     STATUT_CORRECTION_DEMANDEE,
+    STATUT_ENVOYEE,
     STATUT_PAR_DECISION,
+    STATUT_REFUSEE,
+    STATUT_VALIDEE,
     TRANSITIONS_PROPOSITION,
 )
 
@@ -41,6 +44,21 @@ def parse_iso8601(value):
         return datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+def a_ete_envoyee(record):
+    """True once an advisor has sent the proposal to the traveler."""
+    return any(
+        d.get("action") == DECISION_ACCEPTER or d.get("apres") == STATUT_ENVOYEE
+        for d in record.get("decisions_statut") or [] if isinstance(d, dict))
+
+
+def visible_par_voyageur(record):
+    """#112: the traveler only sees what an advisor sent, never a draft."""
+    statut = record.get("statut")
+    if statut in (STATUT_ENVOYEE, STATUT_VALIDEE):
+        return True
+    return statut == STATUT_REFUSEE and a_ete_envoyee(record)
 
 
 class PropositionError(ValueError):
