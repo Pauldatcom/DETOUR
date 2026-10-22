@@ -140,9 +140,6 @@ export function TravelRequestForm({ isLoggedIn, onClose }: TravelRequestFormProp
               </h2>
               {/* Confirmation stays clear without motion (#131 / #113). */}
               <p className="mt-3 leading-relaxed text-ballast">{FORMULAIRE.messageSucces}</p>
-              <p className="mt-2 text-sm text-ink">
-                Un conseiller vous répondra sous 24 à 48 h ouvrées.
-              </p>
               <button
                 type="button"
                 onClick={() => {

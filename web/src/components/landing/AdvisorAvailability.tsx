@@ -60,12 +60,6 @@ export function AdvisorAvailability({ onDecrir }: AdvisorAvailabilityProps) {
                 {CONSEILLERS.disponibilite.heures}
               </p>
             </div>
-            <div className="rounded-xl border border-white/15 bg-white/5 p-4 text-center">
-              <p className="text-xs text-[#7fd9d5]">Délai de réponse</p>
-              <p className="meta-nowrap mt-1 text-sm font-bold">
-                {CONSEILLERS.disponibilite.delai}
-              </p>
-            </div>
           </div>
           <p className="mt-4 text-sm text-[#afc4dc]">
             {fenetre?.promesse_delai || CONSEILLERS.disponibilite.precision}

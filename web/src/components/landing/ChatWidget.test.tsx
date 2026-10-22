@@ -267,7 +267,7 @@ describe("ChatWidget", () => {
       {
         name: "draft proposal generation",
         reply:
-          "Votre demande est bien enregistrée. Un conseiller préparera une proposition et vous la soumettra sous 24 à 48 h ouvrées.",
+          "Votre demande est bien enregistrée. Un conseiller préparera une proposition et vous la soumettra.",
       },
       {
         name: "advisor editing a draft",

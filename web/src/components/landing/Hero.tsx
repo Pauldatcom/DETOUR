@@ -39,11 +39,6 @@ export function Hero({ onDecrir }: HeroProps) {
               {HERO.ctaSecondaire}
             </Link>
           </div>
-
-          <p className="mt-6 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm text-[#c9d9ec]">
-            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-[#5be39a]" />
-            {HERO.badge}
-          </p>
         </div>
 
         <div
