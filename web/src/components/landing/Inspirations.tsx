@@ -7,19 +7,19 @@ interface InspirationsProps {
   onDecrir: () => void;
 }
 
-/** Section « Inspirations du moment » + détail fictif via modal « Découvrir ». */
+/** Section « Inspirations du moment » + détail fictif via modal « Découvrir » — 2026 brand. */
 export function Inspirations({ onDecrir }: InspirationsProps) {
   const [detail, setDetail] = useState<Destination | null>(null);
 
   return (
-    <section id="inspirations" className="scroll-mt-20 bg-[#f2f7fc] py-16 lg:py-24">
+    <section id="inspirations" className="scroll-mt-20 bg-chalk py-16 lg:py-24">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="max-w-2xl">
-          <p className="mb-2 text-sm font-semibold tracking-widest text-[#38bdb8] uppercase">
+          <p className="mb-2 font-mono text-xs font-semibold tracking-widest text-ballast uppercase">
             {INSPIRATIONS.surtitre}
           </p>
-          <h2 className="text-3xl font-bold text-[#0b2447] sm:text-4xl">{INSPIRATIONS.titre}</h2>
-          <p className="mt-4 text-[#4b6480]">{INSPIRATIONS.texte}</p>
+          <h2 className="text-3xl font-extrabold text-ink sm:text-4xl">{INSPIRATIONS.titre}</h2>
+          <p className="mt-4 text-ballast">{INSPIRATIONS.texte}</p>
         </div>
 
         <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -36,11 +36,11 @@ export function Inspirations({ onDecrir }: InspirationsProps) {
           aria-modal="true"
           aria-labelledby="detail-titre"
         >
-          <div className="absolute inset-0 bg-[#07101e]/70" onClick={() => setDetail(null)} />
-          <div className="relative max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl bg-white p-6 shadow-2xl sm:p-8">
+          <div className="absolute inset-0 bg-ink/70" onClick={() => setDetail(null)} />
+          <div className="relative max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl bg-card p-6 shadow-2xl sm:p-8">
             <button
               onClick={() => setDetail(null)}
-              className="absolute top-4 right-4 rounded-full p-2 text-[#4b6480] outline-none hover:bg-[#f2f7fc] focus-visible:ring-2 focus-visible:ring-[#38bdb8]"
+              className="absolute top-4 right-4 rounded-full p-2 text-ballast hover:bg-sky/40"
               aria-label="Fermer le détail"
             >
               <svg
@@ -54,17 +54,17 @@ export function Inspirations({ onDecrir }: InspirationsProps) {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
               </svg>
             </button>
-            <p className="text-sm font-semibold tracking-widest text-[#38bdb8] uppercase">
+            <p className="font-mono text-xs font-semibold tracking-widest text-ballast uppercase">
               Inspiration fictive
             </p>
-            <h3 id="detail-titre" className="mt-2 text-2xl font-bold text-[#0b2447]">
+            <h3 id="detail-titre" className="mt-2 text-2xl font-extrabold text-ink">
               {detail.titre}
             </h3>
-            <p className="mt-1 text-sm font-semibold text-[#4b6480]">
+            <p className="mt-1 text-sm font-semibold text-ballast">
               {detail.region} · {detail.prixIndicatif}
             </p>
-            <p className="mt-4 leading-relaxed text-[#4b6480]">{detail.description}</p>
-            <div className="mt-6 rounded-xl bg-[#f0eefe] p-4 text-sm text-[#4b3a8f]">
+            <p className="mt-4 leading-relaxed text-ballast">{detail.description}</p>
+            <div className="mt-6 rounded-xl bg-sky/40 p-4 text-sm text-ink">
               {CONSEILLERS.disponibilite.jours}, {CONSEILLERS.disponibilite.heures}. Aucune
               réservation réelle : un conseiller prépare une proposition, vous décidez ensuite.
             </div>
@@ -73,7 +73,7 @@ export function Inspirations({ onDecrir }: InspirationsProps) {
                 setDetail(null);
                 onDecrir();
               }}
-              className="mt-6 w-full rounded-full bg-[#0b2447] px-6 py-3 font-semibold text-base text-white transition outline-none hover:bg-[#12335e] focus-visible:ring-2 focus-visible:ring-[#38bdb8] focus-visible:ring-offset-2"
+              className="mt-6 w-full rounded-full bg-ink px-6 py-3 font-semibold text-base text-chalk transition hover:bg-ink/85"
             >
               Décrire mon voyage
             </button>
