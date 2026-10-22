@@ -40,6 +40,29 @@ export function ChatWidget({ isLoggedIn }: ChatWidgetProps) {
     }
   }, [open, messages]);
 
+  // Restore a pending approval after a page reload: without this, the confirm
+  // buttons vanish while the request stays "en_attente" and the advisor never sees it.
+  useEffect(() => {
+    if (!isLoggedIn || hidden) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { demandes } = await api.mesDemandes();
+        if (cancelled) return;
+        const pending = demandes.find((d) => d.approbation_client?.statut === "en_attente");
+        if (pending) {
+          setRequestId(pending.id);
+          setAwaitingApproval(true);
+        }
+      } catch {
+        // Silent: the approval is a best-effort restore, the chat stays usable.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, hidden]);
+
   async function send(e: React.FormEvent) {
     e.preventDefault();
     const text = input.trim();

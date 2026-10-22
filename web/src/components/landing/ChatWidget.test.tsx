@@ -16,9 +16,9 @@ vi.mock("react-router-dom", async (importOriginal) => {
   return { ...actual, useNavigate: () => navigateMock };
 });
 
-// Mock the api module: only `chat` is used by ChatWidget.
+// Mock the api module: only `chat`, `approveRequest` and `mesDemandes` are used.
 vi.mock("../../lib/api", () => ({
-  api: { chat: vi.fn(), approveRequest: vi.fn() },
+  api: { chat: vi.fn(), approveRequest: vi.fn(), mesDemandes: vi.fn() },
 }));
 
 // ---------------------------------------------------------------------------
@@ -47,6 +47,7 @@ function makeResult(reply: string) {
 
 const apiChat = vi.mocked(api.chat);
 const apiApprove = vi.mocked(api.approveRequest);
+const apiMesDemandes = vi.mocked(api.mesDemandes);
 
 /** A ChatResult where the agent just saved a request waiting for approval. */
 function makeSavedResult(reply: string) {
@@ -76,6 +77,8 @@ async function sendMessage(user: ReturnType<typeof userEvent.setup>, text: strin
 describe("ChatWidget", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Restore-on-mount finds no pending request unless a test overrides this.
+    apiMesDemandes.mockResolvedValue({ demandes: [] });
     // Reset pathname to / before each test; ChatWidget reads window.location.pathname
     // directly at render time so each test starts from a known URL.
     window.history.pushState({}, "", "/");
@@ -380,6 +383,34 @@ describe("ChatWidget", () => {
       await user.type(screen.getByRole("textbox"), "Plutôt 3 personnes");
       await user.click(screen.getByRole("button", { name: /envoyer/i }));
       expect(apiChat).toHaveBeenLastCalledWith(expect.any(Array), "dem_abc123");
+    });
+
+    it("restores the pending approval after a page reload", async () => {
+      // A request was saved before the reload: the server still has it pending.
+      apiMesDemandes.mockResolvedValue({
+        demandes: [
+          {
+            id: "dem_abc123",
+            statut: "nouvelle",
+            cree_le: "2026-10-22T10:00:00+00:00",
+            demande: {} as never,
+            approbation_client: { statut: "en_attente", le: null },
+          },
+        ],
+      });
+      const user = userEvent.setup();
+      renderWidget();
+      await user.click(screen.getByRole("button", { name: /ouvrir le chat/i }));
+      expect(
+        await screen.findByRole("button", { name: "Je confirme ma demande" }),
+      ).toBeInTheDocument();
+    });
+
+    it("does not show the buttons when the pending request belongs to nobody", async () => {
+      apiMesDemandes.mockResolvedValue({ demandes: [] });
+      renderWidget();
+      await waitFor(() => expect(apiMesDemandes).toHaveBeenCalled());
+      expect(screen.queryByRole("button", { name: "Je confirme ma demande" })).toBeNull();
     });
   });
 
