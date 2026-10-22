@@ -21,8 +21,8 @@ const PROP_STATUT_LABELS = {
   correction_requested: "Correction demandée",
 };
 
-/** Service types shown to the advisor (#39). */
-const TYPE_LABELS = {
+/** Prestation types shown to the advisor (#39). */
+const PRESTATION_LABELS = {
   transport: "Transport",
   hebergement: "Hébergement",
   activite: "Activité",
@@ -256,7 +256,7 @@ async function afficherPropositionsDemande(content, demId) {
       }
       for (const item of prop.prestations || []) {
         const li = document.createElement("li");
-        const type = TYPE_LABELS[item.type] || item.type;
+        const type = PRESTATION_LABELS[item.type] || item.type;
         if (item.verification === "verifie") {
           const dispo = item.disponible ? "disponible" : "indisponible";
           const prix = parPersonne[item.id] ?? item.prix_unitaire_eur;
