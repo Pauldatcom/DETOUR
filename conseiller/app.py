@@ -31,6 +31,7 @@ from lecture import (
 from propositions import PropositionError, PropositionStore
 
 from store import DemandStore, ValidationError, criteres_depuis_demande
+from traces import finaliser_et_persister
 from users import UserStore, UserError
 from utils import (DECISION_ACCEPTER, DECISION_CORRECTION, DECISION_REFUSER,
                    GOOGLE_OAUTH_URL, GOOGLE_TOKEN_URL, GOOGLE_USERINFO_URL,
@@ -71,7 +72,7 @@ class SessionError(Exception):
 
 
 def make_handler(store, supplier=None, agent=None, users=None, team_key="",
-                 propositions=None):
+                 propositions=None, traces_dir=None):
     """Construit le handler HTTP.
 
     - `users=None` : mode développement/tests, aucune authentification requise
@@ -79,6 +80,7 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
     - `users=UserStore(...)` : portail actif — les pages et les routes
       protégées exigent une session (voyageur ou conseiller).
     - `propositions=None` : store de propositions en mémoire (mode tests).
+    - `traces_dir` : dossier pour les traces agent expurgées (#5); None = pas d'écriture.
     """
 
     if propositions is None:
@@ -600,9 +602,16 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                         user_id=session.get("user_id", "") if isinstance(session, dict) else "",
                         demande_id=demande_id,
                     )
+                    # #5: persist a redacted trace (also printed for local debug).
+                    thread_id = demande_id or (result.get("demande") or {}).get("id")
+                    result["trace"] = finaliser_et_persister(
+                        result.get("trace") or {},
+                        traces_dir,
+                        request_id=thread_id or (result.get("trace") or {}).get("request_id"),
+                        reponse_finale=result.get("reply") or "",
+                    )
                     print("[agent] " + json.dumps(result["trace"], ensure_ascii=False), flush=True)
 
-                    thread_id = demande_id or (result.get("demande") or {}).get("id")
                     if thread_id and (result.get("reply") or "").strip():
                         historique = [dict(m) for m in messages]
                         historique.append({"role": "assistant", "content": result["reply"]})
@@ -818,6 +827,8 @@ def main():
     parser.add_argument("--state-file", default=str(ROOT / ".local" / "demandes.json"))
     parser.add_argument("--users-file", default=str(ROOT / ".local" / "users.json"))
     parser.add_argument("--propositions-file", default=str(ROOT / ".local" / "propositions.json"))
+    parser.add_argument("--traces-dir", default=str(ROOT / ".local" / "traces"),
+                        help="Directory for redacted agent traces (#5).")
     parser.add_argument("--supplier-url", default=os.environ.get("TRAVEL_API_URL", DEFAULT_URL))
     args = parser.parse_args()
 
@@ -832,7 +843,8 @@ def main():
     agent = Agent(supplier, store, api_key=api_key, model=model)
     server = ThreadingHTTPServer((args.host, args.port),
                                   make_handler(store, supplier, agent, users, team_key,
-                                               propositions=propositions))
+                                               propositions=propositions,
+                                               traces_dir=args.traces_dir))
     print(f"Portail sur http://{args.host}:{server.server_port} "
           "(voyageur : /login · conseiller : clé TRAVEL_TEAM_KEY)", flush=True)
     print(f"Serveur de prestations : {args.supplier_url}", flush=True)
