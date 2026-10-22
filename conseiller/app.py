@@ -99,6 +99,12 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
         with sessions_lock:
             sessions.pop(token, None)
 
+    def session_invalider_utilisateur(user_id, token_conserve=None):
+        with sessions_lock:
+            for t in [t for t, s in sessions.items()
+                      if s.get("user_id") == user_id and t != token_conserve]:
+                sessions.pop(t, None)
+
     def session_lire(token):
         if not token:
             return None
@@ -556,6 +562,12 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                         if users is None:
                             raise ApiError(503, "auth_desactivee", "Portail non configuré (users).")
                         data = self.read_json()
+                        if users.mot_de_passe_defini(session.get("user_id", "")):
+                            if not users.verifier_mot_de_passe(
+                                    session.get("user_id", ""),
+                                    data.get("mot_de_passe_actuel", "")):
+                                raise UserError("Le mot de passe actuel est incorrect.",
+                                                401, "mot_de_passe_actuel_invalide")
                         compte = users.mettre_a_jour_profil(
                             session.get("user_id", ""), data.get("email"), data.get("nom"))
                         compte["mot_de_passe_defini"] = users.mot_de_passe_defini(session["user_id"])
@@ -651,6 +663,10 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                         session.get("user_id", ""),
                         data.get("mot_de_passe_actuel", ""),
                         data.get("nouveau_mot_de_passe"),
+                    )
+                    session_invalider_utilisateur(
+                        session.get("user_id", ""),
+                        _token_depuis_cookie(self.headers),
                     )
                     return self.send_json(200, {"mot_de_passe_modifie": True})
 

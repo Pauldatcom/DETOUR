@@ -452,6 +452,7 @@ class TestEspaceCompteAPI(unittest.TestCase):
 
         status, data, _ = client.patch("/api/account", {
             "email": "alice.nouveau@exemple.fr", "nom": "Alice Nouveau",
+            "mot_de_passe_actuel": "secret123",
         })
         self.assertEqual(status, 200)
         self.assertEqual(data["compte"]["nom"], "Alice Nouveau")
@@ -466,9 +467,12 @@ class TestEspaceCompteAPI(unittest.TestCase):
         })
         status, _, _ = autre.patch("/api/account", {
             "email": "alice.nouveau@exemple.fr", "nom": "Bob",
+            "mot_de_passe_actuel": "secret123",
         })
         self.assertEqual(status, 409)
-        status, _, _ = client.patch("/api/account", {"email": "invalide", "nom": "Alice"})
+        status, _, _ = client.patch("/api/account", {
+            "email": "invalide", "nom": "Alice", "mot_de_passe_actuel": "secret123",
+        })
         self.assertEqual(status, 400)
 
         status, _, _ = client.post("/api/account/password", {
@@ -486,6 +490,48 @@ class TestEspaceCompteAPI(unittest.TestCase):
         conseiller.post("/api/login-conseiller", {"cle": self.team_key})
         status, _, _ = conseiller.get("/api/account")
         self.assertEqual(status, 401)
+
+    def test_sessions_invalidees_apres_changement_mot_de_passe(self):
+        client1 = ClientHTTP(self.base)
+        client1.post("/api/register", {
+            "email": "dual@exemple.fr", "nom": "Dual", "mot_de_passe": "secret123",
+        })
+        client2 = ClientHTTP(self.base)
+        status, _, _ = client2.post("/api/login", {
+            "email": "dual@exemple.fr", "mot_de_passe": "secret123",
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(client1.get("/api/account")[0], 200)
+        self.assertEqual(client2.get("/api/account")[0], 200)
+
+        status, _, _ = client1.post("/api/account/password", {
+            "mot_de_passe_actuel": "secret123", "nouveau_mot_de_passe": "nouveau123",
+        })
+        self.assertEqual(status, 200)
+
+        self.assertEqual(client2.get("/api/account")[0], 401)
+        self.assertEqual(client1.get("/api/account")[0], 200)
+
+    def test_patch_profil_exige_mot_de_passe_actuel(self):
+        client = ClientHTTP(self.base)
+        client.post("/api/register", {
+            "email": "carol@exemple.fr", "nom": "Carol", "mot_de_passe": "secret123",
+        })
+        status, _, _ = client.patch("/api/account", {
+            "email": "carol.nouveau@exemple.fr", "nom": "Carol Nouveau",
+        })
+        self.assertEqual(status, 401)
+        status, _, _ = client.patch("/api/account", {
+            "email": "carol.nouveau@exemple.fr", "nom": "Carol Nouveau",
+            "mot_de_passe_actuel": "mauvais",
+        })
+        self.assertEqual(status, 401)
+        status, data, _ = client.patch("/api/account", {
+            "email": "carol.nouveau@exemple.fr", "nom": "Carol Nouveau",
+            "mot_de_passe_actuel": "secret123",
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(data["compte"]["email"], "carol.nouveau@exemple.fr")
 
     def test_demande_attachee_a_la_session_et_non_au_json_client(self):
         voyageur = ClientHTTP(self.base)

@@ -181,6 +181,18 @@ class UserStore:
             compte = self.users.get(user_id)
             return bool(compte and compte.get("hash"))
 
+    def verifier_mot_de_passe(self, user_id, mot_de_passe):
+        with self.lock:
+            compte = self.users.get(user_id)
+            if not compte:
+                return False
+            hash_actuel = compte.get("hash", "")
+            if not hash_actuel:
+                return True
+            if not isinstance(mot_de_passe, str) or not mot_de_passe:
+                return False
+            return secrets.compare_digest(self._hasher(mot_de_passe, compte["sel"]), hash_actuel)
+
     def changer_mot_de_passe(self, user_id, mot_de_passe_actuel, nouveau_mot_de_passe):
         if not isinstance(nouveau_mot_de_passe, str) or len(nouveau_mot_de_passe) < 6:
             raise UserError("Le mot de passe doit contenir au moins 6 caractères.",
