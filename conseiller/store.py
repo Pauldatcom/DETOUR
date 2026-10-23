@@ -4,10 +4,10 @@ import json
 import re
 import secrets
 import threading
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
-from horaires import evaluer_delai_reponse, marquer_echeances
+from horaires import evaluer_delai_reponse, fuseau_metier, marquer_echeances
 import db
 from utils import (ACTIVITES_POSSIBLES, ACTEUR_AGENT, NIVEAUX_AVENTURE,
                    QUALIF_EN_COURS,
@@ -38,6 +38,19 @@ def _valid_date(value):
 
 class ValidationError(ValueError):
     pass
+
+
+def business_today():
+    """Today's date in the business timezone (Europe/Paris).
+
+    Tests replace it with a fixed date (mock.patch) so they never expire.
+    """
+    return datetime.now(fuseau_metier()).date()
+
+
+def _departure_too_soon(value):
+    """True when a valid YYYY-MM-DD departure date is today or before. It must be after today."""
+    return _valid_date(value) and date.fromisoformat(value) <= business_today()
 
 
 def _valider_auteur(par):
@@ -109,7 +122,7 @@ def champs_manquants(demande):
         manquants.append("destination")
     date_depart = demande.get("date_depart")
     date_retour = demande.get("date_retour")
-    if not _valid_date(date_depart):
+    if not _valid_date(date_depart) or _departure_too_soon(date_depart):
         manquants.append("date_depart")
     if not _valid_date(date_retour):
         manquants.append("date_retour")
@@ -185,6 +198,8 @@ def _normaliser_champ(key, value, contexte):
     if key in ("date_depart", "date_retour"):
         if not _valid_date(value):
             raise ValidationError(f"{key} must be YYYY-MM-DD.")
+        if key == "date_depart" and _departure_too_soon(value):
+            raise ValidationError("date_depart cannot be too soon.")
         return str(value)
     if key == "nombre_voyageurs":
         if type(value) is not int or not 1 <= value <= 20:
@@ -306,6 +321,8 @@ def valider_demande(data):
     date_depart = data.get("date_depart")
     if not _valid_date(date_depart):
         raise ValidationError("date_depart au format AAAA-MM-JJ est obligatoire.")
+    if _departure_too_soon(date_depart):
+        raise ValidationError("date_depart doit être après aujourd'hui.")
     date_depart = str(date_depart)
 
     date_retour = data.get("date_retour")

@@ -165,8 +165,8 @@ class TestPropositionGeneration(unittest.TestCase):
 
     def test_generer_proposition_retourne_json(self):
         agent = FakeAgentWithGeneration()
-        demande = {"demande": {"destination": "Nantes", "date_depart": "2026-11-07",
-                               "date_retour": "2026-11-09", "nombre_voyageurs": 2,
+        demande = {"demande": {"destination": "Nantes", "date_depart": "2030-11-07",
+                               "date_retour": "2030-11-09", "nombre_voyageurs": 2,
                                "budget_max_par_personne": 500, "type_voyage": "trek-randonnee",
                                "niveau_aventure": "modere", "souhaits": ""}}
         recherche = {"resultats": [{"id": "train-nantes-01", "nom": "Train", "type": "transport",

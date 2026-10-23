@@ -25,8 +25,8 @@ from propositions import PropositionStore, PropositionError
 VALIDE = {
     "type_voyage": "lune-de-miel",
     "destination": "Lyon",
-    "date_depart": "2026-11-07",
-    "date_retour": "2026-11-09",
+    "date_depart": "2030-11-07",
+    "date_retour": "2030-11-09",
     "nombre_voyageurs": 2,
     "budget_max_par_personne": 500,
     "niveau_aventure": "calme",
