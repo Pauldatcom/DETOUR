@@ -141,6 +141,32 @@ a {
   overflow: visible;
 }
 
+/* #198 - the 96 px rule is decided on the REAL rendered width: the slot is a
+   container query context; when it falls under 96 px the wordmark gives way
+   to the DO monogramme, and reverses when space comes back. */
+.logo-slot {
+  display: block;
+  container-type: inline-size;
+}
+
+/* The DO kept next to the wordmark, swapped by the query. Out of the flow
+   (and tree) while the wordmark fits. */
+.logo-slot .logo-do {
+  display: none;
+}
+
+@container (width < 96px) {
+  .logo-slot .logo-wordmark {
+    display: none;
+  }
+
+  .logo-slot .logo-do {
+    display: block;
+    width: 44px;
+    height: 44px;
+  }
+}
+
 .logo .rest {
   fill: var(--color-ink);
 }
