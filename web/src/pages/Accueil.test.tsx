@@ -65,8 +65,6 @@ describe("Accueil — 2026 brand (#126)", () => {
 
   it("renders the chat widget for logged-in and anonymous users", () => {
     renderAccueil();
-    expect(
-      screen.getByRole("button", { name: /ouvrir le chat/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /ouvrir le chat/i })).toBeInTheDocument();
   });
 });

@@ -47,9 +47,7 @@ describe("Responsive public screens (#126)", () => {
           <Accueil isLoggedIn={false} session={null} onLogout={noop} />,
         );
         expect(container.firstElementChild).not.toBeNull();
-        expect(
-          screen.getByRole("button", { name: /ouvrir le chat/i }),
-        ).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /ouvrir le chat/i })).toBeInTheDocument();
       });
     }
   });
