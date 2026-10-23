@@ -5,12 +5,20 @@ Kanban board for tracking. Every change starts from an issue.
 
 ## Requirements
 
-Python 3.13 or newer is required to run the backend services and the test
-suites. Keep your local interpreter up to date to avoid known security
-vulnerabilities. Verify your local installation with:
+Python 3.13 is required to run the backend services and the test suites.
+The exact version is pinned in the `.python-version` file at the repository
+root, so tools like `pyenv`, `mise` or `asdf` automatically select it when
+you `cd` into the project. Keep your local interpreter up to date to avoid
+known security vulnerabilities. Verify your local installation with:
 
 ```
 python3 --version
+```
+
+If you use `pyenv` and the pinned version is missing, install it with:
+
+```
+pyenv install --skip-existing
 ```
 
 ## Workflow
