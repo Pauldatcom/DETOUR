@@ -29,7 +29,10 @@ def obtenir(req, id):
     record = req.ctx.propositions.obtenir(id)
     session = req.session
     est_conseiller = isinstance(session, dict) and session.get("role") == "conseiller"
-    if not record or (not est_conseiller and not visible_par_voyageur(record)):
+    # Anonymous test/dev calls keep the historical open route; an authenticated
+    # traveler only gets proposals an advisor actually sent (#112).
+    cache = session is not None and not est_conseiller
+    if not record or (cache and not visible_par_voyageur(record)):
         raise ApiError(404, "proposition_not_found", "Proposition introuvable.")
     enrichie = enrichir_propositions([record], req.ctx.store)[0]
     req.send_json(200, {"proposition": enrichie, "simulation": True})
