@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { api } from "../lib/api";
-import { BrandLogo } from "../components/conseiller/BrandLogo";
+import { Logo } from "../components/Logo";
 
 interface LoginProps {
   onSession: () => void;
   googleOauth: boolean;
 }
 
-/** Page Login — accessible forms + DO monogram below 96 px (#131). */
+/** Page Login — 2026 brand: chalk background, card panel, ink accents. Accessible forms (#131). */
 export function Login({ onSession, googleOauth }: LoginProps) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<"login" | "register" | "conseiller">("login");
@@ -16,6 +16,7 @@ export function Login({ onSession, googleOauth }: LoginProps) {
   const [nom, setNom] = useState("");
   const [password, setPassword] = useState("");
   const [cle, setCle] = useState("");
+  const [prenom, setPrenom] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -33,7 +34,12 @@ export function Login({ onSession, googleOauth }: LoginProps) {
         onSession();
         navigate("/mes-propositions");
       } else {
-        await api.loginConseiller(cle);
+        // #112: the first name signs the advisor's proposals for the traveler.
+        if (!prenom.trim()) {
+          setError("Indiquez votre prénom : il signe vos propositions.");
+          return;
+        }
+        await api.loginConseiller(cle, prenom.trim());
         onSession();
         navigate("/espace-conseiller");
       }
@@ -44,6 +50,8 @@ export function Login({ onSession, googleOauth }: LoginProps) {
     }
   }
 
+  const champClasse =
+    "mt-1 w-full rounded-xl border border-ink/15 bg-card px-4 py-2.5 text-sm text-ink outline-none transition focus:border-ink focus:ring-2 focus:ring-sky";
   const errorId = "login-error";
 
   return (
@@ -51,14 +59,15 @@ export function Login({ onSession, googleOauth }: LoginProps) {
       <a href="#contenu-connexion" className="skip-link">
         Aller au formulaire
       </a>
-      <header className="sticky top-0 z-40 border-b border-ink/10 bg-chalk/90 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-line bg-chalk/90 backdrop-blur">
         <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <Link to="/accueil" className="flex items-center gap-2">
-            <BrandLogo variant="color" width={105} alt="DÉTOUR" />
+          <Link to="/accueil" className="flex w-28 items-center gap-2" aria-label="DÉTOUR, accueil">
+            <Logo variant="encre" width={112} />
+            <span className="sr-only">DÉTOUR</span>
           </Link>
           <Link
             to="/accueil"
-            className="rounded-full border border-ink/15 px-4 py-1.5 text-sm font-semibold text-ink transition outline-none hover:border-ink/40"
+            className="rounded-full border border-ink/20 px-4 py-1.5 text-sm font-semibold text-ink transition outline-none hover:border-ink"
           >
             ← Retour à l'accueil
           </Link>
@@ -68,7 +77,7 @@ export function Login({ onSession, googleOauth }: LoginProps) {
       <div className="flex flex-1 items-center justify-center px-4 py-12">
         <div
           id="contenu-connexion"
-          className="w-full max-w-md rounded-2xl border border-ink/10 bg-white p-8 shadow-lg"
+          className="w-full max-w-md rounded-2xl border border-line bg-card p-8 shadow-lg"
         >
           <h1 className="font-display text-2xl font-extrabold tracking-tight">Bienvenue</h1>
           <p className="mt-1 text-sm text-ballast">
@@ -76,7 +85,7 @@ export function Login({ onSession, googleOauth }: LoginProps) {
           </p>
 
           <div
-            className="mt-6 flex gap-1 rounded-xl border border-ink/10 bg-card p-1"
+            className="mt-6 flex gap-1 rounded-xl border border-line bg-chalk p-1"
             role="tablist"
             aria-label="Mode de connexion"
           >
@@ -117,7 +126,7 @@ export function Login({ onSession, googleOauth }: LoginProps) {
                   onChange={(e) => setNom(e.target.value)}
                   autoComplete="name"
                   aria-describedby={error ? errorId : undefined}
-                  className="w-full rounded-xl border border-ink/15 bg-card px-4 py-2.5 text-sm text-ink outline-none"
+                  className={champClasse}
                   required
                 />
               </div>
@@ -137,7 +146,7 @@ export function Login({ onSession, googleOauth }: LoginProps) {
                     autoComplete="email"
                     aria-invalid={Boolean(error)}
                     aria-describedby={error ? errorId : undefined}
-                    className="w-full rounded-xl border border-ink/15 bg-card px-4 py-2.5 text-sm text-ink outline-none"
+                    className={champClasse}
                     required
                   />
                 </div>
@@ -156,36 +165,56 @@ export function Login({ onSession, googleOauth }: LoginProps) {
                     autoComplete={tab === "login" ? "current-password" : "new-password"}
                     aria-invalid={Boolean(error)}
                     aria-describedby={error ? errorId : undefined}
-                    className="w-full rounded-xl border border-ink/15 bg-card px-4 py-2.5 text-sm text-ink outline-none"
+                    className={champClasse}
                     required
                     minLength={6}
                   />
                 </div>
               </>
             ) : (
-              <div>
-                <label htmlFor="login-cle" className="mb-1 block text-sm font-medium text-ink">
-                  Clé d'accès conseiller
-                </label>
-                <input
-                  id="login-cle"
-                  type="password"
-                  value={cle}
-                  onChange={(e) => setCle(e.target.value)}
-                  autoComplete="current-password"
-                  aria-invalid={Boolean(error)}
-                  aria-describedby={error ? errorId : undefined}
-                  className="w-full rounded-xl border border-ink/15 bg-card px-4 py-2.5 text-sm text-ink outline-none"
-                  required
-                />
-              </div>
+              <>
+                <div>
+                  <label htmlFor="login-prenom" className="mb-1 block text-sm font-medium text-ink">
+                    Votre prénom
+                  </label>
+                  <input
+                    id="login-prenom"
+                    value={prenom}
+                    onChange={(e) => setPrenom(e.target.value)}
+                    autoComplete="given-name"
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={error ? errorId : "login-prenom-aide"}
+                    className={champClasse}
+                    required
+                  />
+                  <p id="login-prenom-aide" className="mt-1 text-xs text-ballast">
+                    Les voyageurs le verront en signature de vos propositions.
+                  </p>
+                </div>
+                <div>
+                  <label htmlFor="login-cle" className="mb-1 block text-sm font-medium text-ink">
+                    Clé d'accès conseiller
+                  </label>
+                  <input
+                    id="login-cle"
+                    type="password"
+                    value={cle}
+                    onChange={(e) => setCle(e.target.value)}
+                    autoComplete="current-password"
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={error ? errorId : undefined}
+                    className={champClasse}
+                    required
+                  />
+                </div>
+              </>
             )}
 
             {error && (
               <p
                 id={errorId}
                 role="alert"
-                className="rounded-xl bg-brick/10 px-4 py-2 text-sm text-brick"
+                className="rounded-xl border border-brick/30 bg-brick/10 px-4 py-2 text-sm text-brick"
               >
                 {error}
               </p>
@@ -209,14 +238,14 @@ export function Login({ onSession, googleOauth }: LoginProps) {
           {googleOauth && tab !== "conseiller" && (
             <>
               <div className="my-4 flex items-center gap-3 text-xs text-ballast">
-                <div className="h-px flex-1 bg-ink/10" />
+                <div className="h-px flex-1 bg-line" />
                 ou
-                <div className="h-px flex-1 bg-ink/10" />
+                <div className="h-px flex-1 bg-line" />
               </div>
               <button
                 type="button"
                 onClick={() => api.googleAuth()}
-                className="w-full rounded-full border border-ink/15 px-4 py-2.5 text-sm font-medium text-ink transition outline-none hover:bg-card"
+                className="w-full rounded-full border border-ink/20 px-4 py-2.5 text-sm font-medium text-ink transition outline-none hover:bg-sky/40"
               >
                 Continuer avec Google
               </button>

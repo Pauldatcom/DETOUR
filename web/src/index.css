@@ -1,48 +1,87 @@
 @import "tailwindcss";
 
-/* 2026 brand tokens (Détour Voyages). */
+/*
+ * DÉTOUR — 2026 brand design tokens (source of truth: brand-2026/charte/index.html).
+ * One committed brand look, light only: no dark variant.
+ */
 @theme {
+  /* Colors — 2026 brand palette */
   --color-ink: #16233f;
   --color-chalk: #f6f1e7;
   --color-yellow: #f2b705;
   --color-sky: #bcd3ea;
   --color-brick: #c4553a;
   --color-ballast: #6b7385;
+  --color-muted: #5b6480;
+  --color-line: rgba(22, 35, 63, 0.16);
   --color-card: #fbf8f1;
 
-  /* Legacy aliases kept for pages not yet rebranded (#126). */
-  --color-base: #07101e;
-  --color-surface: #0f1a2e;
-  --color-border: #23364a;
-  --color-accent: #57c8df;
-  --color-accent-bright: #5acbe2;
-  --color-muted: #afbfcc;
-  --color-text: #eaf0f5;
-  --color-danger: #e5716b;
-  --color-success: #5be39a;
-  --color-warning: #f5b955;
+  /* Dark band equivalents (ink surfaces) — for hero/section on ink background */
+  --color-ink-muted: #aeb6ca;
+  --color-ink-line: rgba(246, 241, 231, 0.18);
+  --color-ink-card: #1d2c4c;
 
-  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
-  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
-}
+  /* Semantic aliases (legacy token names kept so existing utilities still resolve) */
+  --color-base: #f6f1e7;
+  --color-surface: #fbf8f1;
+  --color-border: rgba(22, 35, 63, 0.16);
+  --color-accent: #f2b705;
+  --color-accent-bright: #f2b705;
+  --color-text: #16233f;
+  --color-danger: #c4553a;
+  --color-success: #bcd3ea;
+  --color-warning: #f2b705;
 
-:root {
-  font-family: var(--font-sans);
-  color: var(--color-ink);
-  background: var(--color-chalk);
+  /* Typography — exactly two text families + one mono (eyebrows/tags only) */
+  --font-sans: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Bricolage Grotesque", "Arial Black", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+
+  /* Motion — the jumping o (see .j / .o-move). One run, never loops. */
+  --animate-saut: saut 1150ms cubic-bezier(0.3, 0.7, 0.4, 1) both;
   /* #131 — brand focus token (3 px yellow). Never yellow text on chalk. */
   --focus-ring: 3px solid var(--color-yellow);
   --focus-offset: 3px;
+}
+
+:root {
+  color-scheme: light;
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background: var(--color-chalk);
+  -webkit-font-smoothing: antialiased;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
   background: var(--color-chalk);
+  color: var(--color-ink);
+  line-height: 1.6;
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* Titles carry the display face; letter-spacing per the charte (-2.5%). */
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  text-wrap: balance;
+}
+
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
 }
 
 button,
@@ -71,6 +110,84 @@ a {
 .outline-none:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-offset);
+  border-radius: 4px;
+}
+
+/*
+ * Jumping o — static raised accent used in titles/hooks (>= 28px only,
+ * one per composition, never in prices, dates or addresses).
+ */
+.j {
+  position: relative;
+  top: -0.264em;
+  color: var(--color-yellow);
+}
+
+/* Animated variant: the o jumps once (1150ms), used on app open or advisor confirmation. */
+.o-move {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+
+.play .o-move {
+  animation: var(--animate-saut);
+}
+
+/* Official logo: lettering follows the variant, the O keeps its brand fill. */
+.logo {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.logo .rest {
+  fill: var(--color-ink);
+}
+
+.logo .o-fill {
+  fill: var(--color-yellow);
+}
+
+.logo-negatif .rest {
+  fill: var(--color-chalk);
+}
+
+.logo-mono-encre .rest,
+.logo-mono-encre .o-fill {
+  fill: var(--color-ink);
+}
+
+.logo-mono-blanc .rest,
+.logo-mono-blanc .o-fill {
+  fill: var(--color-chalk);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .play .o-move {
+    animation: none;
+  }
+}
+
+@keyframes saut {
+  0% {
+    transform: translate(0, 330px) scale(1, 1);
+  }
+  16% {
+    transform: translate(0, 330px) scale(1.08, 0.86);
+  }
+  44% {
+    transform: translate(0, -150px) scale(0.95, 1.07);
+  }
+  64% {
+    transform: translate(0, 12px) scale(1.08, 0.9);
+  }
+  76% {
+    transform: translate(0, -10px) scale(0.98, 1.02);
+  }
+  100% {
+    transform: translate(0, 0) scale(1, 1);
+  }
 }
 
 .sr-only {

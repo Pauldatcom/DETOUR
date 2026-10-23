@@ -115,6 +115,73 @@ def echeance_reponse(soumis_le, heures=DELAI_CIBLE_HEURES_OUVREES):
     return avancer_heures_ouvrees(soumis_le, heures)
 
 
+def heures_ouvrees_entre(debut, fin):
+    """Working hours elapsed between two instants (issue #52).
+
+    Counts only Monday-Friday opening hours, so it is the exact inverse of
+    `avancer_heures_ouvrees`: nights and weekends do not count, and a start
+    outside opening hours only counts from the next opening. Returns a float
+    number of hours, 0.0 if `fin` is not after `debut`.
+    """
+    debut = vers_metier(debut)
+    fin = vers_metier(fin)
+    if fin <= debut:
+        return 0.0
+
+    total = 0.0
+    jour = debut.date()
+    un_jour = timedelta(days=1)
+
+    while jour <= fin.date():
+        if jour.weekday() in JOURS_OUVRES:
+            ouverture = datetime.combine(
+                jour, HEURE_OUVERTURE, tzinfo=debut.tzinfo
+            )
+            fermeture = datetime.combine(
+                jour, HEURE_FERMETURE, tzinfo=debut.tzinfo
+            )
+            commence = max(ouverture, debut)
+            termine = min(fermeture, fin)
+
+            if termine > commence:
+                total += (termine - commence).total_seconds() / 3600
+
+        jour += un_jour
+
+    return total
+
+
+def _statut_echeance(instant, cible, maximum):
+    """Position of `instant` against the 24h target and the 48h maximum."""
+    if instant >= maximum:
+        return ECHEANCE_DEPASSEE
+    if instant >= cible:
+        return ECHEANCE_APPROCHE
+    return ECHEANCE_DANS_DELAI
+
+
+def evaluer_delai_reponse(soumis_le, repondu_le):
+    """Actual response time of a request, compared with the deadlines (issue #52).
+
+    Returns `heures_ouvrees` (actual response time, in working hours, rounded
+    to 2 decimals) and `statut`, using the same thresholds as the advisor
+    queue (#51): dans_delai (within the 24h target), approche (target exceeded,
+    still within the 48h maximum) or depassee (after the 48h maximum).
+    """
+    soumis = vers_metier(soumis_le)
+    repondu = vers_metier(repondu_le)
+
+    cible = echeance_reponse(soumis, DELAI_CIBLE_HEURES_OUVREES)
+    maximum = echeance_reponse(soumis, DELAI_MAX_HEURES_OUVREES)
+
+    return {
+        "heures_ouvrees": round(
+            heures_ouvrees_entre(soumis, repondu), 2
+        ),
+        "statut": _statut_echeance(repondu, cible, maximum),
+    }
+
+
 def fenetre_reponse(soumis_le=None):
     """Expected response window, to be communicated to the traveller (issue #53).
 
@@ -155,6 +222,9 @@ def marquer_echeances(record, maintenant=None):
     Adds `echeance_cible` (24h working hours), `echeance_max` (48h) and
     `echeance_statut`: dans_delai, approche (target exceeded) or depassee
     (maximum exceeded). Never modifies the request data itself.
+    Once the advisor has answered (issue #52), the status is frozen at the
+    moment of the response: an answered request must not turn "depassee" in
+    the queue as time goes by.
     """
     if not isinstance(record, dict):
         return record
@@ -164,15 +234,15 @@ def marquer_echeances(record, maintenant=None):
     except (TypeError, ValueError):
         return record
     present = vers_metier(maintenant or datetime.now(timezone.utc))
+    reponse = record.get("reponse")
+    if isinstance(reponse, dict):
+        try:
+            present = vers_metier(datetime.fromisoformat(str(reponse.get("le"))))
+        except (TypeError, ValueError):
+            pass
     cible = echeance_reponse(soumis_dt, DELAI_CIBLE_HEURES_OUVREES)
     maximum = echeance_reponse(soumis_dt, DELAI_MAX_HEURES_OUVREES)
-    if present >= maximum:
-        statut = ECHEANCE_DEPASSEE
-    elif present >= cible:
-        statut = ECHEANCE_APPROCHE
-    else:
-        statut = ECHEANCE_DANS_DELAI
     record["echeance_cible"] = cible.isoformat()
     record["echeance_max"] = maximum.isoformat()
-    record["echeance_statut"] = statut
+    record["echeance_statut"] = _statut_echeance(present, cible, maximum)
     return record

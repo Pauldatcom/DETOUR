@@ -20,6 +20,7 @@ from http.cookies import SimpleCookie
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
 
+import db
 from agent import Agent, DEFAULT_MODEL, OpenRouterError
 from fournisseur import DEFAULT_URL, SupplierClient, SupplierError
 from horaires import est_ouvert, fenetre_reponse
@@ -28,14 +29,14 @@ from lecture import (
     marquer_a_revoir_si_ecart,
     proposition_avec_changements,
 )
-from propositions import PropositionError, PropositionStore
+from propositions import PropositionError, PropositionStore, visible_par_voyageur
 
 from store import DemandStore, ValidationError, criteres_depuis_demande
 from traces import finaliser_et_persister
 from users import UserStore, UserError
 from utils import (DECISION_ACCEPTER, DECISION_CORRECTION, DECISION_REFUSER,
                    GOOGLE_OAUTH_URL, GOOGLE_TOKEN_URL, GOOGLE_USERINFO_URL,
-                   PROP_STATUTS, SESSION_COOKIE, SESSION_MAX)
+                   PROP_STATUTS, SESSION_COOKIE, SESSION_MAX, valider_prenom_conseiller)
 
 ROOT = Path(__file__).resolve().parent
 WEB_ROOT = ROOT.parent / "web" / "dist"
@@ -387,12 +388,21 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                     elif path in ("/api/stats", "/api/propositions") and method == "GET":
                         if not admin:
                             raise ApiError(401, "auth_requise", "Accès conseiller requis.")
+                    elif method == "POST" and re.fullmatch(
+                            r"/api/demandes/(dem_[a-f0-9]+)/reponse", path):
+                        # #52: only an advisor answers a customer request.
+                        if not admin:
+                            raise ApiError(401, "auth_requise", "Accès conseiller requis.")
                     elif method == "GET" and (m := re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)", path)):
                         if not (admin or (client and _proprietaire(store, m.group(1), session))):
                             raise ApiError(404, "demande_not_found", "Demande introuvable.")
                     elif method == "GET" and (m := re.fullmatch(r"/api/propositions/(prop_[a-f0-9]+)", path)):
-                        if not (admin or (client and _proprietaire_proposition(propositions, store, m.group(1), session))):
+                        if not (admin or (client and _proprietaire_proposition(propositions, store, m.group(1), session)
+                                          and visible_par_voyageur(propositions.obtenir(m.group(1))))):
                             raise ApiError(404, "proposition_not_found", "Proposition introuvable.")
+                    elif method == "POST" and (m2 := re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/approbation", path)):
+                        if not (client and _proprietaire(store, m2.group(1), session)):
+                            raise ApiError(404, "demande_not_found", "Demande introuvable.")
                     elif method == "POST" and (m2 := re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/recherche", path)):
                         if not (admin or (client and _proprietaire(store, m2.group(1), session))):
                             raise ApiError(401, "auth_requise", "Connectez-vous pour relancer une recherche.")
@@ -444,8 +454,10 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                     cle = data.get("cle")
                     if not isinstance(cle, str) or not cle or not secrets.compare_digest(cle, team_key or ""):
                         raise ApiError(401, "cle_invalide", "Clé d'accès incorrecte.")
-                    token = session_creer("conseiller", nom="Conseiller DÉTOUR")
-                    return self.send_json(200, {"session": {"role": "conseiller", "nom": "Conseiller DÉTOUR"}},
+                    # #112: the first name signs the advisor's proposals and decisions.
+                    nom = _prenom_conseiller(data.get("prenom"))
+                    token = session_creer("conseiller", nom=nom)
+                    return self.send_json(200, {"session": {"role": "conseiller", "nom": nom}},
                                           extra_headers=self._session_cookie(token))
 
                 # ---------- Google OAuth (PKCE) ----------
@@ -555,7 +567,8 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
 
                 if method == "GET" and path == "/api/demandes":
                     admin_exige(self)
-                    demandes = store.lister()
+                    # The advisor only gets requests the traveler approved.
+                    demandes = store.list_for_advisor()
                     demandes.sort(key=lambda d: d.get("cree_le", ""), reverse=True)
                     if users is not None:
                         for d in demandes:
@@ -589,6 +602,20 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                             "demande": dem,
                             "simulation": True,
                         })
+                if method == "POST":
+                    # #52: the advisor sends a written response to the customer request.
+                    # Author, date and time are set by the server, never by the client.
+                    match = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/reponse", path)
+                    if match:
+                        session = admin_exige(self)
+                        data = self.read_json()
+                        record = store.repondre(match.group(1), data.get("message"),
+                                                _nom_conseiller(session))
+                        if record is None:
+                            raise ApiError(404, "demande_not_found", "Demande introuvable.")
+                        if users is not None:
+                            record["client"] = users.obtenir(record.get("demande", {}).get("user_id", ""))
+                        return self.send_json(201, {"demande": record, "simulation": True})
 
                 if method == "PATCH":
                     if path == "/api/account":
@@ -695,6 +722,16 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                             pass
                     return self.send_json(200, {**result, "simulation": True})
 
+                match_approval = re.fullmatch(r"/api/demandes/(dem_[a-f0-9]+)/approbation", path)
+                if method == "POST" and match_approval:
+                    session = client_exige(self)
+                    data = self.read_json()
+                    record = store.approve_by_traveler(
+                        match_approval.group(1), session.get("user_id", ""), data.get("confirme"))
+                    if record is None:
+                        raise ApiError(404, "demande_not_found", "Demande introuvable.")
+                    return self.send_json(200, {"demande": record, "simulation": True})
+
                 if method == "POST" and path == "/api/account/password":
                     session = client_exige(self)
                     if users is None:
@@ -739,7 +776,8 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
                 # ---------- Mes propositions (voyageur) ----------
                 if method == "GET" and path == "/api/mes-propositions":
                     session = client_exige(self)
-                    props = propositions.lister_par_user(session.get("user_id", ""), store)
+                    props = [p for p in propositions.lister_par_user(session.get("user_id", ""), store)
+                             if visible_par_voyageur(p)]
                     props = enrichir_propositions(props, store)
                     props.sort(key=lambda p: p.get("cree_le", ""), reverse=True)
                     return self.send_json(200, {"propositions": props, "simulation": True})
@@ -906,6 +944,14 @@ def _proprietaire(store, dem_id, session):
     return bool(record) and record.get("demande", {}).get("user_id") == session.get("user_id")
 
 
+def _prenom_conseiller(valeur):
+    """Advisor first name from the login form, as an API error when invalid."""
+    try:
+        return valider_prenom_conseiller(valeur)
+    except ValueError as err:
+        raise ApiError(400, "prenom_invalide", str(err)) from err
+
+
 def _proprietaire_proposition(prop_store, demand_store, prop_id, session):
     prop = prop_store.obtenir(prop_id)
     if not prop:
@@ -918,18 +964,22 @@ def main():
     parser = argparse.ArgumentParser(description="Parcours de demande client DÉTOUR")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8766)
-    parser.add_argument("--state-file", default=str(ROOT / ".local" / "demandes.json"))
+    parser.add_argument("--db-file", default=str(ROOT / ".local" / "detour.db"))
     parser.add_argument("--users-file", default=str(ROOT / ".local" / "users.json"))
-    parser.add_argument("--propositions-file", default=str(ROOT / ".local" / "propositions.json"))
     parser.add_argument("--traces-dir", default=str(ROOT / ".local" / "traces"),
                         help="Directory for redacted agent traces (#5).")
     parser.add_argument("--supplier-url", default=os.environ.get("TRAVEL_API_URL", DEFAULT_URL))
     args = parser.parse_args()
 
     load_env_file()
-    store = DemandStore(args.state_file)
+    store = DemandStore(args.db_file)
     users = UserStore(args.users_file)
-    propositions = PropositionStore(args.propositions_file)
+    propositions = PropositionStore(args.db_file)
+    # The enriched dataset seeds the read-only destinations table (#88/#89).
+    # Idempotent: re-running refreshes the rows without duplicating them.
+    dataset = ROOT.parent / "data" / "travel_agency_dataset.json"
+    if dataset.exists():
+        db.seed_destinations(store.conn, dataset)
     team_key = os.environ.get("TRAVEL_TEAM_KEY", "demo-key")
     supplier = SupplierClient(args.supplier_url, team_key)
     api_key = os.environ.get("OPENROUTER_API_KEY", "")

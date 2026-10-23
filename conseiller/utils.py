@@ -7,6 +7,7 @@ restent dans l'environnement ou `.env`, jamais ici.
 """
 
 import re
+import unicodedata
 
 # Fournisseur de prestations (surchargeable par TRAVEL_API_URL).
 DEFAULT_URL = "http://127.0.0.1:8765"
@@ -32,6 +33,9 @@ TYPES_AVEC_GUIDE = ("trek-randonnee",)
 STATUT_NOUVELLE = "nouvelle"
 STATUT_A_ANALYSER = "a_analyser"
 STATUT_A_REVOIR = "a_revoir"  # To review — price or availability changed after v1.
+# #52: Answered — set only by recording the advisor's response (never by a bare
+# status change), so an answered request always carries who answered and when.
+STATUT_REPONDUE = "repondue"
 STATUT_PROPOSE = "propose"
 STATUT_VALIDE = "valide"
 STATUT_REFUSE = "refuse"
@@ -39,6 +43,7 @@ STATUTS = (
     STATUT_NOUVELLE,
     STATUT_A_ANALYSER,
     STATUT_A_REVOIR,
+    STATUT_REPONDUE,
     STATUT_PROPOSE,
     STATUT_VALIDE,
     STATUT_REFUSE,
@@ -64,6 +69,7 @@ STATUT_LABELS = {
     STATUT_NOUVELLE: "Nouvelle",
     STATUT_A_ANALYSER: "À analyser",
     STATUT_A_REVOIR: "À revoir",
+    STATUT_REPONDUE: "Répondue",
     STATUT_PROPOSE: "Proposée",
     STATUT_VALIDE: "Validée",
     STATUT_REFUSE: "Refusée",
@@ -74,13 +80,18 @@ STATUT_LABELS = {
 TRANSITIONS_DEMANDE = {
     # #49: submitted (nouvelle) can be taken in charge, refused, or flagged
     # to review after a re-read — without claiming an advisor already analysed it.
-    STATUT_NOUVELLE: frozenset({STATUT_A_ANALYSER, STATUT_A_REVOIR, STATUT_REFUSE}),
-    STATUT_A_ANALYSER: frozenset({STATUT_A_REVOIR, STATUT_PROPOSE, STATUT_VALIDE, STATUT_REFUSE}),
-    STATUT_A_REVOIR: frozenset({STATUT_A_ANALYSER, STATUT_PROPOSE, STATUT_VALIDE, STATUT_REFUSE}),
+    # #52: it can also be answered (Answered) by the advisor.
+    STATUT_NOUVELLE: frozenset({STATUT_A_ANALYSER, STATUT_A_REVOIR, STATUT_REPONDUE, STATUT_REFUSE}),
+    STATUT_A_ANALYSER: frozenset({STATUT_A_REVOIR, STATUT_REPONDUE, STATUT_PROPOSE, STATUT_VALIDE, STATUT_REFUSE}),
+    STATUT_A_REVOIR: frozenset({STATUT_A_ANALYSER, STATUT_REPONDUE, STATUT_PROPOSE, STATUT_VALIDE, STATUT_REFUSE}),
+    # #52: once answered, the request goes on with the usual workflow.
+    STATUT_REPONDUE: frozenset({STATUT_A_ANALYSER, STATUT_A_REVOIR, STATUT_PROPOSE, STATUT_VALIDE, STATUT_REFUSE}),
     STATUT_PROPOSE: frozenset({STATUT_VALIDE, STATUT_REFUSE, STATUT_A_ANALYSER, STATUT_A_REVOIR}),
     STATUT_VALIDE: frozenset(),
     STATUT_REFUSE: frozenset(),
 }
+# #52: maximum length of the advisor's written response to a request.
+REPONSE_MAX_CARACTERES = 5000
 
 # Comptes voyageurs.
 ITERATIONS = 260_000
@@ -160,3 +171,27 @@ ACTEUR_AGENT = "agent"
 GOOGLE_OAUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+
+# Advisor first name (#112): it signs proposals and decisions for travelers.
+PRENOM_CONSEILLER_DEFAUT = "Conseiller DÉTOUR"
+PRENOM_MAX = 40
+_PRENOM_RE = re.compile(r"[^\W\d_]+(?:[ '’-][^\W\d_]+)*")
+
+
+def valider_prenom_conseiller(valeur):
+    """Return a clean first name, the default when absent, or raise ValueError.
+
+    NFC normalization first, so an accent typed as a separate combining
+    character ("e" + U+0301) is accepted like "é".
+    """
+    if valeur is None:
+        return PRENOM_CONSEILLER_DEFAUT
+    if not isinstance(valeur, str):
+        raise ValueError("Le prénom doit être un texte.")
+    prenom = " ".join(unicodedata.normalize("NFC", valeur).split())
+    if not prenom:
+        return PRENOM_CONSEILLER_DEFAUT
+    if len(prenom) > PRENOM_MAX or not _PRENOM_RE.fullmatch(prenom):
+        raise ValueError(
+            "Le prénom ne doit contenir que des lettres, espaces, tirets ou apostrophes.")
+    return prenom

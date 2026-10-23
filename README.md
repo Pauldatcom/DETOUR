@@ -47,9 +47,9 @@ server/          Supplier API (catalogue, search, dashboard) — :8765
 conseiller/       Portal (auth, chat, demandes, propositions, OAuth, /metrics) — :8766
   app.py          Stdlib HTTP server, API routes, serves web/dist in prod
   agent.py        OpenRouter agent (tool-calling, proposition generation)
-  propositions.py JSON store for propositions (CRUD, statuses)
+  propositions.py SQLite store for propositions (CRUD, statuses)
   users.py         Traveler accounts (PBKDF2) + Google OAuth
-  store.py         JSON store for demandes
+  store.py         SQLite store for demandes
   fournisseur.py   Supplier API client
 web/              React front (Vite + TS + Tailwind v4 + RR v7 + Recharts)
   src/pages/       Login, Dashboard, Demandes, Propositions, MesPropositions
@@ -65,7 +65,7 @@ observability/    Grafana + Prometheus + Loki (+ Alloy for Grafana Cloud)
 | `/api/session` | GET | public | Current session |
 | `/api/login` | POST | public | Traveler login |
 | `/api/register` | POST | public | Traveler registration |
-| `/api/login-conseiller` | POST | public | Advisor login (team key) |
+| `/api/login-conseiller` | POST | public | Advisor login (team key + first name, which signs proposals) |
 | `/api/auth/google` | GET | public | Google OAuth (PKCE) |
 | `/api/auth/google/callback` | GET | public | OAuth callback |
 | `/api/demandes` | GET | advisor | List demandes |
@@ -73,6 +73,7 @@ observability/    Grafana + Prometheus + Loki (+ Alloy for Grafana Cloud)
 | `/api/demandes/{id}` | GET | advisor/owner | Detail |
 | `/api/demandes/{id}/recherche` | POST | advisor/owner | Supplier search |
 | `/api/demandes/{id}/statut` | PATCH | advisor | Change status |
+| `/api/demandes/{id}/reponse` | POST | advisor | Send the response to a request (status `repondue`, response time vs 24h / 48h) |
 | `/api/demandes/{id}/propositions` | POST | advisor | Create proposition |
 | `/api/demandes/{id}/propositions/generer` | POST | advisor | Generate via AI |
 | `/api/propositions` | GET | advisor | List propositions |
@@ -83,7 +84,7 @@ observability/    Grafana + Prometheus + Loki (+ Alloy for Grafana Cloud)
 | `/api/propositions/{id}/correction` | POST | advisor | Request a correction (reason + instructions) |
 | `/api/propositions/{id}/refuser` | POST | advisor | Reject a proposal (reason) |
 | `/api/mes-demandes` | GET | client | My demandes |
-| `/api/mes-propositions` | GET | client | My propositions |
+| `/api/mes-propositions` | GET | client | My propositions (only those sent by an advisor, never drafts) |
 | `/api/stats` | GET | advisor | Statistics |
 | `/api/catalogue` | GET | client | Supplier catalogue |
 | `/api/chat` | POST | client | Agent chat |

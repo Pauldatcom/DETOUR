@@ -54,10 +54,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ email, nom, mot_de_passe }),
     }),
-  loginConseiller: (cle: string) =>
+  loginConseiller: (cle: string, prenom: string) =>
     request<{ session: { role: string; nom: string } }>("/api/login-conseiller", {
       method: "POST",
-      body: JSON.stringify({ cle }),
+      body: JSON.stringify({ cle, prenom }),
     }),
   googleAuth: () => {
     window.location.href = "/api/auth/google";
@@ -73,6 +73,11 @@ export const api = {
     }),
   rechercher: (id: string) =>
     request<{ recherche: unknown }>(`/api/demandes/${id}/recherche`, { method: "POST" }),
+  approveRequest: (id: string, confirmed: boolean) =>
+    request<{ demande: Demande }>(`/api/demandes/${id}/approbation`, {
+      method: "POST",
+      body: JSON.stringify({ confirme: confirmed }),
+    }),
   changerStatut: (id: string, statut: string, motif: string) =>
     request<{ demande: Demande }>(`/api/demandes/${id}/statut`, {
       method: "PATCH",

@@ -20,7 +20,7 @@ export function Accueil({ isLoggedIn, session, onLogout }: AccueilProps) {
   const [formOuvert, setFormOuvert] = useState(false);
 
   return (
-    <div className="min-h-screen bg-white text-[#0b2447]">
+    <div className="min-h-screen bg-chalk text-ink">
       <PublicNav session={session} onLogout={onLogout} />
       <main id="contenu-principal">
         <Hero onDecrir={() => setFormOuvert(true)} />
