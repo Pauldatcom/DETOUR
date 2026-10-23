@@ -108,7 +108,7 @@ cd web && pnpm format:check                              # Prettier
 
 | Job | What it checks |
 |---|---|
-| `Tests (Python 3.11 / 3.12 / 3.13)` | the two `unittest` suites, standard library only |
+| `Tests (Python 3.13)` | the two `unittest` suites, standard library only |
 | `Lint` | Prettier formatting, ESLint, TypeScript typecheck |
 | `Build` | the React production build |
 | `Security Audit` | `pnpm audit --audit-level=high`, never blocking |

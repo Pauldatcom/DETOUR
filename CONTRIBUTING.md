@@ -3,6 +3,16 @@
 This project uses GitHub Issues as the source of truth and a GitHub Projects
 Kanban board for tracking. Every change starts from an issue.
 
+## Requirements
+
+Python 3.13 or newer is required to run the backend services and the test
+suites. Keep your local interpreter up to date to avoid known security
+vulnerabilities. Verify your local installation with:
+
+```
+python3 --version
+```
+
 ## Workflow
 
 1. An issue describes the problem or the task.
