@@ -5,9 +5,19 @@ import { AdvisorChat } from "./AdvisorChat";
 import { api } from "../../lib/api";
 import type { ConseillerChatResult, PrestationRecherche } from "../../types";
 
-vi.mock("../../lib/api", () => ({ api: { conseillerChat: vi.fn() } }));
+vi.mock("../../lib/api", () => ({
+  api: {
+    conseillerChat: vi.fn(),
+    deciderProposition: vi.fn(),
+    changerStatutProposition: vi.fn(),
+    genererProposition: vi.fn(),
+  },
+}));
 
 const conseillerChat = vi.mocked(api.conseillerChat);
+const apiDecider = vi.mocked(api.deciderProposition);
+const apiChangerStatut = vi.mocked(api.changerStatutProposition);
+const apiGenerer = vi.mocked(api.genererProposition);
 const AT = "2026-10-22T07:40:00+00:00";
 
 function service(extra: Partial<PrestationRecherche>): PrestationRecherche {
@@ -159,5 +169,38 @@ describe("AdvisorChat", () => {
     await screen.findByText("Je n'ai pas pu vérifier.");
     expect(screen.getByText("Vérification impossible")).toBeInTheDocument();
     expect(screen.getByText(/aucun prix ni aucune place ne sont confirmés/)).toBeInTheDocument();
+  });
+
+  // -----------------------------------------------------------------------
+  // Guardrails (#118): the advisor assistant cannot decide, send or animate
+  // -----------------------------------------------------------------------
+  describe("guardrails (#118)", () => {
+    it("never calls a decision or generation endpoint after a chat exchange", async () => {
+      conseillerChat.mockResolvedValue(reply([HOTEL]));
+      render(<AdvisorChat demandeId="dem_1" />);
+      await openAndSend("Vérifie Lyon");
+      await screen.findByText("Voici ce que j'ai vérifié.");
+      expect(apiDecider).not.toHaveBeenCalled();
+      expect(apiChangerStatut).not.toHaveBeenCalled();
+      expect(apiGenerer).not.toHaveBeenCalled();
+    });
+
+    it("never calls a decision or generation endpoint after an error", async () => {
+      conseillerChat.mockRejectedValue(new Error("Serveur indisponible"));
+      render(<AdvisorChat demandeId="dem_1" />);
+      await openAndSend("Vérifie Lyon");
+      await screen.findByRole("alert");
+      expect(apiDecider).not.toHaveBeenCalled();
+      expect(apiChangerStatut).not.toHaveBeenCalled();
+      expect(apiGenerer).not.toHaveBeenCalled();
+    });
+
+    it("does not render the jumping-o animation (play class)", async () => {
+      conseillerChat.mockResolvedValue(reply([HOTEL]));
+      const { container } = render(<AdvisorChat demandeId="dem_1" />);
+      await openAndSend("Vérifie Lyon");
+      await screen.findByText("Voici ce que j'ai vérifié.");
+      expect(container.querySelector(".play")).toBeNull();
+    });
   });
 });

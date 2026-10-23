@@ -154,8 +154,10 @@ class TestPropositionStore(unittest.TestCase):
 
 
 class FakeAgentWithGeneration(FakeAgent):
-    def generer_proposition(self, demande_record, recherche):
+    def generer_proposition(self, demande_record, recherche, conseiller=""):
         return {"titre": "Généré", "description": "Proposition générée",
+                "message_voyageur": "Bonjour, c'est un brouillon.",
+                "genere_par": "assistant",
                 "prestations": [{"id": "train-01", "nom": "Train", "type": "transport",
                                  "prix_unitaire_eur": 50, "quantite": 2}]}
 
@@ -165,8 +167,8 @@ class TestPropositionGeneration(unittest.TestCase):
 
     def test_generer_proposition_retourne_json(self):
         agent = FakeAgentWithGeneration()
-        demande = {"demande": {"destination": "Nantes", "date_depart": "2026-11-07",
-                               "date_retour": "2026-11-09", "nombre_voyageurs": 2,
+        demande = {"demande": {"destination": "Nantes", "date_depart": "2030-11-07",
+                               "date_retour": "2030-11-09", "nombre_voyageurs": 2,
                                "budget_max_par_personne": 500, "type_voyage": "trek-randonnee",
                                "niveau_aventure": "modere", "souhaits": ""}}
         recherche = {"resultats": [{"id": "train-nantes-01", "nom": "Train", "type": "transport",
@@ -174,6 +176,8 @@ class TestPropositionGeneration(unittest.TestCase):
         result = agent.generer_proposition(demande, recherche)
         self.assertEqual(result["titre"], "Généré")
         self.assertIsInstance(result["prestations"], list)
+        self.assertEqual(result["genere_par"], "assistant")
+        self.assertEqual(result["message_voyageur"], "Bonjour, c'est un brouillon.")
         
 
 

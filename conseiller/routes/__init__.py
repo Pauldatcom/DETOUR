@@ -6,13 +6,13 @@ the feature folders of a Next.js app (App Router).
 
 from httpd.router import Router
 
-from . import (account, auth, catalogue, chat, conseiller_chat, demandes, meta,
-               pages, propositions, stats)
+from . import (account, auth, catalogue, chat, conseiller_chat, demandes, meta, pages,
+               propositions, stats)
 
 
 def creer_router():
     router = Router()
     for module in (pages, meta, auth, account, demandes, propositions,
-                   conseiller_chat, chat, stats, catalogue):
+                   chat, conseiller_chat, stats, catalogue):
         module.enregistrer(router)
     return router

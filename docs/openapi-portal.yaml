@@ -1,0 +1,1589 @@
+openapi: 3.0.3
+
+info:
+  title: DÉTOUR — Portail conseiller / voyageur
+  description: |
+    Application conseiller/voyageur DÉTOUR. Serveur HTTP Python stdlib,
+    agent conversationnel OpenRouter, persistance SQLite. Le serveur
+    écoute par défaut sur `http://127.0.0.1:8766`.
+
+    ## Authentification
+    L'accès aux routes protégées se fait via un cookie de session
+    `detour_portail` (HttpOnly, SameSite=Strict) obtenu par
+    `POST /api/login`, `POST /api/register`, `POST /api/login-conseiller`
+    ou `GET /api/auth/google/callback`.
+
+    Deux rôles existent :
+    - **client** (voyageur) — crée des demandes, discute avec l'agent,
+      consulte ses propositions, approuve ses demandes.
+    - **conseiller** — gère la file de demandes, lance les recherches,
+      génère et décide les propositions, répond aux demandes, change les
+      statuts.
+
+    ## Mode développement
+    Lorsque `users` n'est pas configuré (fichier `users.json` absent), le
+    portail fonctionne sans authentification : toutes les routes sont
+    ouvertes et la session par défaut est `client` (ou `conseiller` pour
+    les routes conseiller). En production, l'authentification est obligatoire.
+
+    ## Catalogue fournisseur
+    Le portail relaie le catalogue du serveur fictif (`server/app.py`)
+    via `GET /api/catalogue`. La clé d'équipe (`TRAVEL_TEAM_KEY`) reste
+    côté serveur, jamais envoyée au navigateur.
+  version: 1.0.0
+  contact:
+    name: DÉTOUR
+    url: https://github.com/Pauldatcom/DETOUR
+
+servers:
+  - url: http://127.0.0.1:8766
+    description: Portail local (développement)
+
+tags:
+  - name: Santé
+    description: Sonde de disponibilité du serveur.
+  - name: Configuration
+    description: Drapeaux de fonctionnalité et disponibilité conseiller.
+  - name: Authentification
+    description: Sessions, comptes voyageur, accès conseiller, OAuth Google.
+  - name: Demandes
+    description: Création, consultation, recherche, statut et réponse aux demandes.
+  - name: Propositions
+    description: Gestion, décision et envoi des propositions de voyage.
+  - name: Chat
+    description: Agent conversationnel (OpenRouter).
+  - name: Statistiques
+    description: Tableaux de bord conseiller.
+  - name: Observabilité
+    description: Métriques Prometheus.
+  - name: Logos
+    description: Assets de marque officiels DÉTOUR.
+
+paths:
+
+  /health:
+    get:
+      tags: [Santé]
+      summary: Sonde de disponibilité
+      security: []
+      responses:
+        '200':
+          description: Serveur disponible.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
+  /api/config:
+    get:
+      tags: [Configuration]
+      summary: Drapeaux de fonctionnalité
+      description: |
+        Indique si l'agent IA est actif, si Google OAuth est configuré,
+        et le modèle OpenRouter utilisé.
+      security: []
+      responses:
+        '200':
+          description: Configuration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Config'
+
+  /api/disponibilite:
+    get:
+      tags: [Configuration]
+      summary: Disponibilité conseiller
+      description: |
+        Renvoie si le conseiller est actuellement ouvert et la fenêtre
+        de réponse (24h/48h ouvrées).
+      security: []
+      responses:
+        '200':
+          description: Disponibilité.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [simulation, ouvert, fenetre]
+                properties:
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+                  ouvert: {type: boolean}
+                  fenetre: {type: string}
+
+  /api/session:
+    get:
+      tags: [Authentification]
+      summary: Session courante
+      description: |
+        Renvoie la session active si un cookie `detour_portail` est
+        présent. En mode développement (`users` non configuré), renvoie
+        une session `client` par défaut.
+      security: []
+      responses:
+        '200':
+          description: État de la session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionInfo'
+
+  /api/login:
+    post:
+      tags: [Authentification]
+      summary: Connexion voyageur
+      description: Authentifie un voyageur avec e-mail et mot de passe.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, mot_de_passe]
+              properties:
+                email: {type: string, format: email}
+                mot_de_passe: {type: string}
+      responses:
+        '200':
+          description: Connexion réussie.
+          headers:
+            Set-Cookie:
+              schema: {type: string}
+              description: Cookie `detour_portail` (HttpOnly, SameSite=Strict).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session]
+                properties:
+                  session:
+                    type: object
+                    required: [role, nom]
+                    properties:
+                      role: {type: string, example: client}
+                      nom: {type: string}
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '503':
+          $ref: '#/components/responses/ApiError'
+
+  /api/register:
+    post:
+      tags: [Authentification]
+      summary: Inscription voyageur
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, nom, mot_de_passe]
+              properties:
+                email: {type: string, format: email}
+                nom: {type: string}
+                mot_de_passe: {type: string}
+      responses:
+        '201':
+          description: Compte créé, session active.
+          headers:
+            Set-Cookie:
+              schema: {type: string}
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session]
+                properties:
+                  session:
+                    type: object
+                    required: [role, nom]
+                    properties:
+                      role: {type: string, example: client}
+                      nom: {type: string}
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '503':
+          $ref: '#/components/responses/ApiError'
+
+  /api/login-conseiller:
+    post:
+      tags: [Authentification]
+      summary: Connexion conseiller
+      description: |
+        Authentifie un conseiller avec la clé d'équipe (`TRAVEL_TEAM_KEY`)
+        et un prénom. Le prénom signe les propositions et les décisions
+        du conseiller (#112).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cle, prenom]
+              properties:
+                cle: {type: string}
+                prenom: {type: string}
+      responses:
+        '200':
+          description: Connexion conseiller réussie.
+          headers:
+            Set-Cookie:
+              schema: {type: string}
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session]
+                properties:
+                  session:
+                    type: object
+                    required: [role, nom]
+                    properties:
+                      role: {type: string, example: conseiller}
+                      nom: {type: string}
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+
+  /api/logout:
+    post:
+      tags: [Authentification]
+      summary: Déconnexion
+      security: [SessionCookie]
+      responses:
+        '200':
+          description: Déconnecté.
+          headers:
+            Set-Cookie:
+              schema: {type: string}
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deconnecte: {type: boolean}
+
+  /api/auth/google:
+    get:
+      tags: [Authentification]
+      summary: Démarrer OAuth Google (PKCE)
+      description: |
+        Redirige vers Google avec un `code_challenge` PKCE. L'URL de
+        redirection est `GOOGLE_REDIRECT_URI` (par défaut
+        `http://127.0.0.1:8766/api/auth/google/callback`).
+      security: []
+      responses:
+        '302':
+          description: Redirection vers Google.
+          headers:
+            Location:
+              schema: {type: string}
+        '503':
+          $ref: '#/components/responses/ApiError'
+
+  /api/auth/google/callback:
+    get:
+      tags: [Authentification]
+      summary: Callback OAuth Google
+      description: |
+        Réception du `code` et `state`, échange contre un token Google,
+        récupère le userinfo et crée/lie un compte voyageur. Définit un
+        cookie de session `detour_portail`.
+      security: []
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema: {type: string}
+        - name: state
+          in: query
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Connexion réussie via Google.
+          headers:
+            Set-Cookie:
+              schema: {type: string}
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session]
+                properties:
+                  session:
+                    type: object
+                    required: [role, nom]
+                    properties:
+                      role: {type: string, example: client}
+                      nom: {type: string}
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '502':
+          $ref: '#/components/responses/ApiError'
+
+  /api/account:
+    get:
+      tags: [Authentification]
+      summary: Profil voyageur
+      security: [SessionClient]
+      responses:
+        '200':
+          description: Compte voyageur.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [compte]
+                properties:
+                  compte:
+                    $ref: '#/components/schemas/Compte'
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '404':
+          $ref: '#/components/responses/ApiError'
+        '503':
+          $ref: '#/components/responses/ApiError'
+    patch:
+      tags: [Authentification]
+      summary: Mettre à jour le profil
+      description: |
+        Modifie l'e-mail et/ou le nom. Si un mot de passe est déjà défini,
+        `mot_de_passe_actuel` est requis pour confirmer.
+      security: [SessionClient]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: {type: string, format: email}
+                nom: {type: string}
+                mot_de_passe_actuel: {type: string}
+      responses:
+        '200':
+          description: Profil mis à jour.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [compte]
+                properties:
+                  compte:
+                    $ref: '#/components/schemas/Compte'
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '503':
+          $ref: '#/components/responses/ApiError'
+
+  /api/account/password:
+    post:
+      tags: [Authentification]
+      summary: Changer le mot de passe
+      security: [SessionClient]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mot_de_passe_actuel, nouveau_mot_de_passe]
+              properties:
+                mot_de_passe_actuel: {type: string}
+                nouveau_mot_de_passe: {type: string}
+      responses:
+        '200':
+          description: Mot de passe modifié.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mot_de_passe_modifie: {type: boolean}
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '503':
+          $ref: '#/components/responses/ApiError'
+
+  /api/catalogue:
+    get:
+      tags: [Demandes]
+      summary: Catalogue fournisseur
+      description: |
+        Renvoie le catalogue du serveur fictif (relayé côté serveur).
+        La clé d'équipe n'est pas exposée au client.
+      security: [SessionClient]
+      responses:
+        '200':
+          description: Catalogue.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [prestations, simulation]
+                properties:
+                  prestations:
+                    type: array
+                    items: {$ref: '#/components/schemas/PrestationFournisseur'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '503':
+          $ref: '#/components/responses/ApiError'
+
+  /api/demandes:
+    get:
+      tags: [Demandes]
+      summary: File de demandes (conseiller)
+      description: |
+        Liste les demandes approuvées par les voyageurs, triées par date
+        de création décroissante. Chaque demande porte son échéance de
+        réponse (24h/48h ouvrées).
+      security: [SessionConseiller]
+      responses:
+        '200':
+          description: Liste des demandes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [demandes, simulation]
+                properties:
+                  demandes:
+                    type: array
+                    items: {$ref: '#/components/schemas/DemandeRecord'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '401':
+          $ref: '#/components/responses/ApiError'
+    post:
+      tags: [Demandes]
+      summary: Créer une demande
+      description: |
+        Crée une demande de voyage. En production, le `user_id` est
+        défini par le serveur depuis la session, jamais confiance dans
+        la valeur envoyée par le client.
+      security: [SessionClient]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DemandeInput'}
+      responses:
+        '201':
+          description: Demande créée.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [demande, simulation]
+                properties:
+                  demande: {$ref: '#/components/schemas/DemandeRecord'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+
+  /api/demandes/{demandeId}:
+    get:
+      tags: [Demandes]
+      summary: Détail d'une demande
+      description: |
+        Le conseiller voit toutes les demandes. Le voyageur ne voit que
+        ses propres demandes (sinon 404).
+      security:
+        - SessionConseiller
+        - SessionClient
+      parameters:
+        - $ref: '#/components/parameters/DemandeIdPath'
+      responses:
+        '200':
+          description: Demande.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [demande, simulation]
+                properties:
+                  demande: {$ref: '#/components/schemas/DemandeRecord'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '404':
+          $ref: '#/components/responses/ApiError'
+
+  /api/demandes/{demandeId}/recherche:
+    post:
+      tags: [Demandes]
+      summary: Relancer une recherche
+      description: |
+        Appelle le serveur fictif pour rechercher des prestations
+        correspondant aux critères de la demande. Ajoute le résultat à
+        l'historique des recherches de la demande.
+      security:
+        - SessionConseiller
+        - SessionClient
+      parameters:
+        - $ref: '#/components/parameters/DemandeIdPath'
+      responses:
+        '201':
+          description: Recherche effectuée.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [recherche, demande, simulation]
+                properties:
+                  recherche: {$ref: '#/components/schemas/Recherche'}
+                  demande: {$ref: '#/components/schemas/DemandeRecord'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '404':
+          $ref: '#/components/responses/ApiError'
+        '503':
+          $ref: '#/components/responses/ApiError'
+
+  /api/demandes/{demandeId}/reponse:
+    post:
+      tags: [Demandes]
+      summary: Répondre à une demande (conseiller)
+      description: |
+        Enregistre la réponse écrite du conseiller à la demande. L'auteur,
+        la date et l'heure sont fixés par le serveur, jamais par le client.
+        Le statut passe à `repondue`.
+      security: [SessionConseiller]
+      parameters:
+        - $ref: '#/components/parameters/DemandeIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: {type: string, maxLength: 5000}
+      responses:
+        '201':
+          description: Réponse enregistrée.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [demande, simulation]
+                properties:
+                  demande: {$ref: '#/components/schemas/DemandeRecord'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '404':
+          $ref: '#/components/responses/ApiError'
+
+  /api/demandes/{demandeId}/qualification:
+    patch:
+      tags: [Demandes]
+      summary: Qualifier une demande (conseiller)
+      description: |
+        Le conseiller renvoie la demande en `incomplet` ou la valide pour
+        proposition (`pret_proposition`). L'agent ne peut pas valider.
+      security: [SessionConseiller]
+      parameters:
+        - $ref: '#/components/parameters/DemandeIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qualification]
+              properties:
+                qualification:
+                  type: string
+                  enum: [incomplet, pret_proposition]
+                motif: {type: string}
+      responses:
+        '200':
+          description: Qualification mise à jour.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [demande, simulation]
+                properties:
+                  demande: {$ref: '#/components/schemas/DemandeRecord'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '404':
+          $ref: '#/components/responses/ApiError'
+
+  /api/demandes/{demandeId}/correction:
+    patch:
+      tags: [Demandes]
+      summary: Corriger les champs d'une demande (conseiller)
+      description: |
+        Le conseiller corrige un ou plusieurs champs de la demande. Chaque
+        changement est journalisé (auteur, date, motif). L'agent ne peut
+        pas corriger.
+      security: [SessionConseiller]
+      parameters:
+        - $ref: '#/components/parameters/DemandeIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [champs]
+              properties:
+                champs: {type: object}
+                motif: {type: string}
+      responses:
+        '200':
+          description: Demande corrigée.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [demande, simulation]
+                properties:
+                  demande: {$ref: '#/components/schemas/DemandeRecord'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '404':
+          $ref: '#/components/responses/ApiError'
+
+  /api/demandes/{demandeId}/statut:
+    patch:
+      tags: [Demandes]
+      summary: Changer le statut d'une demande (conseiller)
+      description: |
+        Le conseiller change le statut de la demande. La transition doit
+        être autorisée. La décision est journalisée (auteur, date, motif).
+      security: [SessionConseiller]
+      parameters:
+        - $ref: '#/components/parameters/DemandeIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [statut]
+              properties:
+                statut:
+                  type: string
+                  enum:
+                    - nouvelle
+                    - a_analyser
+                    - a_revoir
+                    - repondue
+                    - propose
+                    - valide
+                    - refuse
+                motif: {type: string}
+      responses:
+        '200':
+          description: Statut mis à jour.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [demande, simulation]
+                properties:
+                  demande: {$ref: '#/components/schemas/DemandeRecord'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '404':
+          $ref: '#/components/responses/ApiError'
+
+  /api/demandes/{demandeId}/approbation:
+    post:
+      tags: [Demandes]
+      summary: Approuver une demande (voyageur)
+      description: |
+        Le voyageur propriétaire approuve ou refuse que sa demande soit
+        traitée par un conseiller.
+      security: [SessionClient]
+      parameters:
+        - $ref: '#/components/parameters/DemandeIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirme]
+              properties:
+                confirme: {type: boolean}
+      responses:
+        '200':
+          description: Approbation enregistrée.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [demande, simulation]
+                properties:
+                  demande: {$ref: '#/components/schemas/DemandeRecord'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '404':
+          $ref: '#/components/responses/ApiError'
+
+  /api/demandes/{demandeId}/propositions:
+    post:
+      tags: [Propositions]
+      summary: Créer une proposition manuelle (conseiller)
+      security: [SessionConseiller]
+      parameters:
+        - $ref: '#/components/parameters/DemandeIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PropositionInput'}
+      responses:
+        '201':
+          description: Proposition créée.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proposition, simulation]
+                properties:
+                  proposition: {$ref: '#/components/schemas/Proposition'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '404':
+          $ref: '#/components/responses/ApiError'
+
+  /api/demandes/{demandeId}/propositions/generer:
+    post:
+      tags: [Propositions]
+      summary: Générer une proposition via IA (conseiller)
+      description: |
+        L'agent IA génère une proposition à partir de la demande et de
+        la dernière recherche. Le conseiller signe la proposition.
+      security: [SessionConseiller]
+      parameters:
+        - $ref: '#/components/parameters/DemandeIdPath'
+      responses:
+        '201':
+          description: Proposition générée.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proposition, simulation]
+                properties:
+                  proposition: {$ref: '#/components/schemas/Proposition'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '404':
+          $ref: '#/components/responses/ApiError'
+        '503':
+          $ref: '#/components/responses/ApiError'
+
+  /api/propositions:
+    get:
+      tags: [Propositions]
+      summary: Liste des propositions (conseiller)
+      security: [SessionConseiller]
+      responses:
+        '200':
+          description: Liste.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [propositions, simulation]
+                properties:
+                  propositions:
+                    type: array
+                    items: {$ref: '#/components/schemas/Proposition'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '401':
+          $ref: '#/components/responses/ApiError'
+
+  /api/propositions/{propositionId}:
+    get:
+      tags: [Propositions]
+      summary: Détail d'une proposition
+      description: |
+        Le conseiller voit toutes les propositions. Le voyageur ne voit
+        que les propositions envoyées (statut `envoyee` ou `validee`),
+        jamais les brouillons.
+      security:
+        - SessionConseiller
+        - SessionClient
+      parameters:
+        - $ref: '#/components/parameters/PropositionIdPath'
+      responses:
+        '200':
+          description: Proposition.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proposition, simulation]
+                properties:
+                  proposition: {$ref: '#/components/schemas/Proposition'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '404':
+          $ref: '#/components/responses/ApiError'
+    patch:
+      tags: [Propositions]
+      summary: Mettre à jour une proposition (conseiller)
+      description: |
+        Modifie le titre et la description. Les prestations ne sont
+        modifiables que si la proposition est en `brouillon` ou
+        `correction_requested`. Les prix ne sont jamais édités à la main.
+      security: [SessionConseiller]
+      parameters:
+        - $ref: '#/components/parameters/PropositionIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PropositionInput'}
+      responses:
+        '200':
+          description: Proposition mise à jour.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proposition, simulation]
+                properties:
+                  proposition: {$ref: '#/components/schemas/Proposition'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '404':
+          $ref: '#/components/responses/ApiError'
+
+  /api/propositions/{propositionId}/statut:
+    patch:
+      tags: [Propositions]
+      summary: Changer le statut d'une proposition (conseiller)
+      description: |
+        La transition doit être autorisée. La décision est journalisée
+        (auteur, date, motif).
+      security: [SessionConseiller]
+      parameters:
+        - $ref: '#/components/parameters/PropositionIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [statut]
+              properties:
+                statut:
+                  type: string
+                  enum: [brouillon, envoyee, validee, refusee, correction_requested]
+                motif: {type: string}
+      responses:
+        '200':
+          description: Statut mis à jour.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proposition, simulation]
+                properties:
+                  proposition: {$ref: '#/components/schemas/Proposition'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '404':
+          $ref: '#/components/responses/ApiError'
+
+  /api/propositions/{propositionId}/accepter:
+    post:
+      tags: [Propositions]
+      summary: Accepter une proposition (conseiller)
+      description: |
+        Le conseiller accepte la proposition : le statut passe à
+        `envoyee`. Le motif est facultatif. L'agent ne peut pas accepter.
+      security: [SessionConseiller]
+      parameters:
+        - $ref: '#/components/parameters/PropositionIdPath'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                motif: {type: string}
+      responses:
+        '200':
+          description: Proposition acceptée.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proposition, simulation]
+                properties:
+                  proposition: {$ref: '#/components/schemas/Proposition'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '404':
+          $ref: '#/components/responses/ApiError'
+
+  /api/propositions/{propositionId}/correction:
+    post:
+      tags: [Propositions]
+      summary: Demander une correction (conseiller)
+      description: |
+        Le conseiller demande une correction : le statut passe à
+        `correction_requested`. Le motif et les instructions sont
+        obligatoires.
+      security: [SessionConseiller]
+      parameters:
+        - $ref: '#/components/parameters/PropositionIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [motif, instructions]
+              properties:
+                motif: {type: string}
+                instructions: {type: string}
+      responses:
+        '200':
+          description: Correction demandée.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proposition, simulation]
+                properties:
+                  proposition: {$ref: '#/components/schemas/Proposition'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '404':
+          $ref: '#/components/responses/ApiError'
+
+  /api/propositions/{propositionId}/refuser:
+    post:
+      tags: [Propositions]
+      summary: Refuser une proposition (conseiller)
+      description: |
+        Le conseiller refuse la proposition : le statut passe à
+        `refusee` (terminal). Le motif est obligatoire.
+      security: [SessionConseiller]
+      parameters:
+        - $ref: '#/components/parameters/PropositionIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [motif]
+              properties:
+                motif: {type: string}
+      responses:
+        '200':
+          description: Proposition refusée.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proposition, simulation]
+                properties:
+                  proposition: {$ref: '#/components/schemas/Proposition'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '404':
+          $ref: '#/components/responses/ApiError'
+
+  /api/propositions/{propositionId}/decisions:
+    post:
+      tags: [Propositions]
+      summary: Décision sur une ligne modifiée (conseiller)
+      description: |
+        Le conseiller décide pour chaque ligne de prestation modifiée
+        après une relecture : garder (`keep`), remplacer (`replace`,
+        nécessite `remplacement_id`) ou retirer (`drop`). Ne ni envoie
+        ni ne réserve. Quand toutes les lignes ont une décision, une v2
+        est créée en brouillon.
+      security: [SessionConseiller]
+      parameters:
+        - $ref: '#/components/parameters/PropositionIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prestation_id, choix, motif]
+              properties:
+                prestation_id: {type: string}
+                choix:
+                  type: string
+                  enum: [keep, replace, drop]
+                motif: {type: string}
+                remplacement_id: {type: string}
+      responses:
+        '200':
+          description: Décision enregistrée.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proposition, simulation]
+                properties:
+                  proposition: {$ref: '#/components/schemas/Proposition'}
+                  proposition_v2: {$ref: '#/components/schemas/Proposition'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '404':
+          $ref: '#/components/responses/ApiError'
+
+  /api/mes-demandes:
+    get:
+      tags: [Demandes]
+      summary: Mes demandes (voyageur)
+      description: |
+        Liste les demandes du voyageur connecté, triées par date de
+        création décroissante.
+      security: [SessionClient]
+      responses:
+        '200':
+          description: Liste.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [demandes, simulation]
+                properties:
+                  demandes:
+                    type: array
+                    items: {$ref: '#/components/schemas/DemandeRecord'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '401':
+          $ref: '#/components/responses/ApiError'
+
+  /api/mes-propositions:
+    get:
+      tags: [Propositions]
+      summary: Mes propositions (voyageur)
+      description: |
+        Liste les propositions envoyées au voyageur connecté (statut
+        `envoyee` ou `validee`), jamais les brouillons.
+      security: [SessionClient]
+      responses:
+        '200':
+          description: Liste.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [propositions, simulation]
+                properties:
+                  propositions:
+                    type: array
+                    items: {$ref: '#/components/schemas/Proposition'}
+                  simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        '401':
+          $ref: '#/components/responses/ApiError'
+
+  /api/stats:
+    get:
+      tags: [Statistiques]
+      summary: Statistiques (conseiller)
+      security: [SessionConseiller]
+      responses:
+        '200':
+          description: Statistiques.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Stats'}
+        '401':
+          $ref: '#/components/responses/ApiError'
+
+  /api/chat:
+    post:
+      tags: [Chat]
+      summary: Agent conversationnel
+      description: |
+        Envoie une conversation à l'agent IA (OpenRouter). L'agent peut
+        appeler l'outil `chercher_voyages` pour rechercher des
+        prestations sur le serveur fictif. La trace est expurgée et
+        persistée. Si `demande_id` est fourni, l'historique des messages
+        est sauvegardé.
+      security: [SessionClient]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ChatRequest'}
+      responses:
+        '200':
+          description: Réponse de l'agent.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ChatResponse'}
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+        '503':
+          $ref: '#/components/responses/ApiError'
+
+  /metrics:
+    get:
+      tags: [Observabilité]
+      summary: Métriques Prometheus
+      description: |
+        Renvoie les métriques au format Prometheus. Si
+        `METRICS_TOKEN` est défini, un token est requis (paramètre
+        `token` ou en-tête `Authorization: Bearer`).
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: false
+          schema: {type: string}
+      responses:
+        '200':
+          description: Métriques.
+          content:
+            text/plain:
+              schema: {type: string}
+        '401':
+          $ref: '#/components/responses/ApiError'
+
+  /brand/{filename}:
+    get:
+      tags: [Logos]
+      summary: Logo officiel DÉTOUR
+      description: |
+        Sert un logo du kit `brand-2026/logo` tel quel. Valeurs
+        acceptées : `detour-logo.svg`, `detour-logo-negatif.svg`,
+        `detour-logo-negatif-transparent.svg`, `detour-logo-mono-encre.svg`,
+        `detour-logo-mono-blanc.svg`, `detour-monogramme.svg`.
+      security: []
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Logo SVG.
+          content:
+            image/svg+xml:
+              schema: {type: string, format: binary}
+        '404':
+          $ref: '#/components/responses/ApiError'
+
+components:
+
+  securitySchemes:
+    SessionCookie:
+      type: apiKey
+      in: cookie
+      name: detour_portail
+      description: Cookie de session (HttpOnly, SameSite=Strict).
+    SessionClient:
+      type: apiKey
+      in: cookie
+      name: detour_portail
+      description: Cookie de session avec rôle `client` (voyageur).
+    SessionConseiller:
+      type: apiKey
+      in: cookie
+      name: detour_portail
+      description: Cookie de session avec rôle `conseiller`.
+
+  parameters:
+    DemandeIdPath:
+      name: demandeId
+      in: path
+      required: true
+      schema: {type: string}
+      description: Identifiant de la demande (préfixe `dem_`).
+    PropositionIdPath:
+      name: propositionId
+      in: path
+      required: true
+      schema: {type: string}
+      description: Identifiant de la proposition (préfixe `prop_`).
+
+  responses:
+    ApiError:
+      description: Erreur.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Erreur'}
+
+  schemas:
+
+    SimulationFlag:
+      type: boolean
+      description: Indique que les données sont fictives (toujours `true`).
+
+    Health:
+      type: object
+      required: [status, simulation]
+      properties:
+        status: {type: string, example: ok}
+        simulation: {$ref: '#/components/schemas/SimulationFlag'}
+
+    Erreur:
+      type: object
+      required: [erreur]
+      properties:
+        erreur:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string}
+            message: {type: string}
+
+    Config:
+      type: object
+      required: [simulation, agent_actif, google_oauth, model]
+      properties:
+        simulation: {$ref: '#/components/schemas/SimulationFlag'}
+        agent_actif: {type: boolean}
+        google_oauth: {type: boolean}
+        model: {type: string}
+
+    SessionInfo:
+      type: object
+      properties:
+        connecte: {type: boolean}
+        role:
+          type: string
+          enum: [client, conseiller]
+        nom: {type: string}
+        email: {type: string}
+
+    Compte:
+      type: object
+      required: [id, email, nom]
+      properties:
+        id: {type: string}
+        email: {type: string, format: email}
+        nom: {type: string}
+        mot_de_passe_defini: {type: boolean}
+
+    PrestationFournisseur:
+      type: object
+      properties:
+        id: {type: string}
+        type: {type: string, enum: [transport, hebergement, activite]}
+        nom: {type: string}
+        destination: {type: string}
+        prix_unitaire_eur: {type: integer}
+        capacite: {type: integer}
+        description: {type: string}
+        tags: {type: array, items: {type: string}}
+        voyages: {type: array, items: {type: string}}
+        mis_a_jour_le: {type: string}
+
+    DemandeInput:
+      type: object
+      required:
+        - type_voyage
+        - destination
+        - date_depart
+        - date_retour
+        - nombre_voyageurs
+        - budget_max_par_personne
+        - niveau_aventure
+      properties:
+        type_voyage:
+          type: string
+          enum: [trek-randonnee, lune-de-miel, voyage-familial, autres]
+        destination: {type: string}
+        date_depart: {type: string, format: date}
+        date_retour: {type: string, format: date}
+        nombre_voyageurs: {type: integer, minimum: 1, maximum: 20}
+        has_enfants: {type: boolean}
+        nombre_enfants: {type: integer, minimum: 0}
+        budget_max_par_personne: {type: integer, minimum: 1, maximum: 100000}
+        niveau_aventure:
+          type: string
+          enum: [calme, modere, intense]
+        besoin_guide: {type: boolean}
+        avec_voiture: {type: boolean}
+        permis_conduire: {type: boolean, nullable: true}
+        activites: {type: array, items: {type: string}}
+        contraintes: {type: string}
+        souhaits: {type: string}
+        conseiller: {type: string}
+
+    DemandeRecord:
+      type: object
+      required: [id, statut, cree_le, demande]
+      properties:
+        id: {type: string, example: dem_a1b2c3d4e5f6}
+        statut:
+          type: string
+          enum: [nouvelle, a_analyser, a_revoir, repondue, propose, valide, refuse]
+        cree_le: {type: string}
+        demande: {$ref: '#/components/schemas/DemandeFields'}
+        qualification:
+          type: string
+          enum: [incomplet, en_cours, pret_relecture, pret_proposition]
+        qualification_retenue: {type: string, nullable: true}
+        qualification_validee_par: {type: string, nullable: true}
+        qualification_validee_le: {type: string, nullable: true}
+        approbation_client:
+          type: object
+          properties:
+            statut:
+              type: string
+              enum: [en_attente, confirmee, refusee]
+            le: {type: string}
+        champs_manquants: {type: array, items: {type: string}}
+        recherches:
+          type: array
+          items: {$ref: '#/components/schemas/Recherche'}
+        messages:
+          type: array
+          items: {$ref: '#/components/schemas/ChatMessage'}
+        decisions:
+          type: array
+          items: {$ref: '#/components/schemas/DecisionEntry'}
+        modifications:
+          type: array
+          items: {$ref: '#/components/schemas/ModificationEntry'}
+        reponse:
+          type: object
+          nullable: true
+          properties:
+            message: {type: string}
+            par: {type: string}
+            le: {type: string}
+        echeance_reponse:
+          type: object
+          nullable: true
+          properties:
+            fenetre: {type: string}
+            delai: {type: string}
+        client: {$ref: '#/components/schemas/Compte', nullable: true}
+
+    DemandeFields:
+      type: object
+      properties:
+        type_voyage: {type: string}
+        destination: {type: string}
+        date_depart: {type: string, format: date}
+        date_retour: {type: string, format: date}
+        nombre_voyageurs: {type: integer}
+        has_enfants: {type: boolean}
+        nombre_enfants: {type: integer}
+        budget_max_par_personne: {type: integer}
+        niveau_aventure: {type: string}
+        besoin_guide: {type: boolean}
+        avec_voiture: {type: boolean}
+        permis_conduire: {type: boolean, nullable: true}
+        activites: {type: array, items: {type: string}}
+        contraintes: {type: string}
+        souhaits: {type: string}
+        conseiller: {type: string}
+        user_id: {type: string}
+
+    Recherche:
+      type: object
+      properties:
+        id: {type: string, example: rech_a1b2c3d4}
+        source: {type: string}
+        source_url: {type: string}
+        source_label: {type: string}
+        route: {type: string}
+        consulte_le: {type: string}
+        criteres: {type: object}
+        resultats:
+          type: array
+          items: {type: object}
+        simulation: {$ref: '#/components/schemas/SimulationFlag'}
+
+    PropositionInput:
+      type: object
+      required: [titre, prestations]
+      properties:
+        titre: {type: string}
+        description: {type: string}
+        prestations:
+          type: array
+          items: {$ref: '#/components/schemas/PrestationLigne'}
+
+    PrestationLigne:
+      type: object
+      required: [id, nom, type, quantite]
+      properties:
+        id: {type: string}
+        nom: {type: string}
+        type: {type: string}
+        quantite: {type: integer, minimum: 1}
+        verification:
+          type: string
+          enum: [verifie, manquant]
+        prix_unitaire_eur: {type: integer, nullable: true}
+        prix_total_eur: {type: integer, nullable: true}
+        disponible: {type: boolean, nullable: true}
+        source: {type: string, nullable: true}
+        consulte_le: {type: string, nullable: true}
+        copie_depuis_v1: {type: boolean, nullable: true}
+
+    Proposition:
+      type: object
+      required: [id, demande_id, statut, version, titre, prestations, prix_total_eur, conseiller, cree_le, modifiee_le]
+      properties:
+        id: {type: string, example: prop_a1b2c3d4e5f6}
+        demande_id: {type: string}
+        statut:
+          type: string
+          enum: [brouillon, envoyee, validee, refusee, correction_requested]
+        version: {type: integer, example: 1}
+        parente_id: {type: string, nullable: true}
+        titre: {type: string}
+        description: {type: string}
+        prestations:
+          type: array
+          items: {$ref: '#/components/schemas/PrestationLigne'}
+        prix_total_eur: {type: integer}
+        conseiller: {type: string}
+        cree_le: {type: string}
+        modifiee_le: {type: string}
+        decisions:
+          type: array
+          items: {$ref: '#/components/schemas/DecisionEntry'}
+        decisions_statut:
+          type: array
+          items: {$ref: '#/components/schemas/DecisionStatutEntry'}
+        changements:
+          type: array
+          items: {type: object}
+          nullable: true
+
+    DecisionEntry:
+      type: object
+      properties:
+        action: {type: string}
+        par: {type: string}
+        le: {type: string}
+        motif: {type: string}
+        avant: {type: string}
+        apres: {type: string}
+        champs: {type: array, items: {type: string}, nullable: true}
+        prestation_id: {type: string, nullable: true}
+        choix: {type: string, nullable: true}
+        remplacement_id: {type: string, nullable: true}
+
+    DecisionStatutEntry:
+      type: object
+      properties:
+        action: {type: string}
+        par: {type: string}
+        le: {type: string}
+        motif: {type: string}
+        avant: {type: string}
+        apres: {type: string}
+        proposition_id: {type: string}
+        version: {type: integer}
+        instructions: {type: string, nullable: true}
+
+    ModificationEntry:
+      type: object
+      properties:
+        champ: {type: string}
+        avant: {}
+        apres: {}
+        par: {type: string}
+        le: {type: string}
+
+    ChatMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content: {type: string}
+
+    ChatRequest:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 60
+          items: {$ref: '#/components/schemas/ChatMessage'}
+        demande_id:
+          type: string
+          nullable: true
+          description: Identifiant de la demande (préfixe `dem_`) pour reprendre une conversation.
+
+    ChatResponse:
+      type: object
+      properties:
+        reply: {type: string}
+        demande:
+          type: object
+          nullable: true
+        trace:
+          type: object
+          nullable: true
+        simulation: {$ref: '#/components/schemas/SimulationFlag'}
+
+    Stats:
+      type: object
+      required: [demandes_total, propositions_total, par_statut, simulation]
+      properties:
+        demandes_total: {type: integer}
+        propositions_total: {type: integer}
+        par_statut:
+          type: object
+          additionalProperties: {type: integer}
+        simulation: {$ref: '#/components/schemas/SimulationFlag'}

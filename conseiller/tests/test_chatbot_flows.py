@@ -402,8 +402,8 @@ class TestGenererPropositionVraiAgent(unittest.TestCase):
     DEMANDE_RECORD = {
         "demande": {
             "destination": "Nantes",
-            "date_depart": "2026-11-07",
-            "date_retour": "2026-11-09",
+            "date_depart": "2030-11-07",
+            "date_retour": "2030-11-09",
             "nombre_voyageurs": 2,
             "budget_max_par_personne": 500,
             "type_voyage": "lune-de-miel",
@@ -436,6 +436,7 @@ class TestGenererPropositionVraiAgent(unittest.TestCase):
     MODEL_JSON_OK = {
         "titre": "Week-end romantique à Nantes",
         "description": "Un séjour pour deux.",
+        "message_voyageur": "Bonjour, voici une première ébauche — Alexandre",
         "prestations": [
             {"id": "train-nantes-01", "nom": "Train Nantes", "type": "transport",
              "prix_unitaire_eur": 48, "quantite": 2},
@@ -504,8 +505,70 @@ class TestGenererPropositionVraiAgent(unittest.TestCase):
         agent.generer_proposition(self.DEMANDE_RECORD, self.RECHERCHE)
         prompt_text = " ".join(m.get("content", "") or "" for m in captured[0])
         self.assertIn("Nantes", prompt_text)
-        self.assertIn("2026-11-07", prompt_text)
+        self.assertIn("2030-11-07", prompt_text)
         self.assertIn("train-nantes-01", prompt_text)
+
+    def test_genere_par_is_stamped_assistant(self):
+        """#117: generer_proposition stamps genere_par='assistant' on the draft."""
+        agent = self._make_agent()
+        agent._call_model = _fake_call_model(json.dumps(self.MODEL_JSON_OK))
+        result = agent.generer_proposition(self.DEMANDE_RECORD, self.RECHERCHE)
+        self.assertEqual(result["genere_par"], "assistant")
+
+    def test_message_voyageur_is_preserved(self):
+        """#117: the traveler-facing message from the model is preserved."""
+        agent = self._make_agent()
+        agent._call_model = _fake_call_model(json.dumps(self.MODEL_JSON_OK))
+        result = agent.generer_proposition(self.DEMANDE_RECORD, self.RECHERCHE)
+        self.assertEqual(result["message_voyageur"],
+                         "Bonjour, voici une première ébauche — Alexandre")
+
+    def test_message_voyageur_defaults_when_model_omits_it(self):
+        """#117: a missing message_voyageur defaults to an empty string, not None."""
+        agent = self._make_agent()
+        model_json = {"titre": "Test", "description": "", "prestations": []}
+        agent._call_model = _fake_call_model(json.dumps(model_json))
+        result = agent.generer_proposition(self.DEMANDE_RECORD, self.RECHERCHE)
+        self.assertEqual(result["message_voyageur"], "")
+
+    def test_conseiller_name_is_injected_into_prompt(self):
+        """#117: the advisor's first name is injected into the prompt."""
+        agent = self._make_agent()
+        captured = []
+
+        def capturing_call(conversation, with_tools=True):
+            captured.append(conversation)
+            return {"role": "assistant", "content": json.dumps(self.MODEL_JSON_OK)}
+
+        agent._call_model = capturing_call
+        agent.generer_proposition(
+            self.DEMANDE_RECORD, self.RECHERCHE, conseiller="Alexandre")
+        prompt_text = " ".join(m.get("content", "") or "" for m in captured[0])
+        self.assertIn("Alexandre", prompt_text)
+
+
+# ---------------------------------------------------------------------------
+# #117 — mettre_a_jour marks the draft as advisor-confirmed
+# ---------------------------------------------------------------------------
+
+class TestMettreAJourGenerePar(unittest.TestCase):
+    """Editing a draft by hand stamps genere_par='conseiller' (#117)."""
+
+    def test_edit_marks_genere_par_conseiller(self):
+        store = PropositionStore(None)
+        prop = store.creer("dem_117", {
+            "titre": "Brouillon", "description": "Test",
+            "message_voyageur": "Brouillon assistant",
+            "genere_par": "assistant", "prestations": [],
+        })
+        updated = store.mettre_a_jour(prop["id"], {
+            "titre": "Titre relu", "description": "Message relu",
+            "message_voyageur": "Message relu par le conseiller",
+            "genere_par": "assistant", "prestations": [],
+        })
+        self.assertEqual(updated["genere_par"], "conseiller")
+        self.assertEqual(updated["message_voyageur"],
+                         "Message relu par le conseiller")
 
 
 # ---------------------------------------------------------------------------
@@ -541,8 +604,8 @@ class TestGenererPropositionEstBrouillon(unittest.TestCase):
         agent._call_model = _fake_call_model(json.dumps(model_json))
         result = agent.generer_proposition(
             {"demande": {
-                "destination": "Nantes", "date_depart": "2026-11-07",
-                "date_retour": "2026-11-09", "nombre_voyageurs": 2,
+                "destination": "Nantes", "date_depart": "2030-11-07",
+                "date_retour": "2030-11-09", "nombre_voyageurs": 2,
                 "budget_max_par_personne": 500, "type_voyage": "lune-de-miel",
                 "niveau_aventure": "calme",
             }},
@@ -562,8 +625,8 @@ class TestGenererPropositionEstBrouillon(unittest.TestCase):
         agent._call_model = _fake_call_model(json.dumps(model_json))
         agent_output = agent.generer_proposition(
             {"demande": {
-                "destination": "Nantes", "date_depart": "2026-11-07",
-                "date_retour": "2026-11-09", "nombre_voyageurs": 2,
+                "destination": "Nantes", "date_depart": "2030-11-07",
+                "date_retour": "2030-11-09", "nombre_voyageurs": 2,
                 "budget_max_par_personne": 500, "type_voyage": "lune-de-miel",
                 "niveau_aventure": "calme",
             }},

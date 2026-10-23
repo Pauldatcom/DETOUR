@@ -12,10 +12,11 @@ from pathlib import Path
 from fournisseur import SupplierError
 from horaires import fenetre_reponse
 from propositions import PropositionError, aligner_sur_serveur, apply_quantities
-from store import ValidationError, analyser_informations, criteres_depuis_demande
+from store import ValidationError, analyser_informations, business_today, criteres_depuis_demande
 from traces import resume_reponse_serveur
-from utils import (DEFAULT_MODEL, MAX_MESSAGES, MAX_TOOL_ITERATIONS,
-                   OPENROUTER_URL, TOOL_NAME)
+from utils import (DEFAULT_MODEL, GENERE_PAR_ASSISTANT, MAX_MESSAGES,
+                   MAX_TOOL_ITERATIONS, OPENROUTER_URL, PRENOM_CONSEILLER_DEFAUT,
+                   TOOL_NAME)
 
 
 def _rapport_erreur_fournisseur(err):
@@ -288,6 +289,7 @@ INFORMATIONS REQUISES AVANT L'APPEL DE L'OUTIL (minimum)
 - type_voyage : "trek-randonnee", "lune-de-miel", "voyage-familial" ou "autres"
 - destination : "Nantes", "Lyon" ou "Lille"
 - date_depart et date_retour : format AAAA-MM-JJ
+- la date de départ doit être après aujourd'hui : si l'outil la refuse, demande une nouvelle date au voyageur
 - nombre_voyageurs : entier de 1 à 20
 - budget_max_par_personne : entier positif en euros
 - niveau_aventure : "calme", "modere" ou "intense"
@@ -393,7 +395,23 @@ TOOL_DEFINITION = {
 PROPOSITION_SYSTEM = (
     "Tu es l'assistant DÉTOUR. Un conseiller te demande de préparer une proposition "
     "de voyage basée sur les prestations vérifiées par le serveur fictif. "
-    "Tu réponds uniquement avec un objet JSON valide."
+    "Tu réponds uniquement avec un objet JSON valide.\n\n"
+    "TON DÉTOUR\n"
+    "- Précis d'abord, chaleureux ensuite, légèrement malicieux seulement en fin de message.\n"
+    "- « nous » pour l'agence, « je » pour le conseiller dans le message au voyageur.\n"
+    "- Jamais pressé, jamais criard : pas de « ! » en série.\n"
+    "- Aucune plaisanterie sur un prix, une indisponibilité ou une erreur.\n\n"
+    "MESSAGE_VOYAGEUR\n"
+    "- Rédige un message court adressé au voyageur, dans le ton DÉTOUR.\n"
+    "- Signe-le au prénom du conseiller (fourni dans la demande).\n"
+    "- C'est un brouillon : le conseiller relira et pourra le modifier avant l'envoi.\n"
+    "- Marque-le clairement comme un brouillon généré par l'assistant.\n\n"
+    "RÉPONSE\n"
+    "Réponds avec un objet JSON : "
+    '{"titre": "...", "description": "...", "message_voyageur": "...", '
+    '"prestations": [{"id": "...", "nom": "...", '
+    '"type": "...", "prix_unitaire_eur": 0, "quantite": 1}]}\n'
+    "Réponds uniquement avec le JSON."
 )
 
 
@@ -434,7 +452,14 @@ class Agent:
             f"- {fenetre['message']}\n"
             f"- {fenetre['promesse_delai']}\n"
             "- Never promise an immediate answer when the service is closed.\n"
-            "- Never claim a reservation has been made.")
+            "- Never claim a reservation has been made.\n\n"
+            # #145: the agent knows today's date, so it can refuse a past departure
+            # at once. The program still has the last word when the request is saved.
+            "TODAY\n"
+            f"- Nous sommes le {business_today().isoformat()} (heure de Paris).\n"
+            "- Le départ doit être après aujourd'hui : si la date de départ donnée est "
+            "aujourd'hui ou avant, dis-le tout de suite et demande une nouvelle date, "
+            "avant toute autre question.")
         conversation: list = [{"role": "system", "content": system_prompt}]
         demande, recherche = None, None
         if demande_id:
@@ -623,12 +648,19 @@ class Agent:
         trace["tool_calls"].append(entry)
         return {"recherche": recherche, "payload": recherche}
 
-    def generer_proposition(self, demande_record, recherche):
-        """Generate a structured proposition via OpenRouter (no tools)."""
+    def generer_proposition(self, demande_record, recherche, conseiller=""):
+        """Generate a structured proposition via OpenRouter (no tools).
+
+        The draft is stamped ``genere_par: "assistant"`` so it stays visibly
+        separate from advisor-confirmed content (#117). A ``message_voyageur``
+        is drafted in the Détour tone and signed with the advisor's first name.
+        The advisor can edit every field before sending.
+        """
         if not self._api_key:
             raise OpenRouterError("Clé OpenRouter absente : définir OPENROUTER_API_KEY.", 503)
         d = demande_record.get("demande", demande_record)
         resultats = (recherche or {}).get("resultats", [])
+        prenom = (conseiller or "").strip() or PRENOM_CONSEILLER_DEFAUT
         prompt = (
             f"Prépare une proposition de voyage au format JSON.\n\n"
             f"Demande du voyageur :\n"
@@ -639,10 +671,12 @@ class Agent:
             f"- Type : {d.get('type_voyage', '')}\n"
             f"- Niveau aventure : {d.get('niveau_aventure', '')}\n"
             f"- Souhaits : {d.get('souhaits', '')}\n\n"
+            f"Conseiller : {prenom}\n"
+            f"Signe le message_voyageur au prénom « {prenom} ».\n\n"
             f"Prestations disponibles :\n"
             f"{json.dumps(resultats, ensure_ascii=False)}\n\n"
             f"Réponds avec un objet JSON : "
-            f'{{"titre": "...", "description": "...", '
+            f'{{"titre": "...", "description": "...", "message_voyageur": "...", '
             f'"prestations": [{{"id": "...", "nom": "...", '
             f'"type": "...", "prix_unitaire_eur": 0, "quantite": 1}}]}}\n'
             f"Réponds uniquement avec le JSON."
@@ -658,6 +692,11 @@ class Agent:
             raise OpenRouterError("Réponse du modèle illisible (JSON attendu).") from err
         if not isinstance(prop_data, dict):
             raise OpenRouterError("Réponse du modèle invalide (objet attendu).")
+        # Stamp the draft as assistant-generated (#117).
+        prop_data["genere_par"] = GENERE_PAR_ASSISTANT
+        # Guarantee a traveler message even if the model omits it.
+        if not isinstance(prop_data.get("message_voyageur"), str):
+            prop_data["message_voyageur"] = ""
         try:
             # Stamp source and consultation time from the search; never invent them.
             aligned = aligner_sur_serveur(
