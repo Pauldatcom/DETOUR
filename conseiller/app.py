@@ -13,10 +13,13 @@ from pathlib import Path
 
 from agent import Agent, DEFAULT_MODEL, OpenRouterError
 from fournisseur import DEFAULT_URL, SupplierClient, SupplierError
+from llm import AnthropicProvider, OpenRouterProvider
 from propositions import PropositionError, PropositionStore
 from sqlite_repository import SqliteRepository
 from store import DemandStore, ValidationError
 from users import UserError, UserStore
+from utils import (ANTHROPIC_MODEL, ANTHROPIC_URL, LLM_PROVIDER,
+                    OPENROUTER_URL)
 
 from httpd.context import Context
 from httpd.handler import HttpHandler
@@ -114,9 +117,23 @@ def main():
         repo.seed_destinations(dataset)
     team_key = os.environ.get("TRAVEL_TEAM_KEY", "demo-key")
     supplier = SupplierClient(args.supplier_url, team_key)
-    api_key = os.environ.get("OPENROUTER_API_KEY", "")
-    model = os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
-    agent = Agent(supplier, store, api_key=api_key, model=model)
+    provider_name = os.environ.get("LLM_PROVIDER", LLM_PROVIDER)
+    if provider_name == "anthropic":
+        anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        anthropic_model = os.environ.get("ANTHROPIC_MODEL", ANTHROPIC_MODEL)
+        provider = AnthropicProvider(
+            api_key=anthropic_key, model=anthropic_model,
+            base_url=ANTHROPIC_URL, timeout=60)
+        agent = Agent(supplier, store, provider=provider)
+        api_key = anthropic_key
+        model = anthropic_model
+    else:
+        api_key = os.environ.get("OPENROUTER_API_KEY", "")
+        model = os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
+        provider = OpenRouterProvider(
+            api_key=api_key, model=model,
+            base_url=os.environ.get("OPENROUTER_URL", OPENROUTER_URL), timeout=60)
+        agent = Agent(supplier, store, provider=provider)
     server = ThreadingHTTPServer((args.host, args.port),
                                   make_handler(store, supplier, agent, users, team_key,
                                                propositions=propositions,

@@ -15,10 +15,15 @@ SOURCE_LABEL = "Serveur fictif DÉTOUR"
 
 # Agent conversationnel (surchargeable par OPENROUTER_MODEL).
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL = "nvidia/nemotron-3.5-super-vl:free"  
+DEFAULT_MODEL = "nvidia/nemotron-3.5-super-vl:free"
 MAX_MESSAGES = 40
 MAX_TOOL_ITERATIONS = 3
 TOOL_NAME = "chercher_voyages"
+
+# Provider LLM (openrouter | anthropic). Sélectionne l'implémentation de llm.py.
+LLM_PROVIDER = "openrouter"
+ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
+ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
 
 # Contrat métier partagé avec le serveur fictif.
 TYPES_VOYAGE = ("trek-randonnee", "lune-de-miel", "voyage-familial", "autres")

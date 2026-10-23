@@ -3,14 +3,11 @@
 
 import json
 import os
-import ssl
-import urllib.error
-import urllib.request
 from datetime import date
-from pathlib import Path
 
 from fournisseur import SupplierError
 from horaires import fenetre_reponse
+from llm import LLMError, LLMProvider, OpenRouterProvider
 from propositions import PropositionError, aligner_sur_serveur, apply_quantities
 from store import ValidationError, analyser_informations, business_today, criteres_depuis_demande
 from traces import resume_reponse_serveur
@@ -92,19 +89,9 @@ DECISION_ARGS = (
 )
 
 
-def _ssl_context():
-    ctx = ssl.create_default_context()
-    for path in (
-        os.environ.get("SSL_CERT_FILE"),
-        "/etc/ssl/cert.pem",
-        "/etc/ssl/certs/ca-certificates.crt",
-    ):
-        if path and Path(path).exists():
-            try:
-                ctx.load_verify_locations(path)
-            except (OSError, ssl.SSLError):
-                pass
-    return ctx
+class OpenRouterError(LLMError):
+    """Backward-compatible alias for LLMError."""
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -429,12 +416,19 @@ def _extraire_json(content):
 
 
 class Agent:
-    def __init__(self, supplier, store, api_key="", model=DEFAULT_MODEL,
-                 base_url=OPENROUTER_URL, timeout=60):
+    def __init__(self, supplier, store, provider=None, api_key="",
+                 model=DEFAULT_MODEL, base_url=OPENROUTER_URL, timeout=60):
         self.supplier = supplier
         self.store = store
+        self._provider_given = provider is not None
+        if provider is not None:
+            self._provider = provider
+            self.model = getattr(provider, "model", model)
+        else:
+            self._provider = OpenRouterProvider(
+                api_key=api_key, model=model, base_url=base_url, timeout=timeout)
+            self.model = model
         self._api_key = api_key
-        self.model = model
         self.base_url = base_url
         self.timeout = timeout
 
@@ -443,7 +437,7 @@ class Agent:
 
         `user_id` and `demande_id` come from the server session / client thread:
         they are never taken from the model."""
-        if not self._api_key:
+        if not self._api_key and not self._provider_given:
             raise OpenRouterError("Clé OpenRouter absente : définir OPENROUTER_API_KEY.", 503)
         trace = {"model": self.model, "tool_calls": [], "simulation": True}
         # #53: the chatbot knows the real working hours, never hard-coded.
@@ -508,7 +502,7 @@ class Agent:
 
         The only tool is a read-only search: the advisor chat never writes on a
         request, never books and never changes a status."""
-        if not self._api_key:
+        if not self._api_key and not self._provider_given:
             raise OpenRouterError("Clé OpenRouter absente : définir OPENROUTER_API_KEY.", 503)
         trace = {
             "model": self.model,
@@ -658,7 +652,7 @@ class Agent:
         is drafted in the Détour tone and signed with the advisor's first name.
         The advisor can edit every field before sending.
         """
-        if not self._api_key:
+        if not self._api_key and not self._provider_given:
             raise OpenRouterError("Clé OpenRouter absente : définir OPENROUTER_API_KEY.", 503)
         d = demande_record.get("demande", demande_record)
         resultats = (recherche or {}).get("resultats", [])
@@ -713,38 +707,11 @@ class Agent:
             raise OpenRouterError(f"Proposition refusée : {err}") from err
 
     def _call_model(self, conversation, with_tools=True, tools=None):
-        payload = {"model": self.model, "messages": conversation}
-        if with_tools:
-            payload["tools"] = tools or [TOOL_DEFINITION]
-            payload["tool_choice"] = "auto"
-        request = urllib.request.Request(
-            self.base_url,
-            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-            headers={"Authorization": f"Bearer {self._api_key}",
-                     "Content-Type": "application/json"},
-            method="POST")
+        tool_defs = (tools or [TOOL_DEFINITION]) if with_tools else None
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout, context=_ssl_context()) as response:
-                data = json.loads(response.read())
-        except urllib.error.HTTPError as err:
-            detail = f"HTTP {err.code}"
-            try:
-                detail = json.loads(err.read()).get("error", {}).get("message", detail)
-            except Exception:
-                pass
-            if err.code in (401, 403):
-                raise OpenRouterError("OpenRouter a refusé la clé API (vérifiez OPENROUTER_API_KEY).") from err
-            if err.code == 429:
-                raise OpenRouterError("Limite d'appels OpenRouter atteinte, réessayez dans un instant.") from err
-            raise OpenRouterError(f"OpenRouter : {detail}") from err
-        except (urllib.error.URLError, TimeoutError, OSError) as err:
-            raise OpenRouterError("OpenRouter injoignable, vérifiez votre connexion.") from err
-        except json.JSONDecodeError as err:
-            raise OpenRouterError("Réponse illisible d'OpenRouter.") from err
-        try:
-            return data["choices"][0]["message"]
-        except (KeyError, IndexError, TypeError) as err:
-            raise OpenRouterError("OpenRouter : réponse sans message exploitable.") from err
+            return self._provider.chat(conversation, tools=tool_defs)
+        except LLMError as err:
+            raise OpenRouterError(str(err), getattr(err, "status", 502)) from err
 
     def _execute_tool(self, call, trace, user_id="", demande_id=None):
         function = call.get("function") or {}
