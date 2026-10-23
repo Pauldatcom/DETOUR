@@ -5,6 +5,7 @@ import { Accueil } from "./pages/Accueil";
 import { Login } from "./pages/Login";
 import { InspirationsPage } from "./pages/Inspirations";
 import { ConseillersPage } from "./pages/Conseillers";
+import { ChatPage } from "./pages/ChatPage";
 import { CompteLayout } from "./pages/CompteLayout";
 import { MesDemandes } from "./pages/MesDemandes";
 import { MesPropositions } from "./pages/MesPropositions";
@@ -78,6 +79,10 @@ export default function App() {
         element={
           <ConseillersPage isLoggedIn={clientConnecte} session={session} onLogout={deconnecter} />
         }
+      />
+      <Route
+        path="/chat"
+        element={<ChatPage isLoggedIn={clientConnecte} session={session} onLogout={deconnecter} />}
       />
       <Route
         path="/login"
