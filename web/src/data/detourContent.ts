@@ -23,9 +23,10 @@ export interface Etape {
 
 export const NAVIGATION = [
   { label: "Accueil", href: "/accueil" },
-  { label: "Inspirations", href: "/inspirations" },
+  { label: "Chat", href: "/chat" },
   { label: "Conseillers", href: "/conseillers" },
   { label: "Comment ça marche", href: "/accueil#comment-ca-marche" },
+  { label: "Inspirations", href: "/inspirations" },
 ] as const;
 
 export const HERO = {
