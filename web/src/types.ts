@@ -213,6 +213,36 @@ export interface ChatResult {
   simulation: boolean;
 }
 
+/**
+ * Verification state of a price or a place, as shown to the advisor (#120, #116).
+ * "checking" is transient (a search is running); "error" means the check failed.
+ */
+export type EtatVerification =
+  "verified" | "checking" | "modified" | "unavailable" | "not_verified" | "error";
+
+/** One tool call of the advisor assistant, as recorded in its redacted trace. */
+export interface AppelOutilConseiller {
+  outil: string;
+  statut: string;
+  erreur?: string;
+  http_status?: number | null;
+}
+
+/** Redacted trace of an advisor chat turn: what the assistant did, never a decision. */
+export interface TraceConseiller {
+  model: string;
+  acteur?: string;
+  tool_calls: AppelOutilConseiller[];
+  request_id?: string | null;
+}
+
+export interface ConseillerChatResult {
+  reply: string;
+  recherche: Recherche | null;
+  trace: TraceConseiller;
+  simulation: boolean;
+}
+
 export interface ApiError {
   erreur: { code: string; message: string };
 }
