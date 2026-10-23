@@ -45,7 +45,10 @@ Copy `.env.example` to `.env` at the repository root:
 ```
 server/          Supplier API (catalogue, search, dashboard) — :8765
 conseiller/       Portal (auth, chat, demandes, propositions, OAuth, /metrics) — :8766
-  app.py          Stdlib HTTP server, API routes, serves web/dist in prod
+  app.py          Thin entrypoint: wires stores/services, routes and server
+  httpd/          HTTP plumbing: handler, router, sessions, guards, errors
+  routes/         Business routes by domain (auth, demandes, propositions…)
+  static/         Legacy portal assets served in non-built mode
   agent.py        OpenRouter agent (tool-calling, proposition generation)
   propositions.py SQLite store for propositions (CRUD, statuses)
   users.py         Traveler accounts (PBKDF2) + Google OAuth
@@ -93,8 +96,8 @@ observability/    Grafana + Prometheus + Loki (+ Alloy for Grafana Cloud)
 ## Tests
 
 ```bash
-python3 -m unittest discover -s server/tests -v          # 17 tests
-python3 -m unittest discover -s conseiller/tests -v      # 230 tests
+python3 -m unittest discover -s server/tests -v          # 20 tests
+python3 -m unittest discover -s conseiller/tests -v      # 485 tests
 cd web && pnpm tsc --noEmit                              # TS typecheck
 cd web && pnpm build                                     # build (fails on TS errors)
 cd web && pnpm lint                                      # ESLint
