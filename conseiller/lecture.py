@@ -8,6 +8,7 @@ import json
 from contraintes import verifier_contraintes
 from propositions import VERIFICATION_VERIFIE, parse_iso8601
 from utils import STATUT_A_REVOIR
+from verification import etat_ligne
 
 
 def _resultat_lecture_complet(resultat):
@@ -98,14 +99,20 @@ def proposition_avec_changements(proposition, recherches):
     if not isinstance(proposition, dict):
         return proposition
     copie = json.loads(json.dumps(proposition))
-    if not recherches:
-        return copie
-    derniere = recherches[-1]
-    if not lecture_plus_recente_que_proposition(copie, derniere):
-        return copie
-    copie["changements"] = comparer_proposition(
-        copie, derniere.get("resultats"), consulte_le=derniere.get("consulte_le"))
+    derniere = recherches[-1] if recherches else None
+    if derniere and lecture_plus_recente_que_proposition(copie, derniere):
+        copie["changements"] = comparer_proposition(
+            copie, derniere.get("resultats"), consulte_le=derniere.get("consulte_le"))
+    _marquer_lignes(copie)
     return copie
+
+def _marquer_lignes(proposition):
+    """#116: stamp each line with its verification state (stored data unchanged)."""
+    par_id = {c["id"]: c for c in proposition.get("changements") or []
+              if isinstance(c, dict)}
+    for ligne in proposition.get("prestations") or []:
+        if isinstance(ligne, dict):
+            ligne["etat_verification"] = etat_ligne(ligne, par_id.get(ligne.get("id")))
 
 
 def a_des_ecarts(changements):
