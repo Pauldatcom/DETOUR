@@ -17,6 +17,7 @@ from traces import resume_reponse_serveur
 from utils import (DEFAULT_MODEL, GENERE_PAR_ASSISTANT, MAX_MESSAGES,
                    MAX_TOOL_ITERATIONS, OPENROUTER_URL, PRENOM_CONSEILLER_DEFAUT,
                    TOOL_NAME)
+from verification import ETAT_ERROR, marquer_etats
 
 
 def _rapport_erreur_fournisseur(err):
@@ -629,7 +630,7 @@ class Agent:
             }}
         entry["arguments"] = criteres
         try:
-            recherche = self.supplier.rechercher(criteres)
+            recherche = marquer_etats(self.supplier.rechercher(criteres))
         except SupplierError as err:
             entry["statut"], _ = _rapport_erreur_fournisseur(err)
             entry["erreur"] = str(err)
@@ -637,6 +638,7 @@ class Agent:
             trace["tool_calls"].append(entry)
             return {"payload": {
                 "erreur": "La vérification n'a pas abouti.",
+                "etat_verification": ETAT_ERROR,
                 "consigne": (
                     "Le serveur de prestations n'a pas pu vérifier les prix et les places. "
                     "Dis-le simplement au conseiller, sans inventer de prestation, et "
@@ -863,6 +865,7 @@ class Agent:
                         "confirmation": confirmation,
                         "erreur": str(err),
                         "http_status": getattr(err, "status", None),
+                        "etat_verification": ETAT_ERROR,
                         "consigne": consigne,
                     }}
         entry["statut"] = "ok"

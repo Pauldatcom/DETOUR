@@ -16,6 +16,7 @@ from utils import (ACTIVITES_POSSIBLES, ACTEUR_AGENT, NIVEAUX_AVENTURE,
                    STATUT_REPONDUE, STATUT_VALIDE,
                    TYPES_ACTIVITE_PHYSIQUE, TYPES_AVEC_GUIDE, TYPES_VOYAGE,
                    TRANSITIONS_DEMANDE)
+from verification import marquer_etats
 
 
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -661,7 +662,8 @@ class DemandStore:
             record = self.demandes.get(dem_id)
             if not record:
                 return None
-            entree = dict(recherche)
+            # #116: each stored result carries its verification state.
+            entree = marquer_etats(dict(recherche))
             entree["id"] = "rech_" + secrets.token_hex(4)
             record.setdefault("recherches", []).append(entree)
             self.save()
