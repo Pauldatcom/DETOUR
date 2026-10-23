@@ -402,8 +402,8 @@ class TestGenererPropositionVraiAgent(unittest.TestCase):
     DEMANDE_RECORD = {
         "demande": {
             "destination": "Nantes",
-            "date_depart": "2026-11-07",
-            "date_retour": "2026-11-09",
+            "date_depart": "2030-11-07",
+            "date_retour": "2030-11-09",
             "nombre_voyageurs": 2,
             "budget_max_par_personne": 500,
             "type_voyage": "lune-de-miel",
@@ -504,7 +504,7 @@ class TestGenererPropositionVraiAgent(unittest.TestCase):
         agent.generer_proposition(self.DEMANDE_RECORD, self.RECHERCHE)
         prompt_text = " ".join(m.get("content", "") or "" for m in captured[0])
         self.assertIn("Nantes", prompt_text)
-        self.assertIn("2026-11-07", prompt_text)
+        self.assertIn("2030-11-07", prompt_text)
         self.assertIn("train-nantes-01", prompt_text)
 
 
@@ -541,8 +541,8 @@ class TestGenererPropositionEstBrouillon(unittest.TestCase):
         agent._call_model = _fake_call_model(json.dumps(model_json))
         result = agent.generer_proposition(
             {"demande": {
-                "destination": "Nantes", "date_depart": "2026-11-07",
-                "date_retour": "2026-11-09", "nombre_voyageurs": 2,
+                "destination": "Nantes", "date_depart": "2030-11-07",
+                "date_retour": "2030-11-09", "nombre_voyageurs": 2,
                 "budget_max_par_personne": 500, "type_voyage": "lune-de-miel",
                 "niveau_aventure": "calme",
             }},
@@ -562,8 +562,8 @@ class TestGenererPropositionEstBrouillon(unittest.TestCase):
         agent._call_model = _fake_call_model(json.dumps(model_json))
         agent_output = agent.generer_proposition(
             {"demande": {
-                "destination": "Nantes", "date_depart": "2026-11-07",
-                "date_retour": "2026-11-09", "nombre_voyageurs": 2,
+                "destination": "Nantes", "date_depart": "2030-11-07",
+                "date_retour": "2030-11-09", "nombre_voyageurs": 2,
                 "budget_max_par_personne": 500, "type_voyage": "lune-de-miel",
                 "niveau_aventure": "calme",
             }},

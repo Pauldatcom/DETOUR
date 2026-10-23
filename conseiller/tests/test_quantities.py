@@ -12,8 +12,8 @@ from propositions import apply_quantities, count_nights, valider_proposition
 
 LYON_REQUEST = {
     "destination": "Lyon",
-    "date_depart": "2026-11-07",
-    "date_retour": "2026-11-09",
+    "date_depart": "2030-11-07",
+    "date_retour": "2030-11-09",
     "nombre_voyageurs": 2,
 }
 
@@ -43,18 +43,18 @@ class CountNightsTest(unittest.TestCase):
         self.assertEqual(count_nights(LYON_REQUEST), 2)
 
     def test_five_nights(self):
-        request = {"date_depart": "2026-11-07", "date_retour": "2026-11-12"}
+        request = {"date_depart": "2030-11-07", "date_retour": "2030-11-12"}
         self.assertEqual(count_nights(request), 5)
 
     def test_missing_return_date_counts_one_night(self):
-        self.assertEqual(count_nights({"date_depart": "2026-11-07"}), 1)
+        self.assertEqual(count_nights({"date_depart": "2030-11-07"}), 1)
 
     def test_invalid_date_counts_one_night(self):
-        request = {"date_depart": "not-a-date", "date_retour": "2026-11-09"}
+        request = {"date_depart": "not-a-date", "date_retour": "2030-11-09"}
         self.assertEqual(count_nights(request), 1)
 
     def test_return_before_departure_counts_one_night(self):
-        request = {"date_depart": "2026-11-09", "date_retour": "2026-11-07"}
+        request = {"date_depart": "2030-11-09", "date_retour": "2030-11-07"}
         self.assertEqual(count_nights(request), 1)
 
 

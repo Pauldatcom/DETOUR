@@ -39,8 +39,8 @@ VALIDE = {
     "conseiller": "Alice",
     "type_voyage": "trek-randonnee",
     "destination": "Nantes",
-    "date_depart": "2026-11-07",
-    "date_retour": "2026-11-09",
+    "date_depart": "2030-11-07",
+    "date_retour": "2030-11-09",
     "nombre_voyageurs": 2,
     "has_enfants": True,
     "nombre_enfants": 1,
@@ -70,7 +70,7 @@ class TestValidation(unittest.TestCase):
             valider_demande(data)
 
     def test_dates_inversees(self):
-        data = dict(VALIDE, date_depart="2026-11-09", date_retour="2026-11-07")
+        data = dict(VALIDE, date_depart="2030-11-09", date_retour="2030-11-07")
         with self.assertRaises(ValidationError):
             valider_demande(data)
 
@@ -113,8 +113,8 @@ class TestAnalyserInformations(unittest.TestCase):
         brouillon = {
             "type_voyage": "lune-de-miel",
             "destination": "Nantes",
-            "date_depart": "2026-11-07",
-            "date_retour": "2026-11-09",
+            "date_depart": "2030-11-07",
+            "date_retour": "2030-11-09",
             "nombre_voyageurs": 2,
             "niveau_aventure": "calme",
             # budget_max_par_personne intentionally absent
@@ -141,8 +141,8 @@ class TestFusionnerReponses(unittest.TestCase):
         existant = {
             "type_voyage": "lune-de-miel",
             "destination": "Nantes",
-            "date_depart": "2026-11-07",
-            "date_retour": "2026-11-09",
+            "date_depart": "2030-11-07",
+            "date_retour": "2030-11-09",
             "nombre_voyageurs": 2,
             "niveau_aventure": "calme",
         }
@@ -251,8 +251,8 @@ class TestDemandStore(unittest.TestCase):
         record, mis = self.store.enregistrer_reponses(None, {
             "type_voyage": "lune-de-miel",
             "destination": "Nantes",
-            "date_depart": "2026-11-07",
-            "date_retour": "2026-11-09",
+            "date_depart": "2030-11-07",
+            "date_retour": "2030-11-09",
             "nombre_voyageurs": 2,
             "niveau_aventure": "calme",
         }, user_id="u1")
@@ -455,7 +455,7 @@ class TestCriteres(unittest.TestCase):
         record = store.creer(dict(VALIDE))
         criteres = criteres_depuis_demande(record)
         self.assertEqual(criteres, {
-            "destination": "Nantes", "date_depart": "2026-11-07", "date_retour": "2026-11-09",
+            "destination": "Nantes", "date_depart": "2030-11-07", "date_retour": "2030-11-09",
             "participants": 2, "budget_max": 500, "type_voyage": "trek-randonnee",
             "activites": ["créatif", "extérieur"],
         })
@@ -566,7 +566,7 @@ class TestIntegrationServeurFictif(unittest.TestCase):
     def incident(self, prestation_id, type_, valeur):
         req = urllib.request.Request(
             f"{self.supplier_url}/api/v1/instructor/teams/demo/incidents",
-            data=json.dumps({"prestation_id": prestation_id, "date": "2026-11-07",
+            data=json.dumps({"prestation_id": prestation_id, "date": "2030-11-07",
                              "type": type_, "valeur": valeur}).encode(),
             headers={"Content-Type": "application/json", "X-Instructor-Key": "demo-instructor"},
             method="POST")
@@ -621,8 +621,8 @@ TOOL_CALL_MESSAGE = {
             "arguments": json.dumps({
                 "type_voyage": "lune-de-miel",
                 "destination": "Nantes",
-                "date_depart": "2026-11-07",
-                "date_retour": "2026-11-09",
+                "date_depart": "2030-11-07",
+                "date_retour": "2030-11-09",
                 "nombre_voyageurs": 2,
                 "budget_max_par_personne": 500,
                 "niveau_aventure": "calme",
@@ -791,8 +791,8 @@ class TestAgent(unittest.TestCase):
         existing, _ = self.store.enregistrer_reponses(None, {
             "type_voyage": "lune-de-miel",
             "destination": "Nantes",
-            "date_depart": "2026-11-07",
-            "date_retour": "2026-11-09",
+            "date_depart": "2030-11-07",
+            "date_retour": "2030-11-09",
             "nombre_voyageurs": 2,
             "niveau_aventure": "calme",
         }, user_id="u1")
@@ -859,8 +859,8 @@ class TestAgent(unittest.TestCase):
         existing, _ = self.store.enregistrer_reponses(None, {
             "type_voyage": "lune-de-miel",
             "destination": "Nantes",
-            "date_depart": "2026-11-07",
-            "date_retour": "2026-11-09",
+            "date_depart": "2030-11-07",
+            "date_retour": "2030-11-09",
             "nombre_voyageurs": 2,
             "niveau_aventure": "calme",
         }, user_id="client-1")
@@ -967,8 +967,8 @@ class TestMissingInfoConversationFlow(unittest.TestCase):
         }
         agent, fake = self.make_agent([
             {"message": _tool_call_message({
-                "date_depart": "2026-11-07",
-                "date_retour": "2026-11-09",
+                "date_depart": "2030-11-07",
+                "date_retour": "2030-11-09",
             })},
             {"message": ask_budget},
         ])
@@ -982,8 +982,8 @@ class TestMissingInfoConversationFlow(unittest.TestCase):
             demande_id=dem_id,
         )
         self.assertEqual(turn2["demande"]["id"], dem_id)
-        self.assertEqual(turn2["demande"]["demande"]["date_depart"], "2026-11-07")
-        self.assertEqual(turn2["demande"]["demande"]["date_retour"], "2026-11-09")
+        self.assertEqual(turn2["demande"]["demande"]["date_depart"], "2030-11-07")
+        self.assertEqual(turn2["demande"]["demande"]["date_retour"], "2030-11-09")
         self.assertEqual(turn2["demande"]["demande"]["destination"], "Nantes")
         self.assertNotIn("budget_max_par_personne", turn2["demande"]["demande"])
         call = turn2["trace"]["tool_calls"][0]
@@ -1012,7 +1012,7 @@ class TestMissingInfoConversationFlow(unittest.TestCase):
         )
         self.assertEqual(turn3["demande"]["id"], dem_id)
         self.assertEqual(turn3["demande"]["demande"]["budget_max_par_personne"], 500)
-        self.assertEqual(turn3["demande"]["demande"]["date_depart"], "2026-11-07")
+        self.assertEqual(turn3["demande"]["demande"]["date_depart"], "2030-11-07")
         self.assertEqual(turn3["demande"]["champs_manquants"], [])
         self.assertEqual(turn3["trace"]["tool_calls"][0]["statut"], "ok")
         self.assertIsNotNone(turn3["recherche"])

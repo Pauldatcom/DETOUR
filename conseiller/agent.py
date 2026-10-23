@@ -12,7 +12,7 @@ from pathlib import Path
 from fournisseur import SupplierError
 from horaires import fenetre_reponse
 from propositions import PropositionError, aligner_sur_serveur, apply_quantities
-from store import ValidationError, analyser_informations, criteres_depuis_demande
+from store import ValidationError, analyser_informations, business_today, criteres_depuis_demande
 from traces import resume_reponse_serveur
 from utils import (DEFAULT_MODEL, MAX_MESSAGES, MAX_TOOL_ITERATIONS,
                    OPENROUTER_URL, TOOL_NAME)
@@ -288,6 +288,7 @@ INFORMATIONS REQUISES AVANT L'APPEL DE L'OUTIL (minimum)
 - type_voyage : "trek-randonnee", "lune-de-miel", "voyage-familial" ou "autres"
 - destination : "Nantes", "Lyon" ou "Lille"
 - date_depart et date_retour : format AAAA-MM-JJ
+- la date de départ doit être après aujourd'hui : si l'outil la refuse, demande une nouvelle date au voyageur
 - nombre_voyageurs : entier de 1 à 20
 - budget_max_par_personne : entier positif en euros
 - niveau_aventure : "calme", "modere" ou "intense"
@@ -434,7 +435,14 @@ class Agent:
             f"- {fenetre['message']}\n"
             f"- {fenetre['promesse_delai']}\n"
             "- Never promise an immediate answer when the service is closed.\n"
-            "- Never claim a reservation has been made.")
+            "- Never claim a reservation has been made.\n\n"
+            # #145: the agent knows today's date, so it can refuse a past departure
+            # at once. The program still has the last word when the request is saved.
+            "TODAY\n"
+            f"- Nous sommes le {business_today().isoformat()} (heure de Paris).\n"
+            "- Le départ doit être après aujourd'hui : si la date de départ donnée est "
+            "aujourd'hui ou avant, dis-le tout de suite et demande une nouvelle date, "
+            "avant toute autre question.")
         conversation: list = [{"role": "system", "content": system_prompt}]
         demande, recherche = None, None
         if demande_id:
