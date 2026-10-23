@@ -754,24 +754,28 @@ class DemandStore:
             if record.get("reponse"):
                 raise ValidationError("Cette demande a déjà reçu une réponse.")
 
-            avant = self._appliquer_statut(
-                record,
-                STATUT_REPONDUE,
-                via_reponse=True,
-            )
-
+            # Review PR #142: build the response payload *before* mutating the
+            # state, so a failure cannot leave a half-updated record.
             delai = evaluer_delai_reponse(
                 datetime.fromisoformat(record["cree_le"]),
                 maintenant,
             )
 
-            record["reponse"] = {
+            nouvelle_reponse = {
                 "message": message,
                 "par": par.strip(),
                 "le": maintenant.isoformat(),
                 "delai_heures_ouvrees": delai["heures_ouvrees"],
                 "delai_statut": delai["statut"],
             }
+
+            avant = self._appliquer_statut(
+                record,
+                STATUT_REPONDUE,
+                via_reponse=True,
+            )
+
+            record["reponse"] = nouvelle_reponse
 
             _journaliser(
                 record,
