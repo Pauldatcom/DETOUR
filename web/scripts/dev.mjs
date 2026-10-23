@@ -7,21 +7,53 @@ import { fileURLToPath } from "node:url";
 
 const WEB_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const ROOT = path.dirname(WEB_DIR);
+const IS_WIN = process.platform === "win32";
+
+function resolvePython() {
+  if (IS_WIN) {
+    // Prefer the Python Launcher (py -3) on Windows
+    const py3 = spawnSync("py", ["-3", "-c", "print(1)"], { encoding: "utf8", shell: false });
+    if (py3.status === 0) {
+      return { cmd: "py", prefix: ["-3"] };
+    }
+
+    const py = spawnSync("python", ["-c", "print(1)"], { encoding: "utf8", shell: false });
+    if (py.status === 0) {
+      return { cmd: "python", prefix: [] };
+    }
+
+    return { cmd: "python", prefix: [] };
+  }
+
+  const py3nix = spawnSync("python3", ["-c", "print(1)"], { encoding: "utf8", shell: false });
+  if (py3nix.status === 0) {
+    return { cmd: "python3", prefix: [] };
+  }
+
+  const pynix = spawnSync("python", ["-c", "print(1)"], { encoding: "utf8", shell: false });
+  if (pynix.status === 0) {
+    return { cmd: "python", prefix: [] };
+  }
+
+  return { cmd: "python3", prefix: [] };
+}
+
+const PY = resolvePython();
 
 const SERVICES = [
   {
     name: "fournisseur",
     label: "[fournisseur]",
-    cmd: "python3",
-    args: [path.join(ROOT, "server", "app.py"), "--demo"],
+    cmd: PY.cmd,
+    args: [...PY.prefix, path.join(ROOT, "server", "app.py"), "--demo"],
     port: 8765,
     health: "/health",
   },
   {
     name: "portail",
     label: "[portail]",
-    cmd: "python3",
-    args: [path.join(ROOT, "conseiller", "app.py"), "--port", "8766"],
+    cmd: PY.cmd,
+    args: [...PY.prefix, path.join(ROOT, "conseiller", "app.py"), "--port", "8766"],
     port: 8766,
     health: "/health",
   },
@@ -36,17 +68,46 @@ const SERVICES = [
   },
 ];
 
-function killPort(port) {
+function killPortUnix(port) {
   const res = spawnSync("lsof", ["-t", "-i", `tcp:${port}`], { encoding: "utf8" });
   const pids = (res.stdout || "")
     .split("\n")
     .map((s) => s.trim())
     .filter(Boolean);
+
   for (const pid of pids) {
     if (pid === String(process.pid)) continue;
     spawnSync("kill", ["-9", pid]);
   }
+
   return pids.length;
+}
+
+function killPortWindows(port) {
+  const res = spawnSync("netstat", ["-ano"], { encoding: "utf8" });
+  const lines = (res.stdout || "").split(/\r?\n/);
+  const pids = new Set();
+
+  for (const line of lines) {
+    if (!line.includes(`:${port}`)) continue;
+    if (!/LISTENING/i.test(line)) continue;
+    const parts = line.trim().split(/\s+/);
+    const pid = parts[parts.length - 1];
+    if (pid && /^\d+$/.test(pid) && pid !== String(process.pid)) {
+      pids.add(pid);
+    }
+  }
+
+  for (const pid of pids) {
+    spawnSync("taskkill", ["/F", "/PID", pid], { encoding: "utf8" });
+  }
+
+  return pids.size;
+}
+
+function killPort(port) {
+  if (IS_WIN) return killPortWindows(port);
+  return killPortUnix(port);
 }
 
 async function waitHealth(port, healthPath, timeoutMs = 10000) {
@@ -70,9 +131,12 @@ function start(service) {
     cwd: service.cwd ?? ROOT,
     env: process.env,
     stdio: ["ignore", "pipe", "pipe"],
+    shell: false,
   });
+
   children.set(service.name, child);
-  const pipe = (stream, isError) => {
+
+  const pipe = (stream) => {
     let buffer = "";
     stream.on("data", (chunk) => {
       buffer += chunk.toString();
@@ -84,10 +148,11 @@ function start(service) {
       }
     });
     stream.on("error", () => {});
-    if (isError) stream.on("data", () => {});
   };
+
   pipe(child.stdout);
   pipe(child.stderr);
+
   child.on("exit", (code) => {
     if (children.get(service.name) === child) {
       children.delete(service.name);
@@ -99,7 +164,11 @@ function start(service) {
 function shutdown(code) {
   for (const child of children.values()) {
     try {
-      child.kill("SIGTERM");
+      if (IS_WIN && child.pid) {
+        spawnSync("taskkill", ["/T", "/F", "/PID", String(child.pid)], { encoding: "utf8" });
+      } else if (child.kill) {
+        child.kill("SIGTERM");
+      }
     } catch {
       /* déjà mort */
     }
