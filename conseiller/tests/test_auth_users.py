@@ -616,8 +616,10 @@ class TestCatalogueRoute(unittest.TestCase):
 
 
 class FakeAgentWithGeneration(FakeAgent):
-    def generer_proposition(self, demande_record, recherche):
+    def generer_proposition(self, demande_record, recherche, conseiller=""):
         return {"titre": "Généré", "description": "Proposition générée",
+                "message_voyageur": "Bonjour, c'est un brouillon.",
+                "genere_par": "assistant",
                 "prestations": [{"id": "train-01", "nom": "Train", "type": "transport",
                                  "prix_unitaire_eur": 50, "quantite": 2}]}
 
@@ -710,10 +712,14 @@ class TestPropositionRoutes(unittest.TestCase):
     def test_generer_proposition(self):
         dem_id = self.store.creer(dict(VALIDE))["id"]
         client = ClientHTTP(self.base)
-        client.post("/api/login-conseiller", {"cle": self.team_key})
+        client.post("/api/login-conseiller", {"cle": self.team_key, "prenom": "Alexandre"})
         status, data, _ = client.post(f"/api/demandes/{dem_id}/propositions/generer", {})
         self.assertEqual(status, 201)
         self.assertEqual(data["proposition"]["titre"], "Généré")
+        self.assertEqual(data["proposition"]["genere_par"], "assistant")
+        self.assertEqual(data["proposition"]["message_voyageur"],
+                         "Bonjour, c'est un brouillon.")
+        self.assertEqual(data["proposition"]["conseiller"], "Alexandre")
 
     def test_stats_conseiller(self):
         client = ClientHTTP(self.base)
