@@ -402,4 +402,3 @@ appendBubble("assistant", WELCOME);
 chargerHistorique();
 chargerCatalogue();
 })();
-
