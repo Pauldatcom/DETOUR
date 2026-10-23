@@ -31,7 +31,11 @@ def conseiller_chat(req):
     except OpenRouterError as err:
         # Never a raw provider error in the advisor interface.
         raise ApiError(503, "assistant_indisponible", ASSISTANT_INDISPONIBLE) from err
+<<<<<<< HEAD
     # #5: persist a redacted trace (also printed for local debug).
+=======
+    # #5 / #119: persist a redacted trace (also printed for local debug).
+>>>>>>> c819642 (feat(agent): separate agent suggestions from advisor decisions in trace)
     result["trace"] = finaliser_et_persister(
         result.get("trace") or {},
         req.ctx.traces_dir,
