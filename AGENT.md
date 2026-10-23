@@ -59,7 +59,7 @@ cd web && pnpm format
 ```
 
 Continuous integration: `.github/workflows/test.yml` runs on every pull
-request (tests on Python 3.11/3.12/3.13, lint, build). The workflow is a
+request (tests on Python 3.13, lint, build). The workflow is a
 required status check on `main`.
 
 A pre-commit hook (`web/.husky/pre-commit`, wired via `husky` +

@@ -1,12 +1,10 @@
 """Advisor chat route (#115): the assistant helps the advisor, it never decides."""
 
-import json
 import re
 
 from httpd.errors import ApiError
 
 from agent import ASSISTANT_INDISPONIBLE, OpenRouterError, verifier_messages
-from traces import finaliser_et_persister
 
 
 def conseiller_chat(req):
@@ -31,14 +29,6 @@ def conseiller_chat(req):
     except OpenRouterError as err:
         # Never a raw provider error in the advisor interface.
         raise ApiError(503, "assistant_indisponible", ASSISTANT_INDISPONIBLE) from err
-    # #5: persist a redacted trace (also printed for local debug).
-    result["trace"] = finaliser_et_persister(
-        result.get("trace") or {},
-        req.ctx.traces_dir,
-        request_id=demande_id or (result.get("trace") or {}).get("request_id"),
-        reponse_finale=result.get("reply") or "",
-    )
-    print("[agent] " + json.dumps(result["trace"], ensure_ascii=False), flush=True)
     req.send_json(200, {
         "reply": result["reply"],
         "recherche": result.get("recherche"),

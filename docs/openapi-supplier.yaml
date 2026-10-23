@@ -1,0 +1,912 @@
+openapi: 3.0.3
+
+info:
+  title: DÉTOUR — API de prestations fictives
+  description: |
+    Serveur de simulation d'un catalogue de transport, hébergements et
+    activités. Toutes les données, les prix et les réservations sont
+    fictifs. Le serveur écoute par défaut sur `http://127.0.0.1:8765`.
+
+    ## Authentification
+    L'accès aux routes `/api/v1/*` nécessite un en-tête `X-Team-Key`
+    (clé d'équipe). Les réservations nécessitent en plus un en-tête
+    `X-Approval-Key` (clé d'approbation du conseiller). Les routes
+    formateur exigent un en-tête `X-Instructor-Key`.
+
+    Le tableau de bord (`/dashboard/*`) utilise un cookie de session
+    `detour_dashboard` (HttpOnly, 30 minutes).
+
+    ## Démonstration
+    En mode `--demo` :
+    - `X-Team-Key` : `demo-key` (équipe `demo`) ou `equipe-b-key`
+    - `X-Approval-Key` : `demo-approval` (équipe `demo`)
+    - `X-Instructor-Key` : `demo-instructor`
+  version: 1.0.0
+  contact:
+    name: DÉTOUR
+    url: https://github.com/paul-compagnon/detour
+
+servers:
+  - url: http://127.0.0.1:8765
+    description: Serveur local (démonstration)
+
+tags:
+  - name: Santé
+    description: Sonde de disponibilité du serveur.
+  - name: Catalogue
+    description: Consultation des prestations fictives.
+  - name: Disponibilités
+    description: Vérification des places et des prix.
+  - name: Recherche
+    description: Recherche de prestations pour une demande client.
+  - name: Options
+    description: Pose et consultation d'options temporaires.
+  - name: Réservations
+    description: Confirmation et annulation de réservations fictives.
+  - name: Formateur
+    description: Simulation d'évolutions du catalogue (incidents, reset).
+  - name: Tableau de bord
+    description: Interface en lecture seule pour les équipes.
+  - name: Logos
+    description: Assets de marque officiels DÉTOUR.
+
+paths:
+
+  /health:
+    get:
+      tags: [Santé]
+      summary: Sonde de disponibilité
+      description: Renvoie l'état du serveur.
+      security: []
+      responses:
+        '200':
+          description: Serveur disponible.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
+  /api/v1/catalogue:
+    get:
+      tags: [Catalogue]
+      summary: Liste des prestations
+      description: |
+        Renvoie toutes les prestations fictives. Accepte des filtres
+        optionnels `destination` et `type` (`transport`, `hebergement`,
+        `activite`). Retourne un tableau `prestations`.
+      security: [TeamKey]
+      parameters:
+        - $ref: '#/components/parameters/DestinationFilter'
+        - $ref: '#/components/parameters/TypeFilter'
+      responses:
+        '200':
+          description: Catalogue filtré.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [prestations, simulation]
+                properties:
+                  prestations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Prestation'
+                  simulation:
+                    $ref: '#/components/schemas/SimulationFlag'
+        '401':
+          $ref: '#/components/responses/TeamKeyMissing'
+        '403':
+          $ref: '#/components/responses/TeamKeyInvalid'
+
+  /api/v1/prestations/{prestationId}:
+    get:
+      tags: [Catalogue]
+      summary: Détail d'une prestation
+      security: [TeamKey]
+      parameters:
+        - $ref: '#/components/parameters/PrestationIdPath'
+      responses:
+        '200':
+          description: Prestation demandée.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [prestation, simulation]
+                properties:
+                  prestation:
+                    $ref: '#/components/schemas/Prestation'
+                  simulation:
+                    $ref: '#/components/schemas/SimulationFlag'
+        '401':
+          $ref: '#/components/responses/TeamKeyMissing'
+        '403':
+          $ref: '#/components/responses/TeamKeyInvalid'
+        '404':
+          $ref: '#/components/responses/PrestationNotFound'
+
+  /api/v1/disponibilites:
+    get:
+      tags: [Disponibilités]
+      summary: Disponibilité et prix
+      description: |
+        Vérifie les places restantes et le prix pour une prestation, une
+        date et un nombre de participants. Une disponibilité consultée ne
+        bloque pas les places.
+      security: [TeamKey]
+      parameters:
+        - name: prestation_id
+          in: query
+          required: true
+          schema: {type: string}
+          description: Identifiant de la prestation (ex. `train-nantes-01`).
+        - name: date
+          in: query
+          required: true
+          schema: {type: string, format: date}
+          description: Date au format `AAAA-MM-JJ`.
+        - name: participants
+          in: query
+          required: true
+          schema: {type: integer, minimum: 1, maximum: 20}
+          description: Nombre de participants (entier de 1 à 20).
+      responses:
+        '200':
+          description: Disponibilité calculée.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Disponibilite'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/TeamKeyMissing'
+        '403':
+          $ref: '#/components/responses/TeamKeyInvalid'
+        '404':
+          $ref: '#/components/responses/PrestationNotFound'
+
+  /api/v1/recherche:
+    get:
+      tags: [Recherche]
+      summary: Recherche de prestations
+      description: |
+        Recherche de prestations pour une demande. `destination`,
+        `date_depart` et `participants` sont obligatoires ; les autres
+        paramètres sont facultatifs. Seule la destination filtre le
+        résultat. Le reste est signalé prestation par prestation
+        (`disponible`, `dans_budget`, `correspond_type_voyage`,
+        `activites_correspondantes`) pour ne rien masquer au conseiller.
+        La disponibilité et le prix sont vérifiés à la date de départ
+        uniquement. Aucune option n'est posée.
+      security: [TeamKey]
+      parameters:
+        - name: destination
+          in: query
+          required: true
+          schema: {type: string}
+          description: Destination (filtre dur).
+        - name: date_depart
+          in: query
+          required: true
+          schema: {type: string, format: date}
+          description: Date de départ `AAAA-MM-JJ`.
+        - name: date_retour
+          in: query
+          required: false
+          schema: {type: string, format: date}
+          description: Date de retour `AAAA-MM-JJ`, postérieure ou égale à `date_depart`.
+        - name: participants
+          in: query
+          required: true
+          schema: {type: integer, minimum: 1, maximum: 20}
+          description: Nombre de participants.
+        - name: budget_max
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1}
+          description: Budget maximum en euros par personne.
+        - name: type_voyage
+          in: query
+          required: false
+          schema: {type: string}
+          description: Type de voyage (`lune-de-miel`, `voyage-familial`, `autres`…).
+        - name: activites
+          in: query
+          required: false
+          schema: {type: string}
+          description: Liste d'activités séparées par des virgules (ex. `créatif,jeu`).
+      responses:
+        '200':
+          description: Résultats de recherche.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RechercheResponse'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/TeamKeyMissing'
+        '403':
+          $ref: '#/components/responses/TeamKeyInvalid'
+
+  /api/v1/options:
+    post:
+      tags: [Options]
+      summary: Poser une option
+      description: |
+        Bloque temporairement des places fictives (30 minutes). L'option
+        expire automatiquement au-delà.
+      security: [TeamKey]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prestation_id, date, participants]
+              properties:
+                prestation_id: {type: string}
+                date: {type: string, format: date}
+                participants: {type: integer, minimum: 1, maximum: 20}
+      responses:
+        '201':
+          description: Option posée.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [option]
+                properties:
+                  option:
+                    $ref: '#/components/schemas/Option'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/TeamKeyMissing'
+        '403':
+          $ref: '#/components/responses/TeamKeyInvalid'
+        '404':
+          $ref: '#/components/responses/PrestationNotFound'
+        '409':
+          $ref: '#/components/responses/Unavailable'
+    get:
+      tags: [Options]
+      summary: Options de l'équipe
+      description: Liste les options posées par l'équipe authentifiée.
+      security: [TeamKey]
+      responses:
+        '200':
+          description: Liste des options.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [options, simulation]
+                properties:
+                  options:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Option'
+                  simulation:
+                    $ref: '#/components/schemas/SimulationFlag'
+        '401':
+          $ref: '#/components/responses/TeamKeyMissing'
+        '403':
+          $ref: '#/components/responses/TeamKeyInvalid'
+
+  /api/v1/reservations:
+    post:
+      tags: [Réservations]
+      summary: Confirmer une réservation
+      description: |
+        Confirme une option en réservation. Nécessite la clé
+        d'approbation (`X-Approval-Key`) et le nom du conseiller qui
+        valide l'action (`approuve_par`).
+      security:
+        - TeamKey
+        - ApprovalKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [option_id, approuve_par]
+              properties:
+                option_id: {type: string}
+                approuve_par:
+                  type: string
+                  maxLength: 80
+                  description: Nom du conseiller qui valide l'action.
+      responses:
+        '201':
+          description: Réservation confirmée.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [reservation]
+                properties:
+                  reservation:
+                    $ref: '#/components/schemas/Reservation'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/TeamKeyMissing'
+        '403':
+          $ref: '#/components/responses/ApprovalRequired'
+        '404':
+          $ref: '#/components/responses/OptionNotFound'
+        '409':
+          $ref: '#/components/responses/Unavailable'
+    get:
+      tags: [Réservations]
+      summary: Réservations de l'équipe
+      security: [TeamKey]
+      responses:
+        '200':
+          description: Liste des réservations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [reservations, simulation]
+                properties:
+                  reservations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Reservation'
+                  simulation:
+                    $ref: '#/components/schemas/SimulationFlag'
+        '401':
+          $ref: '#/components/responses/TeamKeyMissing'
+        '403':
+          $ref: '#/components/responses/TeamKeyInvalid'
+
+  /api/v1/reservations/{reservationId}/annuler:
+    post:
+      tags: [Réservations]
+      summary: Annuler une réservation
+      security:
+        - TeamKey
+        - ApprovalKey
+      parameters:
+        - name: reservationId
+          in: path
+          required: true
+          schema: {type: string}
+          description: Identifiant de la réservation (préfixe `res_`).
+      responses:
+        '200':
+          description: Réservation annulée.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [reservation]
+                properties:
+                  reservation:
+                    $ref: '#/components/schemas/Reservation'
+        '401':
+          $ref: '#/components/responses/TeamKeyMissing'
+        '403':
+          $ref: '#/components/responses/ApprovalRequired'
+        '404':
+          $ref: '#/components/responses/ReservationNotFound'
+        '409':
+          $ref: '#/components/responses/Unavailable'
+
+  /api/v1/instructor/teams/{team}/incidents:
+    post:
+      tags: [Formateur]
+      summary: Simuler une évolution du catalogue
+      description: |
+        Modifie le prix ou la capacité d'une prestation pour une date.
+        `mis_a_jour_le` prend la date de l'incident. Une capacité à `0`
+        rend la prestation indisponible.
+      security: [InstructorKey]
+      parameters:
+        - name: team
+          in: path
+          required: true
+          schema: {type: string}
+          description: Nom de l'équipe (ex. `demo`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prestation_id, date, type, valeur]
+              properties:
+                prestation_id: {type: string}
+                date: {type: string, format: date}
+                type:
+                  type: string
+                  enum: [capacite, prix_unitaire_eur]
+                valeur:
+                  type: integer
+                  minimum: 0
+                  maximum: 10000
+      responses:
+        '201':
+          description: Incident enregistré.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Incident'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '403':
+          $ref: '#/components/responses/InstructorKeyInvalid'
+        '404':
+          $ref: '#/components/responses/PrestationNotFound'
+
+  /api/v1/instructor/teams/{team}/reset:
+    post:
+      tags: [Formateur]
+      summary: Réinitialiser une équipe
+      description: |
+        Remet l'équipe à l'état initial (options, réservations et
+        incidents effacés).
+      security: [InstructorKey]
+      parameters:
+        - name: team
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Équipe réinitialisée.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [equipe, reinitialisee, simulation]
+                properties:
+                  equipe: {type: string}
+                  reinitialisee: {type: boolean}
+                  simulation:
+                    $ref: '#/components/schemas/SimulationFlag'
+        '403':
+          $ref: '#/components/responses/InstructorKeyInvalid'
+        '404':
+          description: Équipe inconnue.
+
+  # ---------- Tableau de bord ----------
+
+  /dashboard/api/login:
+    post:
+      tags: [Tableau de bord]
+      summary: Connexion au tableau de bord
+      description: |
+        Crée une session de 30 minutes dans un cookie `detour_dashboard`
+        (HttpOnly, persistée dans le fichier d'état). La clé saisie n'est
+        ni placée dans l'URL ni conservée dans le navigateur par la page.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [team_key]
+              properties:
+                team_key: {type: string}
+      responses:
+        '200':
+          description: Session créée.
+          headers:
+            Set-Cookie:
+              schema: {type: string}
+              description: Cookie `detour_dashboard` (HttpOnly, 30 min).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [equipe, expire_dans_secondes]
+                properties:
+                  equipe: {type: string}
+                  expire_dans_secondes: {type: integer}
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/TeamKeyMissing'
+        '403':
+          $ref: '#/components/responses/TeamKeyInvalid'
+
+  /dashboard/api/logout:
+    post:
+      tags: [Tableau de bord]
+      summary: Déconnexion du tableau de bord
+      security: [DashboardCookie]
+      responses:
+        '200':
+          description: Déconnecté.
+          headers:
+            Set-Cookie:
+              schema: {type: string}
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deconnecte: {type: boolean}
+
+  /dashboard/api/catalogue:
+    get:
+      tags: [Tableau de bord]
+      summary: Catalogue (tableau de bord)
+      security: [DashboardCookie]
+      parameters:
+        - $ref: '#/components/parameters/DestinationFilter'
+        - $ref: '#/components/parameters/TypeFilter'
+      responses:
+        '200':
+          description: Catalogue filtré.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [prestations, simulation]
+                properties:
+                  prestations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Prestation'
+                  simulation:
+                    $ref: '#/components/schemas/SimulationFlag'
+        '401':
+          description: Session expirée ou absente.
+
+  /dashboard/api/prestations/{prestationId}:
+    get:
+      tags: [Tableau de bord]
+      summary: Détail d'une prestation (tableau de bord)
+      security: [DashboardCookie]
+      parameters:
+        - $ref: '#/components/parameters/PrestationIdPath'
+      responses:
+        '200':
+          description: Prestation demandée.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [prestation, simulation]
+                properties:
+                  prestation:
+                    $ref: '#/components/schemas/Prestation'
+                  simulation:
+                    $ref: '#/components/schemas/SimulationFlag'
+        '404':
+          $ref: '#/components/responses/PrestationNotFound'
+
+  /dashboard/api/disponibilites:
+    get:
+      tags: [Tableau de bord]
+      summary: Disponibilités (tableau de bord)
+      security: [DashboardCookie]
+      parameters:
+        - name: prestation_id
+          in: query
+          required: true
+          schema: {type: string}
+        - name: date
+          in: query
+          required: true
+          schema: {type: string, format: date}
+        - name: participants
+          in: query
+          required: true
+          schema: {type: integer, minimum: 1, maximum: 20}
+      responses:
+        '200':
+          description: Disponibilité calculée.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Disponibilite'
+
+  /dashboard/api/options:
+    get:
+      tags: [Tableau de bord]
+      summary: Options de l'équipe (tableau de bord)
+      security: [DashboardCookie]
+      responses:
+        '200':
+          description: Liste des options.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [options, simulation]
+                properties:
+                  options:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Option'
+                  simulation:
+                    $ref: '#/components/schemas/SimulationFlag'
+
+  /dashboard/api/reservations:
+    get:
+      tags: [Tableau de bord]
+      summary: Réservations de l'équipe (tableau de bord)
+      security: [DashboardCookie]
+      responses:
+        '200':
+          description: Liste des réservations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [reservations, simulation]
+                properties:
+                  reservations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Reservation'
+                  simulation:
+                    $ref: '#/components/schemas/SimulationFlag'
+
+  # ---------- Logos ----------
+
+  /dashboard/brand/{filename}:
+    get:
+      tags: [Logos]
+      summary: Logo officiel DÉTOUR
+      description: |
+        Sert un logo du kit `brand-2026/logo` tel quel, ni déformé ni
+        recoloré. Valeurs acceptées : `detour-logo.svg`,
+        `detour-logo-negatif.svg`, `detour-logo-negatif-transparent.svg`,
+        `detour-logo-mono-encre.svg`, `detour-logo-mono-blanc.svg`,
+        `detour-monogramme.svg`.
+      security: []
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Logo SVG.
+          content:
+            image/svg+xml:
+              schema: {type: string, format: binary}
+        '404':
+          description: Logo introuvable.
+
+components:
+
+  securitySchemes:
+    TeamKey:
+      type: apiKey
+      in: header
+      name: X-Team-Key
+      description: Clé d'équipe (ex. `demo-key` en mode démonstration).
+    ApprovalKey:
+      type: apiKey
+      in: header
+      name: X-Approval-Key
+      description: Clé d'approbation du conseiller (ex. `demo-approval`).
+    InstructorKey:
+      type: apiKey
+      in: header
+      name: X-Instructor-Key
+      description: Clé formateur (ex. `demo-instructor`).
+    DashboardCookie:
+      type: apiKey
+      in: cookie
+      name: detour_dashboard
+      description: Session du tableau de bord (30 minutes, HttpOnly).
+
+  parameters:
+    DestinationFilter:
+      name: destination
+      in: query
+      required: false
+      schema: {type: string}
+      description: Filtre par destination (insensible à la casse).
+    TypeFilter:
+      name: type
+      in: query
+      required: false
+      schema: {type: string, enum: [transport, hebergement, activite]}
+      description: Filtre par type de prestation.
+    PrestationIdPath:
+      name: prestationId
+      in: path
+      required: true
+      schema: {type: string}
+      description: Identifiant de la prestation (ex. `train-nantes-01`).
+
+  responses:
+    InvalidRequest:
+      description: Données invalides.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Erreur'}
+    TeamKeyMissing:
+      description: En-tête `X-Team-Key` requis.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Erreur'}
+    TeamKeyInvalid:
+      description: Clé d'équipe invalide.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Erreur'}
+    ApprovalRequired:
+      description: Confirmation humaine requise (`X-Approval-Key` invalide ou absent).
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Erreur'}
+    InstructorKeyInvalid:
+      description: Clé formateur invalide ou absente.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Erreur'}
+    PrestationNotFound:
+      description: Prestation inconnue.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Erreur'}
+    OptionNotFound:
+      description: Option inconnue dans cette équipe.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Erreur'}
+    ReservationNotFound:
+      description: Réservation inconnue dans cette équipe.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Erreur'}
+    Unavailable:
+      description: Places insuffisantes ou conflit d'état.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Erreur'}
+
+  schemas:
+
+    SimulationFlag:
+      type: boolean
+      description: Indique que les données sont fictives (toujours `true`).
+
+    Health:
+      type: object
+      required: [status, simulation]
+      properties:
+        status: {type: string, example: ok}
+        simulation:
+          $ref: '#/components/schemas/SimulationFlag'
+
+    Erreur:
+      type: object
+      required: [erreur]
+      properties:
+        erreur:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string}
+            message: {type: string}
+
+    Prestation:
+      type: object
+      required: [id, type, nom, destination, prix_unitaire_eur, capacite, description, tags, voyages, mis_a_jour_le]
+      properties:
+        id: {type: string, example: train-nantes-01}
+        type: {type: string, enum: [transport, hebergement, activite]}
+        nom: {type: string, example: Train vers Nantes}
+        destination: {type: string, example: Nantes}
+        prix_unitaire_eur: {type: integer, example: 48}
+        capacite: {type: integer, example: 8}
+        description: {type: string}
+        tags: {type: array, items: {type: string}}
+        voyages: {type: array, items: {type: string}}
+        mis_a_jour_le: {type: string, example: '2026-10-01T08:00:00+00:00'}
+
+    Disponibilite:
+      type: object
+      required: [prestation_id, date, participants, disponible, places_restantes, prix_unitaire_eur, prix_total_eur, devise, simulation]
+      properties:
+        prestation_id: {type: string}
+        date: {type: string, format: date}
+        participants: {type: integer}
+        disponible: {type: boolean}
+        places_restantes: {type: integer}
+        prix_unitaire_eur: {type: integer}
+        prix_total_eur: {type: integer}
+        devise: {type: string, example: EUR}
+        simulation:
+          $ref: '#/components/schemas/SimulationFlag'
+
+    RechercheResultat:
+      type: object
+      required: [id, nom, type, destination, description, tags, prix_unitaire_eur, prix_total_eur, disponible, places_restantes, mis_a_jour_le, dans_budget]
+      properties:
+        id: {type: string}
+        nom: {type: string}
+        type: {type: string}
+        destination: {type: string}
+        description: {type: string}
+        tags: {type: array, items: {type: string}}
+        prix_unitaire_eur: {type: integer}
+        prix_total_eur: {type: integer}
+        disponible: {type: boolean}
+        places_restantes: {type: integer}
+        mis_a_jour_le: {type: string}
+        dans_budget: {nullable: true, type: boolean}
+        correspond_type_voyage: {nullable: true, type: boolean}
+        activites_correspondantes: {type: array, items: {type: string}}
+
+    RechercheResponse:
+      type: object
+      required: [source, route, consulte_le, criteres, resultats, simulation]
+      properties:
+        source: {type: string, example: serveur-fictif-detour}
+        route: {type: string, example: /api/v1/recherche}
+        consulte_le: {type: string}
+        criteres:
+          type: object
+          properties:
+            destination: {type: string}
+            date_depart: {type: string, format: date}
+            date_retour: {type: string, format: date, nullable: true}
+            participants: {type: integer}
+            budget_max: {type: integer, nullable: true}
+            type_voyage: {type: string, nullable: true}
+            activites: {type: array, items: {type: string}}
+            date_verifiee: {type: string, format: date}
+        resultats:
+          type: array
+          items: {$ref: '#/components/schemas/RechercheResultat'}
+        simulation:
+          $ref: '#/components/schemas/SimulationFlag'
+
+    Option:
+      type: object
+      required: [id, prestation_id, date, participants, prix_total_eur, statut, expire_le, simulation]
+      properties:
+        id: {type: string, example: opt_a1b2c3d4e5f6}
+        prestation_id: {type: string}
+        date: {type: string, format: date}
+        participants: {type: integer}
+        prix_total_eur: {type: integer}
+        statut: {type: string, enum: [active, confirmee, expiree]}
+        expire_le: {type: string}
+        simulation:
+          $ref: '#/components/schemas/SimulationFlag'
+
+    Reservation:
+      type: object
+      required: [id, option_id, prestation_id, date, participants, prix_total_eur, statut, approuve_par, confirmee_le, simulation]
+      properties:
+        id: {type: string, example: res_a1b2c3d4e5f6}
+        option_id: {type: string}
+        prestation_id: {type: string}
+        date: {type: string, format: date}
+        participants: {type: integer}
+        prix_total_eur: {type: integer}
+        statut: {type: string, enum: [confirmee, annulee]}
+        approuve_par: {type: string}
+        confirmee_le: {type: string}
+        annulee_le: {type: string, nullable: true}
+        simulation:
+          $ref: '#/components/schemas/SimulationFlag'
+
+    Incident:
+      type: object
+      required: [equipe, prestation_id, date, simulation]
+      properties:
+        equipe: {type: string}
+        prestation_id: {type: string}
+        date: {type: string, format: date}
+        capacite: {type: integer, nullable: true}
+        prix_unitaire_eur: {type: integer, nullable: true}
+        mis_a_jour_le: {type: string}
+        simulation:
+          $ref: '#/components/schemas/SimulationFlag'
