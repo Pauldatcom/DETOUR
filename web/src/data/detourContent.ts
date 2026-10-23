@@ -1,6 +1,7 @@
 /**
  * Contenu DÉTOUR — données locales fictives, séparées de la présentation.
- * Aucune donnée réelle : toutes les destinations, images et prix sont fictifs.
+ * Destinations et tarifs sont fictifs ; la photographie du hero vient du kit
+ * photo 2026 (brand-2026/photo), servie via /public/brand-2026/photo.
  */
 
 export interface Destination {
@@ -35,8 +36,8 @@ export const HERO = {
     "Décrivez le voyage dont vous rêvez. Un conseiller DÉTOUR compose un itinéraire unique, adapte chaque étape et vous accompagne jusqu'au départ.",
   ctaPrincipal: "Décrire mon voyage",
   ctaSecondaire: "Découvrir nos inspirations",
-  image: "hero-alpes.jpg",
-  imageAlt: "Vallée alpine au lever du soleil — visuel d'illustration fictif",
+  image: "/brand-2026/photo/train.webp",
+  imageAlt: "Voyageuse lisant dans un train au couchant, la campagne défilant à la fenêtre",
 } as const;
 
 export const INSPIRATIONS = {

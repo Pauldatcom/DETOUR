@@ -49,24 +49,19 @@ export function Hero({ onDecrir }: HeroProps) {
           <div className="mb-6 w-56">
             <Logo variant="negatif" play />
           </div>
+          <img
+            src={HERO.image}
+            alt={HERO.imageAlt}
+            width={1280}
+            height={853}
+            fetchPriority="high"
+            className="relative aspect-[4/3] w-full rounded-3xl object-cover shadow-2xl"
+          />
           <div
-            role="img"
-            aria-label={HERO.imageAlt}
-            className="relative aspect-[4/3] w-full overflow-hidden rounded-3xl shadow-2xl"
-            style={{
-              background:
-                "linear-gradient(160deg, #1d2c4c 0%, #16233f 30%, #bcd3ea 75%, #f2b705 100%)",
-            }}
-          >
-            <div
-              aria-hidden="true"
-              className="absolute inset-x-0 bottom-0 h-1/3"
-              style={{ background: "linear-gradient(to top, rgba(22,35,63,0.6), transparent)" }}
-            />
-            <span className="absolute bottom-4 left-4 rounded-full bg-ink/60 px-3 py-1 font-mono text-xs text-chalk">
-              Visuel d'illustration fictif
-            </span>
-          </div>
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-6 bottom-6 h-20 rounded-2xl"
+            style={{ background: "linear-gradient(to top, rgba(22,35,63,0.35), transparent)" }}
+          />
         </div>
       </div>
     </section>
