@@ -503,5 +503,91 @@ class TestDraftWorkflow(unittest.TestCase):
         self.assertEqual(record.get("decisions_statut", []), [])
 
 
+# ---------------------------------------------------------------------------
+# #123 part 3: the trace separates agent suggestions from advisor decisions (#119).
+# ---------------------------------------------------------------------------
+
+
+class TestTraceSeparation(unittest.TestCase):
+
+    def _chat(self, resultats, reply="Voici ce que j'ai vérifié."):
+        agent = Agent(FixedSupplier(resultats), DemandStore(None), api_key="cle", model="m")
+        _scripted(agent, [_tool_call(ARGS), {"role": "assistant", "content": reply}])
+        result = agent.chat_conseiller([{"role": "user", "content": "Vérifie Lyon"}])
+        return result["trace"]["conseiller_trace"]
+
+    def test_roles_are_written_in_the_trace(self):
+        separation = self._chat([_service("hotel-lyon-01")])["separation"]
+        self.assertEqual(separation["agent_role"], "suggest")
+        self.assertEqual(separation["advisor_role"], "decide")
+
+    def test_search_and_checks_are_recorded(self):
+        ctrace = self._chat([_service("hotel-lyon-01"),
+                             _service("activite-lyon-01", type="activite",
+                                      disponible=False, places_restantes=0)])
+        self.assertTrue(ctrace["search_performed"])
+        self.assertTrue(ctrace["data_returned"])
+        self.assertEqual([c["prestation_id"] for c in ctrace["price_checks"]],
+                         ["hotel-lyon-01", "activite-lyon-01"])
+        self.assertEqual(ctrace["availability_checks"][1],
+                         {"prestation_id": "activite-lyon-01", "disponible": False})
+
+    def test_empty_search_is_not_shown_as_data(self):
+        ctrace = self._chat([])
+        self.assertTrue(ctrace["search_performed"])
+        self.assertFalse(ctrace["data_returned"])
+
+    def test_the_reply_is_a_suggestion_of_the_agent(self):
+        ctrace = self._chat([_service("hotel-lyon-01")])
+        self.assertEqual(ctrace["agent_suggestions"][0]["content"],
+                         "Voici ce que j'ai vérifié.")
+        self.assertTrue(all(s["actor"] == "agent" for s in ctrace["suggestions"]))
+
+    def test_the_agent_never_fills_the_advisor_side(self):
+        ctrace = self._chat([_service("hotel-lyon-01")],
+                            reply="J'ai confirmé et envoyé la proposition.")
+        self.assertEqual(ctrace["decisions"], [])
+        self.assertEqual(ctrace["advisor_edits"], [])
+        self.assertIsNone(ctrace["advisor_review"])
+        self.assertIsNone(ctrace["advisor_confirmation"])
+
+    def test_advisor_decisions_stay_in_the_proposal_journal(self):
+        """The advisor decides on the proposal; the chat trace never holds it."""
+        props = PropositionStore(None)
+        prop = props.creer("dem_123", {"titre": "Lyon", "description": "",
+                                       "genere_par": "assistant", "prestations": []})
+        ctrace = self._chat([_service("hotel-lyon-01")])
+        decided = props.decider(prop["id"], "accepter", "Camille", None, None)
+        self.assertEqual(decided["decisions_statut"][-1]["par"], "Camille")
+        self.assertEqual(ctrace["decisions"], [])
+
+    def test_saved_trace_keeps_the_separation_and_no_key(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        team_key = "cle-" + secrets.token_urlsafe(12)
+        agent = Agent(FixedSupplier([_service("hotel-lyon-01")]), DemandStore(None),
+                      api_key="cle-tres-secrete", model="m")
+        _scripted(agent, [_tool_call(ARGS), {"role": "assistant", "content": "ok"}])
+        handler = make_handler(DemandStore(Path(tmp) / "demandes.json"), FakeSupplier(), agent,
+                               users=UserStore(Path(tmp) / "users.json"), team_key=team_key,
+                               propositions=PropositionStore(Path(tmp) / "propositions.json"),
+                               traces_dir=Path(tmp) / "traces")
+        server, base = demarrer(handler)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        advisor = ClientHTTP(base)
+        advisor.post("/api/login-conseiller", {"cle": team_key, "prenom": "Camille"})
+        status, data, _ = advisor.post("/api/conseiller/chat",
+                                       {"messages": [{"role": "user", "content": "Vérifie"}]})
+        self.assertEqual(status, 200)
+        saved = list((Path(tmp) / "traces").glob("*.json"))
+        self.assertEqual(len(saved), 1)
+        text = saved[0].read_text(encoding="utf-8")
+        self.assertEqual(json.loads(text)["conseiller_trace"]["separation"]["advisor_role"],
+                         "decide")
+        self.assertEqual(data["trace"]["conseiller_trace"]["decisions"], [])
+        self.assertNotIn("cle-tres-secrete", text)
+        self.assertNotIn(team_key, text)
+
 if __name__ == "__main__":
     unittest.main()
