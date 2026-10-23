@@ -1,17 +1,18 @@
-"""Interface de persistance pour DÉTOUR.
+"""Persistence interface for DÉTOUR.
 
-Définit le contrat commun pour accéder aux demandes, propositions et
-destinations. L'implémentation SQLite (sqlite_repository.py) couvre le
-cas actuel ; une future implémentation PostgreSQL implémentera la même
-interface.
+Defines the common contract for accessing demandes, propositions and
+destinations. The SQLite implementation (sqlite_repository.py) covers
+the current case; a future PostgreSQL implementation will implement
+the same interface.
 """
 
 
 class Repository:
-    """Interface de persistance pour les demandes, propositions et destinations.
+    """Persistence interface for demandes, propositions and destinations.
 
-    Chaque méthode lève NotImplementedError par défaut. Une implémentation
-    concrète (SqliteRepository, future PostgresRepository) les définit toutes.
+    Each method raises NotImplementedError by default. A concrete
+    implementation (SqliteRepository, future PostgresRepository) defines
+    them all.
     """
 
     def load_all_demandes(self):

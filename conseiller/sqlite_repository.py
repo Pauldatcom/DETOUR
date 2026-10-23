@@ -1,8 +1,8 @@
-"""Implémentation SQLite de l'interface Repository.
+"""SQLite implementation of the Repository interface.
 
-Adapte les fonctions de db.py en respectant le contrat Repository.
-Les requêtes SQL restent dans ce module uniquement ; les stores
-(DemandStore, PropositionStore) ne connaissent pas le SQL.
+Adapts the db.py functions to respect the Repository contract.
+SQL queries stay in this module only; the stores (DemandStore,
+PropositionStore) do not know about SQL.
 """
 
 import json
@@ -55,7 +55,7 @@ _DESTINATION_COLUMNS = (
 
 
 class SqliteRepository(Repository):
-    """Implémentation SQLite de Repository."""
+    """SQLite implementation of Repository."""
 
     def __init__(self, path=None):
         self.path = Path(path) if path else None
