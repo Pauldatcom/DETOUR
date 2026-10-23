@@ -6,7 +6,7 @@ Middleware run before any /api/ route. Reproduces the historical portal rules:
 - /api/mes-* and /api/account*: traveler session;
 - /api/stats, /api/propositions: advisor session;
 - request/proposal reads: advisor or owner;
-- writes (PATCH, decisions, proposals, advisor responses): advisor only;
+- writes (PATCH, decisions, proposals, advisor responses, advisor chat): advisor only;
 - traveler approval: owner only;
 - rest: valid session (traveler or advisor).
 """
@@ -59,6 +59,10 @@ def verifier_acces(req, method, path):
             raise ApiError(401, "auth_requise",
                            "Connectez-vous pour envoyer une demande.")
     elif path in ("/api/stats", "/api/propositions") and method == "GET":
+        if not admin:
+            raise ApiError(401, "auth_requise", "Accès conseiller requis.")
+    elif method == "POST" and path == "/api/conseiller/chat":
+        # #115: the advisor assistant is for advisors only.
         if not admin:
             raise ApiError(401, "auth_requise", "Accès conseiller requis.")
     elif method == "POST" and re.fullmatch(

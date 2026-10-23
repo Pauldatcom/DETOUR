@@ -18,11 +18,14 @@ def _resultat_lecture_complet(resultat):
     return type(prix) is int and prix >= 0 and isinstance(resultat.get("disponible"), bool)
 
 
-def comparer_ligne(ancienne, nouvelle):
+def comparer_ligne(ancienne, nouvelle, consulte_le=None):
     """Compare a verified v1 line with a new server reading.
 
     Returns None when the second reading is missing or incomplete — that must
     not be shown as a change. Never mutates the proposal line.
+
+    `consulte_le` is the newer reading time. It lets the traveler UI date the
+    modified price instead of showing an undated amount.
     """
     if not isinstance(ancienne, dict):
         return None
@@ -36,7 +39,7 @@ def comparer_ligne(ancienne, nouvelle):
     dispo_apres = bool(nouvelle["disponible"])
     prix_change = prix_avant != prix_apres
     dispo_change = dispo_avant != dispo_apres
-    return {
+    delta = {
         "id": ancienne["id"],
         "nom": ancienne.get("nom") or "",
         "prix_avant": prix_avant,
@@ -47,9 +50,12 @@ def comparer_ligne(ancienne, nouvelle):
         "disponibilite_change": dispo_change,
         "inchange": not prix_change and not dispo_change,
     }
+    if parse_iso8601(consulte_le) is not None:
+        delta["consulte_le"] = consulte_le
+    return delta
 
 
-def comparer_proposition(proposition, resultats):
+def comparer_proposition(proposition, resultats, consulte_le=None):
     """Build per-line deltas for a proposal against a new search result list."""
     par_id = {
         r["id"]: r for r in resultats or []
@@ -59,7 +65,8 @@ def comparer_proposition(proposition, resultats):
     for ligne in proposition.get("prestations") or []:
         if not isinstance(ligne, dict):
             continue
-        delta = comparer_ligne(ligne, par_id.get(ligne.get("id")))
+        delta = comparer_ligne(
+            ligne, par_id.get(ligne.get("id")), consulte_le=consulte_le)
         if delta is not None:
             changements.append(delta)
     return changements
@@ -96,7 +103,8 @@ def proposition_avec_changements(proposition, recherches):
     derniere = recherches[-1]
     if not lecture_plus_recente_que_proposition(copie, derniere):
         return copie
-    copie["changements"] = comparer_proposition(copie, derniere.get("resultats"))
+    copie["changements"] = comparer_proposition(
+        copie, derniere.get("resultats"), consulte_le=derniere.get("consulte_le"))
     return copie
 
 

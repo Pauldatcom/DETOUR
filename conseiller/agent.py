@@ -509,8 +509,36 @@ class Agent:
         request, never books and never changes a status."""
         if not self._api_key:
             raise OpenRouterError("Clé OpenRouter absente : définir OPENROUTER_API_KEY.", 503)
-        trace = {"model": self.model, "tool_calls": [], "simulation": True,
-                 "acteur": "assistant_conseiller"}
+        trace = {
+            "model": self.model,
+            "tool_calls": [],
+            "simulation": True,
+            "acteur": "assistant_conseiller",
+            # Trace split: agent suggestions vs advisor decisions (#119)
+            "conseiller_trace": {
+                "advisor_request": {
+                    "message_count": len(messages) if isinstance(messages, list) else 0,
+                    "has_demande_id": bool(demande_id),
+                },
+                "search_performed": False,
+                "data_returned": False,
+                "price_checks": [],
+                "availability_checks": [],
+                "missing_information": [],
+                "agent_suggestions": [],
+                "draft_proposal": None,
+                "advisor_edits": [],
+                "advisor_review": None,
+                "advisor_confirmation": None,
+                "suggestions": [],
+                "decisions": [],
+                "separation": {
+                    "note": "The agent suggests. The advisor decides.",
+                    "agent_role": "suggest",
+                    "advisor_role": "decide",
+                },
+            },
+        }
         conversation: list = [{"role": "system", "content": ADVISOR_SYSTEM_PROMPT}]
         demande = self.store.obtenir(demande_id) if demande_id else None
         contexte = _contexte_dossier(demande)
@@ -523,6 +551,19 @@ class Agent:
         def _retour(reply):
             trace["request_id"] = (demande or {}).get("id")
             trace["reponse_finale"] = reply or ""
+            ctrace = trace.get("conseiller_trace") or {}
+            # Mark agent suggestions explicitly (#119)
+            if reply:
+                ctrace["agent_suggestions"].append({
+                    "type": "assistant_reply",
+                    "content": reply,
+                })
+                ctrace["suggestions"].append({
+                    "actor": "agent",
+                    "kind": "reply",
+                    "summary": reply,
+                })
+            trace["conseiller_trace"] = ctrace
             return {"reply": reply or "", "demande": demande,
                     "recherche": recherche, "trace": trace}
 
@@ -541,6 +582,24 @@ class Agent:
                     "tool_call_id": call.get("id") or "call_inconnu",
                     "content": json.dumps(outcome["payload"], ensure_ascii=False),
                 })
+                # Track search lifecycle in conseiller_trace (#119)
+                ctrace = trace.get("conseiler_trace") or trace.get("conseiller_trace") or {}
+                if outcome.get("recherche") is not None:
+                    ctrace["search_performed"] = True
+                    ctrace["data_returned"] = bool((outcome.get("recherche") or {}).get("resultats"))
+                    res = (outcome.get("recherche") or {}).get("resultats") or []
+                    for r in res:
+                        if isinstance(r, dict) and "prix_unitaire_eur" in r:
+                            ctrace["price_checks"].append({
+                                "prestation_id": r.get("id"),
+                                "prix_unitaire_eur": r.get("prix_unitaire_eur"),
+                            })
+                        if isinstance(r, dict) and "disponible" in r:
+                            ctrace["availability_checks"].append({
+                                "prestation_id": r.get("id"),
+                                "disponible": r.get("disponible"),
+                            })
+                    trace["conseiller_trace"] = ctrace
 
         message = self._call_model(conversation, with_tools=False)
         return _retour(message.get("content") or "")
