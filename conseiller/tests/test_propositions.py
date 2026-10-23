@@ -135,6 +135,14 @@ class TestPropositionStore(unittest.TestCase):
         self.assertEqual(updated["prestations"], [])
         self.assertEqual(updated["prix_total_eur"], 0)
 
+    def test_mettre_a_jour_signs_with_conseiller(self):
+        """#121: the advisor can sign the draft with their first name."""
+        prop = self.store.creer("dem_abc", dict(PROPOSITION_VALIDE))
+        updated = self.store.mettre_a_jour(prop["id"], {
+            "titre": "Modifié", "description": "Nouvelle desc",
+            "prestations": prop["prestations"], "conseiller": "Camille"})
+        self.assertEqual(updated["conseiller"], "Camille")
+
     def test_changer_statut(self):
         prop = self.store.creer("dem_abc", dict(PROPOSITION_VALIDE))
         self.assertEqual(

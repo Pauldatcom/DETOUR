@@ -364,6 +364,10 @@ class PropositionStore:
             # an edit by hand marks the draft as advisor-confirmed.
             record["message_voyageur"] = champs["message_voyageur"]
             record["genere_par"] = GENERE_PAR_CONSEILLER
+            # #121: the advisor can sign the draft with their first name.
+            conseiller = str(data.get("conseiller") or "").strip()
+            if conseiller:
+                record["conseiller"] = conseiller
             if modifiable:
                 record["prestations"] = champs["prestations"]
                 record["prix_total_eur"] = champs["prix_total_eur"]

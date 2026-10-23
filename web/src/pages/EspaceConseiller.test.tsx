@@ -215,4 +215,57 @@ describe("EspaceConseiller", () => {
       within(proposal).queryByRole("button", { name: "Valider et envoyer au voyageur" }),
     ).not.toBeInTheDocument();
   });
+
+  // #121: the jumping-o animation fires only on the advisor's explicit
+  // confirmation — never from chatbot output or any other action.
+  it("plays the jumping-o animation only after the advisor confirms", async () => {
+    vi.mocked(api.deciderProposition).mockResolvedValue({ proposition: DRAFT });
+    const proposal = await openRequest();
+    expect(proposal.querySelector(".play")).toBeNull();
+    await userEvent.click(
+      within(proposal).getByRole("button", { name: "Valider et envoyer au voyageur" }),
+    );
+    await userEvent.click(within(proposal).getByRole("button", { name: "Envoyer au voyageur" }));
+    const banner = await screen.findByRole("article");
+    expect(banner.querySelector(".play")).not.toBeNull();
+  });
+
+  it("lets the advisor sign the draft with their first name", async () => {
+    vi.mocked(api.patchProposition).mockResolvedValue({ proposition: DRAFT });
+    const proposal = await openRequest();
+    await userEvent.click(
+      within(proposal).getByRole("button", { name: "Modifier le titre et le message" }),
+    );
+    const name = within(proposal).getByLabelText("Votre prénom (signe la proposition)");
+    await userEvent.clear(name);
+    await userEvent.type(name, "Camille");
+    await userEvent.click(
+      within(proposal).getByRole("button", { name: "Enregistrer les modifications" }),
+    );
+    expect(api.patchProposition).toHaveBeenCalledWith(
+      "prop_1",
+      expect.objectContaining({ conseiller: "Camille" }),
+    );
+  });
+
+  it("lets the advisor drop a prestation from the draft", async () => {
+    vi.mocked(api.patchProposition).mockResolvedValue({ proposition: DRAFT });
+    const proposal = await openRequest();
+    await userEvent.click(
+      within(proposal).getByRole("button", { name: "Modifier le titre et le message" }),
+    );
+    const checkbox = within(proposal).getByRole("checkbox", {
+      name: /Atelier inventé/,
+    });
+    await userEvent.click(checkbox);
+    await userEvent.click(
+      within(proposal).getByRole("button", { name: "Enregistrer les modifications" }),
+    );
+    expect(api.patchProposition).toHaveBeenCalledWith(
+      "prop_1",
+      expect.objectContaining({
+        prestations: [DRAFT.prestations[0]],
+      }),
+    );
+  });
 });
