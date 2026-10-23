@@ -1,6 +1,7 @@
 import { useId, useState, type FormEvent } from "react";
 import { api } from "../../../lib/api";
 import { formatDateTime, formatEuro } from "../../../lib/format";
+import { Logo } from "../../Logo";
 import type { ChangementLecture, ContrainteVerifiee, Proposition, Recherche } from "../../../types";
 import {
   CHOICE_LABELS,
@@ -70,6 +71,9 @@ export function ProposalReview({ proposal, latestSearch, onChanged }: ProposalRe
   const [action, setAction] = useState<ProposalAction | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // #121: the jumping-o animation fires only on the advisor's explicit
+  // confirmation — never from chatbot output or any other action.
+  const [confirmed, setConfirmed] = useState(false);
   const unverified = proposal.prestations.filter((p) => p.verification !== "verifie").length;
   const version = proposal.version ?? 1;
 
@@ -80,6 +84,7 @@ export function ProposalReview({ proposal, latestSearch, onChanged }: ProposalRe
       const route = chosen === "demander_correction" ? "correction" : chosen;
       await api.deciderProposition(proposal.id, route, reason, instructions || undefined);
       setAction(null);
+      if (chosen === "accepter") setConfirmed(true);
       onChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : "La décision n'a pas été enregistrée.");
@@ -231,6 +236,18 @@ export function ProposalReview({ proposal, latestSearch, onChanged }: ProposalRe
           )}
         </section>
       )}
+
+      {confirmed && (
+        <section
+          aria-label="Confirmation de l'envoi"
+          className="mt-5 flex items-center gap-4 rounded-xl border-2 border-ink bg-ink/5 p-4"
+        >
+          <Logo variant="encre" play width={48} />
+          <p className="text-sm font-semibold text-ink">
+            Proposition envoyée au voyageur, en votre nom. Rien n'est réservé pour l'instant.
+          </p>
+        </section>
+      )}
     </article>
   );
 }
@@ -247,8 +264,19 @@ function EditForm({
   const id = useId();
   const [title, setTitle] = useState(proposal.titre);
   const [message, setMessage] = useState(proposal.description);
+  const [conseiller, setConseiller] = useState(proposal.conseiller ?? "");
+  const [removed, setRemoved] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  function toggleRemove(prestId: string) {
+    setRemoved((prev) => {
+      const next = new Set(prev);
+      if (next.has(prestId)) next.delete(prestId);
+      else next.add(prestId);
+      return next;
+    });
+  }
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -259,11 +287,13 @@ function EditForm({
     setBusy(true);
     setError("");
     try {
-      // Prices are never edited by hand: the verified lines are sent back unchanged.
+      // Prices are never edited by hand: the verified lines are sent back
+      // unchanged — only the advisor can drop a line from the draft.
       await api.patchProposition(proposal.id, {
         titre: title.trim(),
         description: message.trim(),
-        prestations: proposal.prestations,
+        prestations: proposal.prestations.filter((p) => !removed.has(p.id)),
+        ...(conseiller.trim() ? { conseiller: conseiller.trim() } : {}),
       });
       onDone();
     } catch (err) {
@@ -298,6 +328,35 @@ function EditForm({
           className="mt-1 w-full rounded-lg border border-line bg-card px-3 py-2 text-sm text-ink"
         />
       </div>
+      <div>
+        <label htmlFor={`${id}-conseiller`} className="block text-xs text-ballast">
+          Votre prénom (signe la proposition)
+        </label>
+        <input
+          id={`${id}-conseiller`}
+          value={conseiller}
+          onChange={(e) => setConseiller(e.target.value)}
+          placeholder="Camille"
+          className="mt-1 w-full rounded-lg border border-line bg-card px-3 py-2 text-sm text-ink"
+        />
+      </div>
+      {proposal.prestations.length > 0 && (
+        <fieldset className="space-y-1.5">
+          <legend className="text-xs text-ballast">Prestations du brouillon</legend>
+          {proposal.prestations.map((p) => (
+            <label key={p.id} className="flex items-center gap-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                checked={removed.has(p.id)}
+                onChange={() => toggleRemove(p.id)}
+                className="h-4 w-4 rounded border-line"
+              />
+              <span className={removed.has(p.id) ? "text-ballast line-through" : ""}>{p.nom}</span>
+              {removed.has(p.id) && <span className="text-xs text-brick">· retirée</span>}
+            </label>
+          ))}
+        </fieldset>
+      )}
       <p className="text-xs text-ballast">
         Les prix viennent du serveur et ne se modifient pas ici.
       </p>
