@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for the advisor chat route and its assistant (#115)."""
+"""Tests for the advisor chat route and its assistant (#115, #123)."""
 
 import json
 import secrets
@@ -19,6 +19,7 @@ from fournisseur import SupplierError
 from propositions import PropositionStore
 from store import DemandStore
 from users import UserStore
+from utils import MAX_TOOL_ITERATIONS
 
 from test_auth_users import VALIDE, ClientHTTP, FakeSupplier, demarrer
 
@@ -267,6 +268,124 @@ class TestRouterRegistration(unittest.TestCase):
         from routes import creer_router
         func, _ = creer_router().resoudre("POST", "/api/conseiller/chat")
         self.assertEqual(func.__name__, "conseiller_chat")
+
+# ---------------------------------------------------------------------------
+# #123: advisor chat scenarios (no result, unknown question, unverified price,
+# unavailable service, alternatives, supplier down, bounded loop, trace actor).
+# ---------------------------------------------------------------------------
+
+
+class FixedSupplier:
+    """Returns a given search response and records each call."""
+
+    def __init__(self, resultats):
+        self.resultats = resultats
+        self.calls = []
+
+    def rechercher(self, criteres):
+        self.calls.append(criteres)
+        return {"source_label": "Serveur fictif DÉTOUR",
+                "consulte_le": "2026-10-23T08:00:00+00:00",
+                "resultats": json.loads(json.dumps(self.resultats))}
+
+
+def _service(service_id, **fields):
+    service = {"id": service_id, "nom": service_id, "type": "hebergement",
+               "prix_unitaire_eur": 88, "prix_total_eur": 176, "disponible": True,
+               "places_restantes": 8}
+    service.update(fields)
+    return service
+
+
+class TestAdvisorChatScenarios(unittest.TestCase):
+
+    def _agent(self, supplier):
+        return Agent(supplier, DemandStore(None), api_key="cle", model="m")
+
+    def _search_once(self, resultats):
+        """One search turn; return the result and what the model received."""
+        supplier = FixedSupplier(resultats)
+        agent = self._agent(supplier)
+        sent = _scripted(agent, [_tool_call(ARGS), {"role": "assistant", "content": "ok"}])
+        result = agent.chat_conseiller([{"role": "user", "content": "Vérifie Lyon"}])
+        payload = json.loads(sent[1]["conversation"][-1]["content"])
+        return result, payload, supplier
+
+    def test_search_with_no_result(self):
+        result, payload, supplier = self._search_once([])
+        self.assertEqual(len(supplier.calls), 1)
+        self.assertEqual(payload["resultats"], [])
+        self.assertEqual(result["recherche"]["resultats"], [])
+        self.assertEqual(result["trace"]["tool_calls"][0]["statut"], "ok")
+
+    def test_unknown_question_gets_an_answer_without_search(self):
+        supplier = FixedSupplier([_service("hotel-lyon-01")])
+        agent = self._agent(supplier)
+        _scripted(agent, [{"role": "assistant",
+                           "content": "Je ne peux pas vérifier cela au catalogue."}])
+        result = agent.chat_conseiller([{"role": "user", "content": "Quelle météo à Lyon ?"}])
+        self.assertEqual(result["reply"], "Je ne peux pas vérifier cela au catalogue.")
+        self.assertEqual(supplier.calls, [])
+        self.assertIsNone(result["recherche"])
+        self.assertEqual(result["trace"]["tool_calls"], [])
+
+    def test_unverified_price_is_not_invented(self):
+        result, payload, _ = self._search_once(
+            [_service("hotel-lyon-01", prix_unitaire_eur=None, prix_total_eur=None)])
+        self.assertIsNone(payload["resultats"][0]["prix_unitaire_eur"])
+        self.assertIsNone(payload["resultats"][0]["prix_total_eur"])
+        self.assertIsNone(result["recherche"]["resultats"][0]["prix_unitaire_eur"])
+
+    def test_unavailable_activity_stays_unavailable(self):
+        result, payload, _ = self._search_once(
+            [_service("activite-lyon-01", type="activite", disponible=False,
+                      places_restantes=0)])
+        self.assertIs(payload["resultats"][0]["disponible"], False)
+        self.assertEqual(payload["resultats"][0]["places_restantes"], 0)
+        self.assertIs(result["recherche"]["resultats"][0]["disponible"], False)
+
+    def test_alternatives_come_only_from_server_data(self):
+        result, payload, _ = self._search_once(
+            [_service("hotel-lyon-01", disponible=False, places_restantes=0),
+             _service("hotel-lyon-02", prix_unitaire_eur=95, prix_total_eur=190)])
+        ids = [service["id"] for service in payload["resultats"]]
+        self.assertEqual(ids, ["hotel-lyon-01", "hotel-lyon-02"])
+        self.assertEqual([s["id"] for s in result["recherche"]["resultats"]], ids)
+
+    def test_supplier_down_is_explained(self):
+        supplier = RecordingSupplier(SupplierError("timeout", status=503))
+        agent = self._agent(supplier)
+        sent = _scripted(agent, [_tool_call(ARGS),
+                                 {"role": "assistant", "content": "Je n'ai pas pu vérifier."}])
+        result = agent.chat_conseiller([{"role": "user", "content": "Vérifie Lyon"}])
+        payload = json.loads(sent[1]["conversation"][-1]["content"])
+        self.assertEqual(payload["erreur"], "La vérification n'a pas abouti.")
+        self.assertIn("réessayer", payload["consigne"])
+        self.assertNotIn("timeout", json.dumps(payload))
+        self.assertNotEqual(result["trace"]["tool_calls"][0]["statut"], "ok")
+        self.assertIsNone(result["recherche"])
+        self.assertEqual(result["reply"], "Je n'ai pas pu vérifier.")
+
+    def test_tool_loop_is_bounded(self):
+        """The chat always ends: after the last allowed search, the model must answer."""
+        supplier = FixedSupplier([_service("hotel-lyon-01")])
+        agent = self._agent(supplier)
+        sent = _scripted(agent, [_tool_call(ARGS)] * MAX_TOOL_ITERATIONS
+                         + [{"role": "assistant", "content": "Voici le résumé."}])
+        result = agent.chat_conseiller([{"role": "user", "content": "Vérifie Lyon"}])
+        self.assertEqual(result["reply"], "Voici le résumé.")
+        self.assertEqual(len(supplier.calls), MAX_TOOL_ITERATIONS)
+        self.assertFalse(sent[-1]["with_tools"])
+
+    def test_trace_marks_the_assistant_and_holds_no_key(self):
+        supplier = FixedSupplier([_service("hotel-lyon-01")])
+        agent = Agent(supplier, DemandStore(None), api_key="cle-tres-secrete", model="m")
+        _scripted(agent, [_tool_call(ARGS), {"role": "assistant", "content": "ok"}])
+        trace = agent.chat_conseiller([{"role": "user", "content": "Vérifie Lyon"}])["trace"]
+        self.assertEqual(trace["acteur"], "assistant_conseiller")
+        self.assertTrue(trace["simulation"])
+        self.assertNotIn("decisions", trace)
+        self.assertNotIn("cle-tres-secrete", json.dumps(trace))
 
 
 if __name__ == "__main__":
