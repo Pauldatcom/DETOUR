@@ -37,9 +37,12 @@ export function InspirationsPage({
           <p className="mb-2 font-mono text-xs font-semibold tracking-widest text-ballast uppercase">
             {INSPIRATIONS.surtitre}
           </p>
-          <h1 className="text-3xl font-extrabold sm:text-4xl">
-            <JumpingTitle text={INSPIRATIONS.titre} targetWord="inspirations" as="h1" />
-          </h1>
+          <JumpingTitle
+            text={INSPIRATIONS.titre}
+            targetWord="inspirations"
+            as="h1"
+            className="text-3xl font-extrabold sm:text-4xl"
+          />
           <p className="mt-4 text-ballast">{INSPIRATIONS.texte}</p>
         </div>
 
