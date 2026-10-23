@@ -67,7 +67,12 @@ def metrics(req):
     handler.wfile.write(body.encode("utf-8"))
 
 
+def openapi(req):
+    return req.send_static_yaml("openapi-portal.yaml")
+
+
 def enregistrer(router):
     router.route("GET", r"/api/config")(config)
     router.route("GET", r"/api/disponibilite")(disponibilite)
     router.route("GET", r"/metrics")(metrics)
+    router.route("GET", r"/openapi.yaml")(openapi)

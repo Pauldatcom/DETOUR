@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 RACINE = ROOT.parent
 STATIC_ROOT = ROOT / "static"
+DOCS_ROOT = RACINE / "docs"
 
 # Official DÉTOUR logo: single source, the brand-2026 kit at the repository root.
 BRAND_DIR = RACINE / "brand-2026" / "logo"
@@ -28,5 +29,6 @@ class Context:
     def __init__(self, store):
         self.store = store
         self.static_root = STATIC_ROOT
+        self.docs_root = DOCS_ROOT
         self.brand_dir = BRAND_DIR
         self.logos = LOGOS_OFFICIELS

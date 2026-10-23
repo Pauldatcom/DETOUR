@@ -23,6 +23,9 @@ class Request:
     def send_brand_asset(self, filename):
         self.handler.send_brand_asset(filename)
 
+    def send_static_yaml(self, filename):
+        self.handler.send_static_yaml(filename)
+
     def read_json(self):
         return self.handler.read_json()
 
