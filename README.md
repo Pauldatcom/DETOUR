@@ -7,19 +7,25 @@ Grafana observability.
 ## Quick start
 
 ```bash
-# 1. Python backend (supplier + portal)
-python3 server/app.py --demo        # :8765 — fictional services API
-python3 conseiller/app.py           # :8766 — advisor/traveler portal
+# Prerequisites: Docker Desktop (or Docker Engine + Compose)
 
-# 2. React front (dev)
+# 1. React front (dev — builds + starts the full Docker stack)
 cd web
 pnpm install
-pnpm dev                             # :5173 (proxy → :8766)
+pnpm dev                             # supplier :8765 · portail :8766 · Grafana :3000 · Vite :5173
 
-# 3. Observability (optional)
-cd observability
-cp .env.example .env                 # set GRAFANA_CLOUD_* to push to Cloud
-docker compose up -d                 # Grafana :3000, Prometheus :9090, Loki :3100
+# 2. Manual Docker control (from repo root)
+docker compose up -d                 # start all backend + observability containers
+docker compose down                  # stop them
+```
+
+`pnpm dev` requires Docker. If Docker is unavailable, fall back to the
+Python servers directly:
+
+```bash
+python3 server/app.py --demo         # :8765 — fictional services API
+python3 conseiller/app.py            # :8766 — advisor/traveler portal
+cd web && pnpm dev                   # :5173 (proxy → :8766, Vite only)
 ```
 
 Open `http://localhost:5173` in dev, `http://127.0.0.1:8766` in prod
@@ -43,18 +49,22 @@ Copy `.env.example` to `.env` at the repository root:
 ## Architecture
 
 ```
-server/          Supplier API (catalogue, search, dashboard) — :8765
-conseiller/       Portal (auth, chat, demandes, propositions, OAuth, /metrics) — :8766
-  app.py          Stdlib HTTP server, API routes, serves web/dist in prod
-  agent.py        OpenRouter agent (tool-calling, proposition generation)
-  propositions.py SQLite store for propositions (CRUD, statuses)
-  users.py         Traveler accounts (PBKDF2) + Google OAuth
-  store.py         SQLite store for demandes
-  fournisseur.py   Supplier API client
-web/              React front (Vite + TS + Tailwind v4 + RR v7 + Recharts)
-  src/pages/       Login, Dashboard, Demandes, Propositions, MesPropositions
-  src/components/  Header, Sidebar, StatsCard, DataTable, PropositionCard…
-observability/    Grafana + Prometheus + Loki (+ Alloy for Grafana Cloud)
+server/           Supplier API (catalogue, search, dashboard) — :8765
+  Dockerfile      python:3.13-slim, no pip deps (stdlib-only rule)
+conseiller/        Portal (auth, chat, demandes, propositions, OAuth, /metrics) — :8766
+  app.py           Stdlib HTTP server, API routes, serves web/dist in prod
+  agent.py         OpenRouter agent (tool-calling, proposition generation)
+  propositions.py  SQLite store for propositions (CRUD, statuses)
+  users.py          Traveler accounts (PBKDF2) + Google OAuth
+  store.py          SQLite store for demandes
+  fournisseur.py    Supplier API client
+  Dockerfile        python:3.13-slim, no pip deps (stdlib-only rule)
+web/               React front (Vite + TS + Tailwind v4 + RR v7 + Recharts)
+  src/pages/        Login, Dashboard, Demandes, Propositions, MesPropositions
+  src/components/   Header, Sidebar, StatsCard, DataTable, PropositionCard…
+  scripts/dev.mjs   pnpm dev orchestrator: Docker stack → health checks → Vite
+observability/     Grafana + Prometheus + Loki (+ Alloy for Grafana Cloud)
+docker-compose.yml Root compose: include observability + fournisseur + portail
 ```
 
 ## API routes
@@ -107,7 +117,7 @@ cd web && pnpm format:check                              # Prettier
 
 | Job | What it checks |
 |---|---|
-| `Tests (Python 3.11 / 3.12 / 3.13)` | the two `unittest` suites, standard library only |
+| `Tests (Python 3.13)` | the two `unittest` suites, standard library only |
 | `Lint` | Prettier formatting, ESLint, TypeScript typecheck |
 | `Build` | the React production build |
 | `Security Audit` | `pnpm audit --audit-level=high`, never blocking |

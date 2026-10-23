@@ -19,6 +19,9 @@ materials:
 | `conseiller/app.py` | HTTP server (stdlib): pages, auth, API routes, metrics, OAuth Google, serves `web/dist` if built. |
 | `web/` | React/Vite front (TypeScript, Tailwind v4, React Router v7, Recharts). Dev: `pnpm dev` (:5173, proxy → :8766). Prod: `pnpm build` then `conseiller/app.py` serves `web/dist`. |
 | `observability/` | Grafana stack (docker-compose): Grafana, Prometheus, Loki, optional Alloy for Grafana Cloud. |
+| `docker-compose.yml` | Root compose: `include`s the observability stack and adds `fournisseur` + `portail` containers. `pnpm dev` runs `docker compose up -d --build` before starting Vite. |
+| `server/Dockerfile` | Image for the supplier API (`python:3.13-slim`, no pip deps). |
+| `conseiller/Dockerfile` | Image for the portal (`python:3.13-slim`, no pip deps). |
 | `docs/agent-contract.md` | Contract of the DÉTOUR AI agent (V1 scope, tool, permissions, traces). Not a contribution guide. |
 | `scripts/serve.py` | Static server for the slides. |
 
@@ -27,18 +30,24 @@ materials:
 From the repository root:
 
 ```
-python3 server/app.py --demo        # supplier API + dashboard on http://127.0.0.1:8765
-python3 conseiller/app.py           # client application on http://127.0.0.1:8766
-
 cd web && pnpm install              # install front deps (first time)
-cd web && pnpm dev                  # Vite dev server on http://localhost:5173 (proxy → :8766)
+cd web && pnpm dev                  # builds + starts the Docker stack (supplier :8765,
+                                    #   portail :8766, Grafana :3000, Prometheus :9090,
+                                    #   Loki :3100) then Vite dev server on :5173
 cd web && pnpm build                # build web/dist (served by conseiller/app.py in prod)
 
-cd observability && docker compose up -d   # Grafana (:3000), Prometheus (:9090), Loki (:3100)
-cd observability && docker compose --profile cloud up -d alloy  # + push to Grafana Cloud
+docker compose up -d                 # same stack, manually (from repo root)
+docker compose down                 # stop all containers
+docker compose --profile cloud up -d alloy  # + push to Grafana Cloud
 
 python3 scripts/serve.py            # slides on http://127.0.0.1:8000
 ```
+
+`pnpm dev` requires Docker Desktop (or Docker Engine). If Docker is not
+available the script exits with a clear message — run the Python servers
+manually (`python3 server/app.py --demo`, `python3 conseiller/app.py`) as a
+fallback. Ctrl+C stops Vite but leaves the Docker containers running; use
+`docker compose down` to stop them.
 
 Tests:
 
@@ -59,7 +68,7 @@ cd web && pnpm format
 ```
 
 Continuous integration: `.github/workflows/test.yml` runs on every pull
-request (tests on Python 3.11/3.12/3.13, lint, build). The workflow is a
+request (tests on Python 3.13, lint, build). The workflow is a
 required status check on `main`.
 
 A pre-commit hook (`web/.husky/pre-commit`, wired via `husky` +

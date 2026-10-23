@@ -8,32 +8,9 @@ import { fileURLToPath } from "node:url";
 const WEB_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const ROOT = path.dirname(WEB_DIR);
 
-const SERVICES = [
-  {
-    name: "fournisseur",
-    label: "[fournisseur]",
-    cmd: "python3",
-    args: [path.join(ROOT, "server", "app.py"), "--demo"],
-    port: 8765,
-    health: "/health",
-  },
-  {
-    name: "portail",
-    label: "[portail]",
-    cmd: "python3",
-    args: [path.join(ROOT, "conseiller", "app.py"), "--port", "8766"],
-    port: 8766,
-    health: "/health",
-  },
-  {
-    name: "web",
-    label: "[web]",
-    cmd: process.execPath,
-    args: [path.join(WEB_DIR, "node_modules", "vite", "bin", "vite.js")],
-    port: 5173,
-    health: null,
-    cwd: WEB_DIR,
-  },
+const BACKEND_SERVICES = [
+  { name: "fournisseur", label: "[fournisseur]", port: 8765, health: "/health" },
+  { name: "portail", label: "[portail]", port: 8766, health: "/health" },
 ];
 
 function killPort(port) {
@@ -49,7 +26,7 @@ function killPort(port) {
   return pids.length;
 }
 
-async function waitHealth(port, healthPath, timeoutMs = 10000) {
+async function waitHealth(port, healthPath, timeoutMs = 60000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
@@ -63,72 +40,79 @@ async function waitHealth(port, healthPath, timeoutMs = 10000) {
   return false;
 }
 
-const children = new Map();
-
-function start(service) {
-  const child = spawn(service.cmd, service.args, {
-    cwd: service.cwd ?? ROOT,
-    env: process.env,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  children.set(service.name, child);
-  const pipe = (stream, isError) => {
-    let buffer = "";
-    stream.on("data", (chunk) => {
-      buffer += chunk.toString();
-      let idx;
-      while ((idx = buffer.indexOf("\n")) >= 0) {
-        const line = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + 1);
-        if (line.trim()) console.log(`${service.label} ${line}`);
-      }
-    });
-    stream.on("error", () => {});
-    if (isError) stream.on("data", () => {});
-  };
-  pipe(child.stdout);
-  pipe(child.stderr);
-  child.on("exit", (code) => {
-    if (children.get(service.name) === child) {
-      children.delete(service.name);
-      console.log(`${service.label} arrêté (code ${code ?? "?"})`);
-    }
-  });
+function isDockerAvailable() {
+  try {
+    const res = spawnSync("docker", ["info"], { stdio: "pipe" });
+    return res.status === 0;
+  } catch {
+    return false;
+  }
 }
 
-function shutdown(code) {
-  for (const child of children.values()) {
-    try {
-      child.kill("SIGTERM");
-    } catch {
-      /* déjà mort */
-    }
+// --- Docker availability ---
+if (!isDockerAvailable()) {
+  console.error("\n❌ Docker n'est pas disponible ou n'est pas lancé.");
+  console.error("   Démarrez Docker Desktop puis relancez `pnpm dev`.\n");
+  process.exit(1);
+}
+
+// --- Free ports from any stale local processes ---
+for (const svc of BACKEND_SERVICES) {
+  const killed = killPort(svc.port);
+  if (killed) {
+    console.log(`${svc.label} port ${svc.port} libéré (${killed} processus tué(s))`);
   }
+}
+
+// --- Build + start the Docker stack (fournisseur, portail, Grafana, Prometheus, Loki) ---
+console.log("[docker] construction + démarrage de la stack …");
+const compose = spawnSync("docker", ["compose", "up", "-d", "--build"], {
+  cwd: ROOT,
+  stdio: "inherit",
+  env: process.env,
+});
+if (compose.status !== 0) {
+  console.error(`\n❌ \`docker compose up\` a échoué (code ${compose.status}).\n`);
+  process.exit(1);
+}
+
+// --- Wait for backend health checks ---
+for (const svc of BACKEND_SERVICES) {
+  console.log(`${svc.label} attente du health check sur :${svc.port} …`);
+  const ok = await waitHealth(svc.port, svc.health);
+  if (!ok) {
+    console.error(`\n❌ ${svc.label} ne répond pas sur :${svc.port} — arrêt.`);
+    console.error("   Vérifiez les logs : `docker compose logs ${svc.name}`\n");
+    process.exit(1);
+  }
+  console.log(`${svc.label} ✅ prêt sur :${svc.port}`);
+}
+
+// --- Start Vite (HMR stays local, proxies /api + /metrics → :8766) ---
+console.log("[web] démarrage sur :5173 …");
+const vite = spawn(
+  process.execPath,
+  [path.join(WEB_DIR, "node_modules", "vite", "bin", "vite.js")],
+  {
+    cwd: WEB_DIR,
+    env: process.env,
+    stdio: ["ignore", "inherit", "inherit"],
+  },
+);
+
+function shutdown(code) {
+  try {
+    vite.kill("SIGTERM");
+  } catch {
+    /* déjà mort */
+  }
+  console.log("\n— conteneurs Docker toujours actifs (Grafana : http://localhost:3000) —");
+  console.log("  arrêt complet : `docker compose down`\n");
   process.exit(code);
 }
 
 process.on("SIGINT", () => shutdown(130));
 process.on("SIGTERM", () => shutdown(143));
 
-for (const service of SERVICES.slice(0, 2)) {
-  const killed = killPort(service.port);
-  if (killed) {
-    console.log(`${service.label} port ${service.port} libéré (${killed} processus tué(s))`);
-  }
-}
-
-for (const service of SERVICES.slice(0, 2)) {
-  console.log(`${service.label} démarrage sur :${service.port} …`);
-  start(service);
-  const ok = await waitHealth(service.port, service.health);
-  if (!ok) {
-    console.error(`${service.label} ne répond pas sur :${service.port} — arrêt.`);
-    shutdown(1);
-  }
-}
-
-console.log("[web] démarrage sur :5173 …");
-start(SERVICES[2]);
-
 await delay(1000);
-console.log("\n✅ DÉTOUR prêt — http://localhost:5173  (Ctrl+C pour tout arrêter)\n");
+console.log("\n✅ DÉTOUR prêt — http://localhost:5173  (Ctrl+C arrête Vite, Docker reste up)\n");
