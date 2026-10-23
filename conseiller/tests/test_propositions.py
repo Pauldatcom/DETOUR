@@ -277,6 +277,21 @@ class TestComparerLectures(unittest.TestCase):
         self.assertTrue(delta["prix_change"])
         self.assertFalse(delta["inchange"])
 
+    def test_changement_porte_la_date_de_la_nouvelle_lecture(self):
+        delta = comparer_ligne(
+            self.LIGNE,
+            {"id": "train-nantes-01", "prix_unitaire_eur": 62, "disponible": True},
+            consulte_le="2026-10-20T11:00:00+00:00",
+        )
+        self.assertEqual(delta["consulte_le"], "2026-10-20T11:00:00+00:00")
+        # An invalid reading time is not shown as a usable date.
+        sans_date = comparer_ligne(
+            self.LIGNE,
+            {"id": "train-nantes-01", "prix_unitaire_eur": 62, "disponible": True},
+            consulte_le="pas-une-date",
+        )
+        self.assertNotIn("consulte_le", sans_date)
+
     def test_indisponible_apres_nouvelle_lecture(self):
         delta = comparer_ligne(self.LIGNE, {
             "id": "train-nantes-01", "prix_unitaire_eur": 48, "disponible": False,
@@ -311,6 +326,8 @@ class TestComparerLectures(unittest.TestCase):
         enrichie = proposition_avec_changements(prop, recherches)
         self.assertEqual(enrichie["prestations"][0]["prix_unitaire_eur"], 48)
         self.assertEqual(enrichie["changements"][0]["prix_apres"], 62)
+        self.assertEqual(
+            enrichie["changements"][0]["consulte_le"], "2026-10-20T11:00:00+00:00")
         # Stored record must still be the original v1 prices.
         self.assertEqual(prop["prestations"][0]["prix_unitaire_eur"], 48)
 

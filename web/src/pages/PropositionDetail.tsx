@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ProposalService } from "../components/traveler/ProposalService";
+import { ProposalTotal } from "../components/traveler/PriceVerification";
 import { api } from "../lib/api";
-import { advisorFirstName, formatAmount, formatLongDay, nightsBetween } from "../lib/tone";
+import { advisorFirstName, formatLongDay, nightsBetween } from "../lib/tone";
 import type { Demande, Prestation, Proposition } from "../types";
 
 const SECTIONS: { type: string; title: string }[] = [
@@ -96,7 +97,6 @@ function ProposalBody({ proposal, request }: { proposal: Proposition; request: D
   const seats = new Map((latest?.resultats ?? []).map((r) => [r.id, r.places_restantes ?? null]));
   const changes = new Map((proposal.changements ?? []).map((c) => [c.id, c]));
   const advisor = advisorFirstName(proposal);
-  const unverified = proposal.prestations.filter((p) => p.verification !== "verifie").length;
   const travelers = request?.demande.nombre_voyageurs;
 
   const known = new Set(SECTIONS.map((s) => s.type));
@@ -150,16 +150,7 @@ function ProposalBody({ proposal, request }: { proposal: Proposition; request: D
       ))}
 
       <section aria-label="Total" className="rounded-2xl border border-ink p-5">
-        <p className="font-display text-2xl font-extrabold">
-          {formatAmount(proposal.prix_total_eur)}
-          {travelers ? ` pour ${plural(travelers, "voyageur")}` : " au total"}.
-        </p>
-        {unverified > 0 && (
-          <p className="mt-1 text-sm text-ballast">
-            Sans {unverified > 1 ? `les ${unverified} prestations` : "la prestation"} en cours de
-            vérification.
-          </p>
-        )}
+        <ProposalTotal proposition={proposal} travelers={travelers} large />
         <p className="mt-3 text-sm text-ink">
           {STATUS_SENTENCE[proposal.statut] ?? "Rien n'est réservé pour l'instant."}
         </p>

@@ -86,7 +86,10 @@ export function DemandeDetail() {
           value={`${voyage.nombre_voyageurs} personne${voyage.nombre_voyageurs > 1 ? "s" : ""}`}
         />
         <Info label="Type de voyage" value={voyage.type_voyage} />
-        <Info label="Budget par personne" value={formatEuro(voyage.budget_max_par_personne)} />
+        <Info
+          label="Budget par personne (votre demande)"
+          value={formatEuro(voyage.budget_max_par_personne)}
+        />
         <Info label="Niveau d’aventure" value={voyage.niveau_aventure} />
         <Info label="Guide souhaité" value={voyage.besoin_guide ? "Oui" : "Pas nécessaire"} />
       </div>
