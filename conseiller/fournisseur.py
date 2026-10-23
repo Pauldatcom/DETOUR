@@ -78,6 +78,8 @@ class SupplierClient:
             "budget_max": criteres["budget_max"],
             "type_voyage": criteres["type_voyage"],
         }
+        # Optional criteria left empty by the advisor search are not sent (#115).
+        params = {k: v for k, v in params.items() if v is not None}
         if criteres.get("activites"):
             params["activites"] = ",".join(criteres["activites"])
         url = f"{self.base_url}/api/v1/recherche?{urllib.parse.urlencode(params)}"

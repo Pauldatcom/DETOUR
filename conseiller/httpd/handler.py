@@ -14,7 +14,7 @@ from urllib.parse import parse_qs, urlparse
 
 from utils import SESSION_COOKIE
 
-from .context import WEB_ROOT
+from .context import DOSSIER_LOGOS, LOGOS_OFFICIELS, WEB_ROOT
 from .errors import ApiError, SessionError
 from .gardes import verifier_acces
 from .request import Request
@@ -53,7 +53,7 @@ class HttpHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def send_static(self, filename):
-        path = self.ctx.root / filename
+        path = self.ctx.root / "static" / filename
         if not path.exists():
             raise ApiError(404, "not_found", "Fichier introuvable.")
         mime, _ = mimetypes.guess_type(filename)
@@ -74,6 +74,34 @@ class HttpHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", f"{mime or 'application/octet-stream'}; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_brand_asset(self, filename):
+        """Official logo (brand-2026) served as-is: never distorted or recolored.
+
+        `detour-logo-negatif-transparent.svg` is the official negative without
+        the kit's Encre background, for the legacy dark surfaces (#07101E).
+        """
+        if filename not in LOGOS_OFFICIELS:
+            raise ApiError(404, "not_found", "Logo introuvable.")
+        body = (DOSSIER_LOGOS / filename).read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "image/svg+xml")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "public, max-age=3600")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Security-Policy",
+                         "default-src 'none'; style-src 'self'; img-src 'self' data:; base-uri 'none'")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_static_yaml(self, filename):
+        body = (self.ctx.docs_root / filename).read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/yaml; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 

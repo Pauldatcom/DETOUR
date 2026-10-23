@@ -16,7 +16,7 @@ from datetime import datetime, time, timedelta, timezone
 
 try:
     from zoneinfo import ZoneInfo
-except ImportError:  # pragma: no cover - Python < 3.9, CI runs 3.11+
+except ImportError:  # pragma: no cover - Python < 3.9, CI runs 3.13+
     ZoneInfo = None
 
 # Opening-hours configuration (issue #48). Edit here only.

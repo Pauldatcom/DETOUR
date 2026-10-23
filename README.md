@@ -88,6 +88,7 @@ observability/    Grafana + Prometheus + Loki (+ Alloy for Grafana Cloud)
 | `/api/stats` | GET | advisor | Statistics |
 | `/api/catalogue` | GET | client | Supplier catalogue |
 | `/api/chat` | POST | client | Agent chat |
+| `/api/conseiller/chat` | POST | advisor | Advisor assistant: read-only search, never books or decides |
 | `/metrics` | GET | public/token | Prometheus |
 
 ## Tests
@@ -107,7 +108,7 @@ cd web && pnpm format:check                              # Prettier
 
 | Job | What it checks |
 |---|---|
-| `Tests (Python 3.11 / 3.12 / 3.13)` | the two `unittest` suites, standard library only |
+| `Tests (Python 3.13)` | the two `unittest` suites, standard library only |
 | `Lint` | Prettier formatting, ESLint, TypeScript typecheck |
 | `Build` | the React production build |
 | `Security Audit` | `pnpm audit --audit-level=high`, never blocking |

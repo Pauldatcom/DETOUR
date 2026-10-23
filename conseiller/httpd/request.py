@@ -1,9 +1,5 @@
 """View of a request passed to route functions."""
 
-from http.cookies import SimpleCookie
-
-from utils import SESSION_COOKIE
-
 from .errors import SessionError
 
 
@@ -31,6 +27,12 @@ class Request:
 
     def send_file(self, base, filename):
         self.handler.send_file(base, filename)
+
+    def send_brand_asset(self, filename):
+        self.handler.send_brand_asset(filename)
+
+    def send_static_yaml(self, filename):
+        self.handler.send_static_yaml(filename)
 
     def read_json(self):
         return self.handler.read_json()

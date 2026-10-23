@@ -1,0 +1,121 @@
+flowchart TB
+
+    %% =====================================================
+    %% PARCOURS 1
+    %% =====================================================
+
+    subgraph Parcours1["PARCOURS 1 : DEMANDE ORDINAIRE"]
+        direction LR
+
+        P1_Client["Client<br/><b>ACTEUR RESPONSABLE</b><br/>Formule la demande"]
+
+        P1_Formulaire["Formulaire adaptatif<br/><b>SOURCE D'INFORMATION</b><br/>Dates<br/>Destination<br/>Voyageurs<br/>Budget<br/>Préférences<br/>Contraintes"]
+
+        P1_App["Application de l'agence<br/><b>CONSERVE</b><br/>Demande<br/>Profil client<br/>Statut<br/>Historique"]
+
+        P1_Agent["Agent IA<br/><b>ACTIONS PROPOSÉES</b><br/>Analyse la demande<br/>Pose des questions<br/>Recherche et compare<br/>Prépare une proposition"]
+
+        P1_Serveur["Serveur fictif<br/><b>SOURCE D'INFORMATION</b><br/>Catalogue restreint<br/>Activités<br/>Hébergements<br/>Prix<br/>Disponibilités<br/>Météo"]
+
+        P1_Proposition["Proposition V1<br/><b>CONSERVÉE PAR L'APPLICATION</b><br/>Prestations sélectionnées<br/>Prix utilisés<br/>Sources<br/>Date de récupération"]
+
+        P1_Conseiller["Conseiller<br/><b>ACTEUR RESPONSABLE</b><br/>Contrôle l'offre<br/>Corrige si nécessaire"]
+
+        P1_ValidationConseiller{"<b>POINT DE VALIDATION</b><br/>Le conseiller valide-t-il<br/>la proposition ?"}
+
+        P1_Envoi["Proposition envoyée<br/>au client"]
+
+        P1_ClientDecision{"<b>POINT DE VALIDATION</b><br/>Le client accepte-t-il<br/>la proposition ?"}
+
+        P1_Reservation["Réservation préparée<br/><b>ACTION HUMAINE</b><br/>Vérification finale<br/>des prix et disponibilités"]
+
+        P1_Confirmation["Résultat reçu par le client<br/>Itinéraire validé<br/>Prestations confirmées"]
+
+        P1_Client -->|ACTION HUMAINE| P1_Formulaire
+        P1_Formulaire -->|Informations saisies| P1_App
+        P1_App -->|Demande complète| P1_Agent
+        P1_Agent -->|Recherche d'informations| P1_Serveur
+        P1_Serveur -->|Résultats du serveur| P1_Agent
+        P1_Agent -->|Proposition préparée| P1_Proposition
+        P1_Proposition --> P1_Conseiller
+        P1_Conseiller --> P1_ValidationConseiller
+        P1_ValidationConseiller -->|Oui| P1_Envoi
+        P1_ValidationConseiller -->|Non, correction| P1_Agent
+        P1_Envoi -->|Proposition reçue| P1_ClientDecision
+        P1_ClientDecision -->|Oui| P1_Reservation
+        P1_ClientDecision -->|Non, demande abandonnée| P1_App
+        P1_Reservation --> P1_Confirmation
+        P1_Confirmation --> P1_Client
+    end
+
+
+    %% =====================================================
+    %% PARCOURS 2
+    %% =====================================================
+
+    subgraph Parcours2["PARCOURS 2 : LA DEMANDE CHANGE APRÈS LA PREMIÈRE PROPOSITION"]
+        direction LR
+
+        P2_Entree["Le client demande<br/>une modification<br/><i>Budget, dates ou activité</i>"]
+
+        P2_App["Application de l'agence<br/><b>CONSERVE</b><br/>Version V1<br/>Modification demandée<br/>Nouvelle version V2"]
+
+        P2_Agent["Agent IA<br/><b>ACTIONS PROPOSÉES</b><br/>Analyse le changement<br/>Recherche une alternative<br/>Met à jour l'offre"]
+
+        P2_Serveur["Serveur fictif<br/><b>SOURCE D'INFORMATION</b><br/>Nouvelles données<br/>Nouveau prix<br/>Nouvelle disponibilité"]
+
+        P2_Comparaison["Comparaison des versions<br/><b>VISIBLE PAR LE CONSEILLER</b><br/>Ancien prix<br/>Nouveau prix<br/>Prestation supprimée<br/>Nouvelle prestation"]
+
+        P2_Proposition["Proposition V2<br/><b>CONSERVÉE PAR L'APPLICATION</b><br/>Nouvelle sélection<br/>Sources actualisées<br/>Date de récupération"]
+
+        P2_Conseiller["Conseiller<br/><b>ACTEUR RESPONSABLE</b><br/>Analyse le changement<br/>Choisit une action"]
+
+        P2_Validation{"<b>POINT DE VALIDATION</b><br/>Quelle décision prendre ?"}
+
+        P2_Envoi["Proposition V2 envoyée<br/>au client"]
+
+        P2_ClientDecision{"<b>POINT DE VALIDATION</b><br/>Le client accepte-t-il<br/>la nouvelle proposition ?"}
+
+        P2_Resultat["Proposition mise à jour<br/>et décision enregistrée"]
+
+        P2_Entree -->|ACTION HUMAINE| P2_App
+        P2_App -->|Modification à analyser| P2_Agent
+        P2_Agent -->|Nouvelle recherche| P2_Serveur
+        P2_Serveur -->|Prix et disponibilités actualisés| P2_Comparaison
+        P2_Comparaison --> P2_Agent
+        P2_Agent -->|Proposition V2| P2_Proposition
+        P2_Proposition --> P2_Conseiller
+        P2_Conseiller --> P2_Validation
+        P2_Validation -->|Conserver le nouveau prix| P2_Envoi
+        P2_Validation -->|Remplacer la prestation| P2_Agent
+        P2_Validation -->|Abandonner la proposition| P2_App
+        P2_Envoi --> P2_ClientDecision
+        P2_ClientDecision -->|Oui| P2_Resultat
+        P2_ClientDecision -->|Non, nouvelle modification| P2_Entree
+    end
+
+
+    %% Passage du parcours 1 au parcours 2
+
+    P1_Envoi -.->|Le client demande une modification| P2_Entree
+
+
+    %% =====================================================
+    %% STYLES
+    %% =====================================================
+
+    classDef humain fill:#17243b,stroke:#ff9b62,stroke-width:2px,color:#ffffff;
+    classDef agent fill:#123c50,stroke:#4dc5e5,stroke-width:2px,color:#ffffff;
+    classDef application fill:#202d46,stroke:#aabbd5,stroke-width:2px,color:#ffffff;
+    classDef source fill:#263b36,stroke:#67d391,stroke-width:2px,color:#ffffff;
+    classDef validation fill:#49321f,stroke:#ffb36e,stroke-width:3px,color:#ffffff;
+    classDef resultat fill:#263c2f,stroke:#67d391,stroke-width:2px,color:#ffffff;
+    classDef proposition fill:#2a2946,stroke:#b7a7ff,stroke-width:2px,color:#ffffff;
+
+    class P1_Client,P1_Conseiller,P1_Reservation,P2_Entree,P2_Conseiller humain;
+    class P1_Agent,P2_Agent agent;
+    class P1_App,P2_App application;
+    class P1_Formulaire,P1_Serveur,P2_Serveur source;
+    class P1_ValidationConseiller,P1_ClientDecision,P2_Validation,P2_ClientDecision validation;
+    class P1_Proposition,P2_Proposition,P2_Comparaison proposition;
+    class P1_Confirmation,P2_Resultat resultat;
