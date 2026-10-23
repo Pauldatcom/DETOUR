@@ -732,7 +732,7 @@ class TestAgent(unittest.TestCase):
         agent = Agent(self.supplier, self.store, api_key="mauvaise", base_url=fake.url, timeout=5)
         with self.assertRaises(OpenRouterError) as ctx:
             agent.chat([{"role": "user", "content": "Bonjour"}])
-        self.assertIn("clé", str(ctx.exception))
+        self.assertIn("key", str(ctx.exception))
 
     def test_reponse_sans_outil(self):
         agent, fake = self.make_agent([
