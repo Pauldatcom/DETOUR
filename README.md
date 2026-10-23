@@ -88,6 +88,7 @@ observability/    Grafana + Prometheus + Loki (+ Alloy for Grafana Cloud)
 | `/api/stats` | GET | advisor | Statistics |
 | `/api/catalogue` | GET | client | Supplier catalogue |
 | `/api/chat` | POST | client | Agent chat |
+| `/api/conseiller/chat` | POST | advisor | Advisor assistant: read-only search, never books or decides |
 | `/metrics` | GET | public/token | Prometheus |
 
 ## Tests
