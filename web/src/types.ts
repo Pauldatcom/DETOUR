@@ -120,6 +120,8 @@ export interface ChangementLecture {
   prix_change: boolean;
   disponibilite_change: boolean;
   inchange: boolean;
+  /** When the newer server reading behind this change was made. */
+  consulte_le?: string | null;
 }
 
 /** One customer constraint checked against a proposal (#41). */

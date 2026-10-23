@@ -4,11 +4,11 @@ import {
   PROP_STATUT_LABELS,
   STATUT_COLORS,
   derniereConfirmation,
-  formatEuro,
   formatDate,
   formatDateTime,
 } from "../lib/format";
 import { advisorFirstName } from "../lib/tone";
+import { PriceVerification, ProposalTotal } from "./traveler/PriceVerification";
 
 interface PropositionCardProps {
   proposition: Proposition;
@@ -16,31 +16,12 @@ interface PropositionCardProps {
   linked?: boolean;
 }
 
-/** One prestation line: verified price + source/time, or missing (never invented). */
-function PrestationLine({ item }: { item: Prestation }) {
-  if (item.verification !== "verifie") {
-    return (
-      <li className="text-sm text-ballast">
-        <span className="font-medium text-ink">{item.nom}</span>
-        <span> — prix non vérifié</span>
-        {item.copie_depuis_v1 && (
-          <span className="text-ballast/60"> · repris de v1 (non relu)</span>
-        )}
-      </li>
-    );
-  }
+/** One prestation line: one of the five dated verification states (#127). */
+function PrestationLine({ item, change }: { item: Prestation; change?: ChangementLecture }) {
   return (
     <li className="text-sm text-ballast">
       <span className="font-medium text-ink">{item.nom}</span>
-      <span className="meta-nowrap">
-        {" "}
-        — {formatEuro(item.prix_unitaire_eur ?? 0)} / pers
-        {item.disponible === false ? " · indisponible" : " · disponible"}
-      </span>
-      <div className="meta-nowrap mt-0.5 text-xs text-ballast/60">
-        {item.source} · {formatDateTime(item.consulte_le ?? "")}
-        {item.copie_depuis_v1 && " · repris de v1 (non relu)"}
-      </div>
+      <PriceVerification service={item} change={change} compact showSource />
     </li>
   );
 }
@@ -60,29 +41,9 @@ function ContrainteLine({ item }: { item: ContrainteVerifiee }) {
   );
 }
 
-/** Newer reading vs v1: previous/new price, unavailable, or unchanged. */
-function ChangementLine({ item }: { item: ChangementLecture }) {
-  if (item.inchange) {
-    return <li className="text-xs text-ballast/60">{item.nom}: prix et disponibilité inchangés</li>;
-  }
-  return (
-    <li className="text-xs text-ballast">
-      {item.nom}
-      {item.prix_change && (
-        <>
-          : {formatEuro(item.prix_avant)} →{" "}
-          <span className="font-semibold text-brick">{formatEuro(item.prix_apres)}</span>
-        </>
-      )}
-      {!item.disponible_apres && <> · indisponible</>}
-      {item.disponibilite_change && item.disponible_apres && <> · devenu disponible</>}
-    </li>
-  );
-}
-
-/** Proposal card: title, total, and each line with its source and read time. */
+/** Proposal card: title, total, and each line with its dated verification state. */
 export function PropositionCard({ proposition: prop, linked = true }: PropositionCardProps) {
-  const manquantes = prop.prestations.filter((p) => p.verification !== "verifie").length;
+  const changes = new Map((prop.changements ?? []).map((change) => [change.id, change]));
   // The advisor confirms explicitly: the traveler sees who confirmed, when and why (#113).
   const confirmation = derniereConfirmation(prop.decisions_statut);
   const advisor = advisorFirstName(prop);
@@ -116,7 +77,7 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
       {prop.prestations.length > 0 && (
         <ul className="mt-4 space-y-2 border-t border-line pt-3">
           {prop.prestations.map((item) => (
-            <PrestationLine key={item.id} item={item} />
+            <PrestationLine key={item.id} item={item} change={changes.get(item.id)} />
           ))}
         </ul>
       )}
@@ -126,15 +87,6 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
           <li className="text-xs font-semibold text-ink">Contraintes prises en compte</li>
           {prop.contraintes_verifiees.map((item) => (
             <ContrainteLine key={item.contrainte} item={item} />
-          ))}
-        </ul>
-      )}
-
-      {prop.changements && prop.changements.length > 0 && (
-        <ul className="mt-3 space-y-1 border-t border-dashed border-line pt-3">
-          <li className="text-xs font-semibold text-ink">Ce qui a changé depuis</li>
-          {prop.changements.map((item) => (
-            <ChangementLine key={item.id} item={item} />
           ))}
         </ul>
       )}
@@ -152,16 +104,7 @@ export function PropositionCard({ proposition: prop, linked = true }: Propositio
           )}
         </div>
         <div className="sm:text-right">
-          <span className="meta-nowrap font-extrabold text-ink">
-            {formatEuro(prop.prix_total_eur)}
-          </span>
-          {manquantes > 0 && (
-            <p className="mt-0.5 text-[10px] text-ballast/60">
-              {manquantes > 1
-                ? `total vérifié · ${manquantes} lignes non vérifiées`
-                : "total vérifié · 1 ligne non vérifiée"}
-            </p>
-          )}
+          <ProposalTotal proposition={prop} />
         </div>
       </div>
     </>
