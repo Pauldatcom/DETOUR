@@ -67,6 +67,15 @@ class HttpHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_static_yaml(self, filename):
+        body = (self.ctx.docs_root / filename).read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/yaml; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
     # ---- request helpers ----
 
     def read_json(self):
