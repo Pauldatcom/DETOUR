@@ -16,6 +16,8 @@ from utils import (
     DECISION_REPLACE,
     DECISIONS_AVEC_MOTIF,
     DECISIONS_PRESTATION,
+    GENERE_PAR_ASSISTANT,
+    GENERE_PAR_CONSEILLER,
     PROP_STATUTS,
     SOURCE_LABEL,
     STATUT_BROUILLON,
@@ -156,9 +158,18 @@ def valider_proposition(data):
         p["prix_total_eur"] for p in prestations_validees
         if p.get("verification") == VERIFICATION_VERIFIE
     )
+    # #117: the traveler-facing message and the draft provenance.
+    message_voyageur = data.get("message_voyageur", "")
+    if not isinstance(message_voyageur, str):
+        raise PropositionError("message_voyageur doit être une chaîne.")
+    genere_par = data.get("genere_par", "")
+    if not isinstance(genere_par, str):
+        raise PropositionError("genere_par doit être une chaîne.")
     return {
         "titre": titre.strip(),
         "description": description.strip(),
+        "message_voyageur": message_voyageur.strip(),
+        "genere_par": genere_par.strip(),
         "prestations": prestations_validees,
         "prix_total_eur": prix_total,
     }
@@ -336,6 +347,10 @@ class PropositionStore:
                 STATUT_BROUILLON, STATUT_CORRECTION_DEMANDEE)
             record["titre"] = champs["titre"]
             record["description"] = champs["description"]
+            # #117: the advisor can always edit the traveler-facing message;
+            # an edit by hand marks the draft as advisor-confirmed.
+            record["message_voyageur"] = champs["message_voyageur"]
+            record["genere_par"] = GENERE_PAR_CONSEILLER
             if modifiable:
                 record["prestations"] = champs["prestations"]
                 record["prix_total_eur"] = champs["prix_total_eur"]
@@ -515,6 +530,12 @@ class PropositionStore:
                 existante["description"] = champs["description"]
                 existante["prestations"] = champs["prestations"]
                 existante["prix_total_eur"] = champs["prix_total_eur"]
+                existante["message_voyageur"] = (
+                    champs["message_voyageur"]
+                    or existante.get("message_voyageur", ""))
+                existante["genere_par"] = (
+                    champs["genere_par"]
+                    or existante.get("genere_par", ""))
                 existante["conseiller"] = conseiller or existante.get("conseiller", "")
                 existante["version"] = 2
                 existante["parente_id"] = prop_v1_id

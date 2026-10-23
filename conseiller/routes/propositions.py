@@ -102,8 +102,9 @@ def generer(req, id):
                        "Agent non configuré : définir OPENROUTER_API_KEY.")
     recherches = record.get("recherches", [])
     recherche = recherches[-1] if recherches else None
-    prop_data = req.ctx.agent.generer_proposition(record, recherche)
     session = req.admin_exige()
+    prop_data = req.ctx.agent.generer_proposition(
+        record, recherche, conseiller=session.get("nom", ""))
     prop = req.ctx.propositions.creer(id, prop_data, conseiller=session.get("nom", ""))
     req.send_json(201, {"proposition": prop, "simulation": True})
 
