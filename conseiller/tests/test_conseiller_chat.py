@@ -21,7 +21,8 @@ from store import DemandStore
 from users import UserStore
 from utils import MAX_TOOL_ITERATIONS
 
-from test_auth_users import VALIDE, ClientHTTP, FakeSupplier, demarrer
+from test_auth_users import (VALIDE, ClientHTTP, FakeAgentWithGeneration, FakeSupplier,
+                             demarrer)
 
 SEARCH = {
     "source_label": "Serveur fictif DÉTOUR",
@@ -386,6 +387,120 @@ class TestAdvisorChatScenarios(unittest.TestCase):
         self.assertTrue(trace["simulation"])
         self.assertNotIn("decisions", trace)
         self.assertNotIn("cle-tres-secrete", json.dumps(trace))
+
+# ---------------------------------------------------------------------------
+# #123 part 2: the required workflow (#114) — the assistant drafts, the advisor
+# reviews, edits and confirms; nothing reaches the traveler before that.
+# ---------------------------------------------------------------------------
+
+class DraftAgent(FakeAgentWithGeneration):
+    """Generates a draft like the real agent and answers the advisor chat."""
+
+    def chat_conseiller(self, messages, demande_id=None):
+        return FakeAdvisorAgent().chat_conseiller(messages, demande_id)
+
+
+class TestDraftWorkflow(unittest.TestCase):
+
+    def setUp(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        self.team_key = "cle-" + secrets.token_urlsafe(12)
+        self.store = DemandStore(Path(tmp) / "demandes.json")
+        self.users = UserStore(Path(tmp) / "users.json")
+        self.props = PropositionStore(Path(tmp) / "propositions.json")
+        handler = make_handler(self.store, FakeSupplier(), DraftAgent(),
+                               users=self.users, team_key=self.team_key,
+                               propositions=self.props)
+        server, self.base = demarrer(handler)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+
+    def _advisor(self):
+        client = ClientHTTP(self.base)
+        client.post("/api/login-conseiller", {"cle": self.team_key, "prenom": "Camille"})
+        return client
+
+    def _traveler_request(self):
+        """A traveler and their own request; return (client, request id)."""
+        client = ClientHTTP(self.base)
+        client.post("/api/register", {"email": "voyageur@test.fr", "nom": "Voyageur",
+                                      "mot_de_passe": "motdepasse"})
+        user_id = self.users.authentifier("voyageur@test.fr", "motdepasse")["id"]
+        return client, self.store.creer({**VALIDE, "user_id": user_id})["id"]
+
+    def _generate(self, advisor, dem_id):
+        status, data, _ = advisor.post(f"/api/demandes/{dem_id}/propositions/generer", {})
+        self.assertEqual(status, 201)
+        return data["proposition"]
+
+    def _visible_ids(self, traveler):
+        _, data, _ = traveler.get("/api/mes-propositions")
+        return [p["id"] for p in data["propositions"]]
+
+    def test_generated_draft_is_stamped_and_stays_a_draft(self):
+        _, dem_id = self._traveler_request()
+        draft = self._generate(self._advisor(), dem_id)
+        self.assertEqual(draft["genere_par"], "assistant")
+        self.assertEqual(draft["statut"], "brouillon")
+        self.assertEqual(draft["message_voyageur"], "Bonjour, c'est un brouillon.")
+        self.assertEqual(draft.get("decisions_statut", []), [])
+
+    def test_traveler_never_sees_an_unreviewed_draft(self):
+        traveler, dem_id = self._traveler_request()
+        draft = self._generate(self._advisor(), dem_id)
+        self.assertNotIn(draft["id"], self._visible_ids(traveler))
+        status, _, _ = traveler.get(f"/api/propositions/{draft['id']}")
+        self.assertEqual(status, 404)
+
+    def test_advisor_edit_marks_the_draft_as_advisor_content(self):
+        _, dem_id = self._traveler_request()
+        advisor = self._advisor()
+        draft = self._generate(advisor, dem_id)
+        status, data, _ = advisor.patch(f"/api/propositions/{draft['id']}", {
+            "titre": "Week-end relu", "description": draft["description"],
+            "message_voyageur": "Bonjour, je vous ai préparé ce week-end. Camille",
+            "prestations": draft["prestations"]})
+        self.assertEqual(status, 200)
+        self.assertEqual(data["proposition"]["genere_par"], "conseiller")
+        self.assertEqual(data["proposition"]["statut"], "brouillon")
+
+    def test_advisor_confirmation_sends_and_is_journaled(self):
+        traveler, dem_id = self._traveler_request()
+        advisor = self._advisor()
+        draft = self._generate(advisor, dem_id)
+        status, data, _ = advisor.post(f"/api/propositions/{draft['id']}/accepter", {})
+        self.assertEqual(status, 200)
+        self.assertEqual(data["proposition"]["statut"], "envoyee")
+        decision = data["proposition"]["decisions_statut"][-1]
+        self.assertEqual(decision["action"], "accepter")
+        self.assertEqual(decision["par"], "Camille")
+        self.assertIn(draft["id"], self._visible_ids(traveler))
+
+    def test_traveler_cannot_generate_edit_or_confirm(self):
+        traveler, dem_id = self._traveler_request()
+        draft = self._generate(self._advisor(), dem_id)
+        for status in (
+            traveler.post(f"/api/demandes/{dem_id}/propositions/generer", {})[0],
+            traveler.patch(f"/api/propositions/{draft['id']}", {
+                "titre": "x", "description": "x", "prestations": []})[0],
+            traveler.post(f"/api/propositions/{draft['id']}/accepter", {})[0],
+        ):
+            self.assertEqual(status, 401)
+        self.assertEqual(self.props.obtenir(draft["id"])["statut"], "brouillon")
+
+    def test_advisor_chat_never_confirms_a_draft(self):
+        """Talking to the assistant never sends the draft (no animation trigger)."""
+        _, dem_id = self._traveler_request()
+        draft = self._generate(self._advisor(), dem_id)
+        status, data, _ = self._advisor().post("/api/conseiller/chat", {
+            "messages": [{"role": "user", "content": "Envoie la proposition au voyageur"}],
+            "demande_id": dem_id})
+        self.assertEqual(status, 200)
+        self.assertNotIn("proposition", data)
+        record = self.props.obtenir(draft["id"])
+        self.assertEqual(record["statut"], "brouillon")
+        self.assertEqual(record.get("decisions_statut", []), [])
 
 
 if __name__ == "__main__":
