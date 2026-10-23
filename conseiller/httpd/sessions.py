@@ -36,6 +36,20 @@ class SessionManager:
         with self._lock:
             self._sessions.pop(token, None)
 
+    def mettre_a_jour(self, token, **champs):
+        """Update the stored session in place after a profile change."""
+        with self._lock:
+            entree = self._sessions.get(token)
+            if entree is not None:
+                entree.update(champs)
+
+    def invalider_utilisateur(self, user_id, token_conserve=None):
+        """Drop every session of a user except the one that made the change."""
+        with self._lock:
+            for token in [t for t, s in self._sessions.items()
+                          if s.get("user_id") == user_id and t != token_conserve]:
+                self._sessions.pop(token, None)
+
     def lire(self, token):
         if not token:
             return None

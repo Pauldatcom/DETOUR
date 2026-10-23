@@ -6,6 +6,7 @@ import re
 from httpd.errors import ApiError
 
 from store import ValidationError
+from traces import finaliser_et_persister
 
 
 def chat(req):
@@ -34,10 +35,17 @@ def chat(req):
         user_id=session.get("user_id", "") if isinstance(session, dict) else "",
         demande_id=demande_id,
     )
+    # #5: persist a redacted trace (also printed for local debug).
+    thread_id = demande_id or (result.get("demande") or {}).get("id")
+    result["trace"] = finaliser_et_persister(
+        result.get("trace") or {},
+        req.ctx.traces_dir,
+        request_id=thread_id or (result.get("trace") or {}).get("request_id"),
+        reponse_finale=result.get("reply") or "",
+    )
     print("[agent] " + json.dumps(result["trace"], ensure_ascii=False), flush=True)
 
     store = req.ctx.store
-    thread_id = demande_id or (result.get("demande") or {}).get("id")
     if thread_id and (result.get("reply") or "").strip():
         historique = [dict(m) for m in messages]
         historique.append({"role": "assistant", "content": result["reply"]})

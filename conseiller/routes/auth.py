@@ -38,7 +38,8 @@ def session(req):
     session = req.session
     if session:
         return req.send_json(200, {"connecte": True, "role": session["role"],
-                                   "nom": session.get("nom", "")})
+                                   "nom": session.get("nom", ""),
+                                   "email": session.get("email", "")})
     if req.ctx.users is None:  # test/dev: access without an account
         return req.send_json(200, {"connecte": True, "role": "client", "nom": ""})
     return req.send_json(200, {"connecte": False})

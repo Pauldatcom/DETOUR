@@ -1,4 +1,4 @@
-"""Portal pages and static file routes (vanilla, historical)."""
+"""Portal pages, official brand assets and legacy static files."""
 
 
 def _statique(filename):
@@ -37,6 +37,11 @@ def conseiller(req):
     req.send_static("conseiller.html")
 
 
+def brand(req, filename):
+    """Official DÉTOUR logo, served untouched from the brand kit."""
+    req.send_brand_asset(filename)
+
+
 FICHIERS_STATIQUES = ("/app.css", "/app.js", "/pages.js", "/pages-propositions.js",
                       "/agent-widget.css", "/agent-widget.js")
 
@@ -50,3 +55,4 @@ def enregistrer(router):
     router.route("GET", r"/index\.html")(chat)
     router.route("GET", r"/chat")(chat)
     router.route("GET", r"/conseiller")(conseiller)
+    router.route("GET", r"/brand/(?P<filename>[^/]+)")(brand)

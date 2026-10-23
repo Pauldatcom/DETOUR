@@ -22,7 +22,8 @@ def mes_demandes(req):
 def lister(req):
     req.admin_exige()
     store = req.ctx.store
-    demandes = store.lister()
+    # The advisor only gets requests the traveler approved.
+    demandes = store.list_for_advisor()
     demandes.sort(key=lambda d: d.get("cree_le", ""), reverse=True)
     if req.ctx.users is not None:
         for d in demandes:
@@ -39,6 +40,10 @@ def obtenir(req, id):
 
 def creer(req):
     data = req.read_json()
+    if req.ctx.users is not None:
+        session = req.client_exige()
+        # Never trust a client-supplied owner id.
+        data["user_id"] = session.get("user_id", "")
     record = req.ctx.store.creer(data)
     req.send_json(201, {"demande": record, "simulation": True})
 
@@ -88,6 +93,31 @@ def correction(req, id):
     req.send_json(200, {"demande": record, "simulation": True})
 
 
+def reponse(req, id):
+    """#52: the advisor answers the customer request.
+
+    Author, date and time are set by the server, never by the client.
+    """
+    session = req.admin_exige()
+    data = req.read_json()
+    record = req.ctx.store.repondre(id, data.get("message"), nom_conseiller(session))
+    if record is None:
+        raise ApiError(404, "demande_not_found", "Demande introuvable.")
+    if req.ctx.users is not None:
+        record["client"] = req.ctx.users.obtenir(record.get("demande", {}).get("user_id", ""))
+    req.send_json(201, {"demande": record, "simulation": True})
+
+
+def approbation(req, id):
+    session = req.client_exige()
+    data = req.read_json()
+    record = req.ctx.store.approve_by_traveler(id, session.get("user_id", ""),
+                                               data.get("confirme"))
+    if record is None:
+        raise ApiError(404, "demande_not_found", "Demande introuvable.")
+    req.send_json(200, {"demande": record, "simulation": True})
+
+
 def statut(req, id):
     session = req.admin_exige()
     data = req.read_json()
@@ -106,6 +136,8 @@ def enregistrer(router):
     router.route("GET", r"/api/demandes/(?P<id>dem_[a-f0-9]+)")(obtenir)
     router.route("POST", r"/api/demandes")(creer)
     router.route("POST", r"/api/demandes/(?P<id>dem_[a-f0-9]+)/recherche")(recherche)
+    router.route("POST", r"/api/demandes/(?P<id>dem_[a-f0-9]+)/reponse")(reponse)
+    router.route("POST", r"/api/demandes/(?P<id>dem_[a-f0-9]+)/approbation")(approbation)
     router.route("PATCH", r"/api/demandes/(?P<id>dem_[a-f0-9]+)/qualification")(qualification)
     router.route("PATCH", r"/api/demandes/(?P<id>dem_[a-f0-9]+)/correction")(correction)
     router.route("PATCH", r"/api/demandes/(?P<id>dem_[a-f0-9]+)/statut")(statut)
