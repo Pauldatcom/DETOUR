@@ -1,0 +1,30 @@
+include:
+  - observability/docker-compose.yml
+
+services:
+  fournisseur:
+    build: ./server
+    container_name: detour-fournisseur
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./brand-2026:/brand-2026:ro
+      - ./server/.local:/app/.local
+    environment:
+      - INSTRUCTOR_KEY=demo-instructor
+
+  portail:
+    build: ./conseiller
+    container_name: detour-portail
+    ports:
+      - "8766:8766"
+    volumes:
+      - ./brand-2026:/brand-2026:ro
+      - ./data:/data:ro
+      - ./conseiller/.local:/app/.local
+    env_file:
+      - .env
+    environment:
+      - TRAVEL_API_URL=http://fournisseur:8765
+    depends_on:
+      - fournisseur
