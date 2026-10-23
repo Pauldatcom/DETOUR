@@ -11,10 +11,10 @@ import os
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-import db
 from agent import Agent, DEFAULT_MODEL, OpenRouterError
 from fournisseur import DEFAULT_URL, SupplierClient, SupplierError
 from propositions import PropositionError, PropositionStore
+from sqlite_repository import SqliteRepository
 from store import DemandStore, ValidationError
 from users import UserError, UserStore
 
@@ -105,14 +105,13 @@ def main():
     args = parser.parse_args()
 
     load_env_file()
-    store = DemandStore(args.db_file)
+    repo = SqliteRepository(args.db_file)
+    store = DemandStore(repo=repo)
     users = UserStore(args.users_file)
-    propositions = PropositionStore(args.db_file)
-    # The enriched dataset seeds the read-only destinations table (#88/#89).
-    # Idempotent: re-running refreshes the rows without duplicating them.
+    propositions = PropositionStore(repo=repo)
     dataset = ROOT.parent / "data" / "travel_agency_dataset.json"
     if dataset.exists():
-        db.seed_destinations(store.conn, dataset)
+        repo.seed_destinations(dataset)
     team_key = os.environ.get("TRAVEL_TEAM_KEY", "demo-key")
     supplier = SupplierClient(args.supplier_url, team_key)
     api_key = os.environ.get("OPENROUTER_API_KEY", "")
