@@ -180,13 +180,13 @@ and must be migrated by the redesign tickets.
 
 | Location | Problem |
 |---|---|
-| `conseiller/app.css` (`chat.html`, `conseiller.html`, `login.html`) | Previous dark identity: `#07101e` background, cyan accent `#5acbe2`, Inter font, text "brand mark" instead of the logo file. |
-| `server/dashboard.css` (`dashboard.html`) | Same previous identity. |
+| `conseiller/static/app.css` (`chat.html`, `conseiller.html`, `login.html`) | Previous dark identity: `#07101e` background, cyan accent `#5acbe2`, Inter font, text "brand mark" instead of the logo file. |
+| `server/static/dashboard.css` (`dashboard.html`) | Same previous identity. |
 
 ## 11. Open questions before coding
 
-1. **Scope**: are the legacy HTML pages (`conseiller/*.html`,
-   `server/dashboard.html`) part of the redesign, or only the React front in
+1. **Scope**: are the legacy HTML pages (`conseiller/static/*.html`,
+   `server/static/dashboard.html`) part of the redesign, or only the React front in
    `web/`? `server/` is the fictional supplier's tool, not a DÉTOUR screen.
 2. **Animated logo**: `detour-logo-anime.svg` loops forever (3.6 s,
    `infinite`), but the brand kit says 1.15 s, once per visit, never in a

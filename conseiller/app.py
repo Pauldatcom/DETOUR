@@ -174,7 +174,7 @@ def make_handler(store, supplier=None, agent=None, users=None, team_key="",
             self.end_headers()
 
         def send_static(self, filename):
-            path = ROOT / filename
+            path = ROOT / 'static' / filename
             if not path.exists():
                 raise ApiError(404, "not_found", "Fichier introuvable.")
             mime, _ = mimetypes.guess_type(filename)
