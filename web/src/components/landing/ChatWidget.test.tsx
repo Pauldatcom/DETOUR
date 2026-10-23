@@ -16,9 +16,16 @@ vi.mock("react-router-dom", async (importOriginal) => {
   return { ...actual, useNavigate: () => navigateMock };
 });
 
-// Mock the api module: only `chat`, `approveRequest` and `mesDemandes` are used.
+// Mock the api module: chat endpoints + decision endpoints (asserted never called).
 vi.mock("../../lib/api", () => ({
-  api: { chat: vi.fn(), approveRequest: vi.fn(), mesDemandes: vi.fn() },
+  api: {
+    chat: vi.fn(),
+    approveRequest: vi.fn(),
+    mesDemandes: vi.fn(),
+    deciderProposition: vi.fn(),
+    changerStatutProposition: vi.fn(),
+    genererProposition: vi.fn(),
+  },
 }));
 
 // ---------------------------------------------------------------------------
@@ -48,6 +55,9 @@ function makeResult(reply: string) {
 const apiChat = vi.mocked(api.chat);
 const apiApprove = vi.mocked(api.approveRequest);
 const apiMesDemandes = vi.mocked(api.mesDemandes);
+const apiDecider = vi.mocked(api.deciderProposition);
+const apiChangerStatut = vi.mocked(api.changerStatutProposition);
+const apiGenerer = vi.mocked(api.genererProposition);
 
 /** A ChatResult where the agent just saved a request waiting for approval. */
 function makeSavedResult(reply: string) {
@@ -435,6 +445,63 @@ describe("ChatWidget", () => {
       const panel = screen.getByRole("dialog");
       // The panel uses max-w-[calc(100vw-3rem)] to stay within any viewport.
       expect(panel.className).toContain("max-w-[calc(100vw-3rem)]");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Guardrails (#118): the chatbot cannot decide, send or animate
+  // -------------------------------------------------------------------------
+  describe("guardrails (#118)", () => {
+    it("never calls a decision or generation endpoint after a chat exchange", async () => {
+      apiChat.mockResolvedValue(makeResult("Voici les prestations vérifiées."));
+      const user = userEvent.setup();
+      renderWidget();
+      await user.click(screen.getByRole("button", { name: /ouvrir le chat/i }));
+      await user.type(screen.getByRole("textbox"), "Lyon pour 2");
+      await user.click(screen.getByRole("button", { name: /envoyer/i }));
+      await screen.findByText("Voici les prestations vérifiées.");
+      expect(apiDecider).not.toHaveBeenCalled();
+      expect(apiChangerStatut).not.toHaveBeenCalled();
+      expect(apiGenerer).not.toHaveBeenCalled();
+    });
+
+    it("never calls a decision or generation endpoint after an error", async () => {
+      apiChat.mockRejectedValue(new Error("Serveur indisponible"));
+      const user = userEvent.setup();
+      renderWidget();
+      await user.click(screen.getByRole("button", { name: /ouvrir le chat/i }));
+      await user.type(screen.getByRole("textbox"), "Lyon");
+      await user.click(screen.getByRole("button", { name: /envoyer/i }));
+      await screen.findByRole("alert");
+      expect(apiDecider).not.toHaveBeenCalled();
+      expect(apiChangerStatut).not.toHaveBeenCalled();
+      expect(apiGenerer).not.toHaveBeenCalled();
+    });
+
+    it("never calls a decision endpoint after the traveler approves the request", async () => {
+      apiChat.mockResolvedValue(makeSavedResult("Votre demande est enregistrée."));
+      apiApprove.mockResolvedValue({ demande: {} as never });
+      const user = userEvent.setup();
+      renderWidget();
+      await user.click(screen.getByRole("button", { name: /ouvrir le chat/i }));
+      await user.type(screen.getByRole("textbox"), "Lyon");
+      await user.click(screen.getByRole("button", { name: /envoyer/i }));
+      await user.click(await screen.findByRole("button", { name: "Je confirme ma demande" }));
+      await screen.findByText(/transmise à un conseiller/i);
+      expect(apiDecider).not.toHaveBeenCalled();
+      expect(apiChangerStatut).not.toHaveBeenCalled();
+      expect(apiGenerer).not.toHaveBeenCalled();
+    });
+
+    it("does not render the jumping-o animation (play class)", async () => {
+      apiChat.mockResolvedValue(makeResult("Voici les prestations vérifiées."));
+      const user = userEvent.setup();
+      const { container } = renderWidget();
+      await user.click(screen.getByRole("button", { name: /ouvrir le chat/i }));
+      await user.type(screen.getByRole("textbox"), "Lyon");
+      await user.click(screen.getByRole("button", { name: /envoyer/i }));
+      await screen.findByText("Voici les prestations vérifiées.");
+      expect(container.querySelector(".play")).toBeNull();
     });
   });
 });

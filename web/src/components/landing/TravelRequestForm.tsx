@@ -99,7 +99,7 @@ export function TravelRequestForm({ isLoggedIn, onClose }: TravelRequestFormProp
         onClick={onClose}
         aria-hidden="true"
       />
-      <div className="relative max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl bg-white shadow-2xl">
+      <div className="relative max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl bg-card shadow-2xl">
         <button
           type="button"
           onClick={onClose}

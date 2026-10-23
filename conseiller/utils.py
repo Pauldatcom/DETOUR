@@ -172,6 +172,11 @@ DECISION_LABELS = {
 # The agent is never an authorized actor for a human decision.
 ACTEUR_AGENT = "agent"
 
+# Provenance of a proposal draft (#117): "assistant" when the agent
+# generated it, "conseiller" once the advisor has edited it by hand.
+GENERE_PAR_ASSISTANT = "assistant"
+GENERE_PAR_CONSEILLER = "conseiller"
+
 # Google OAuth (Authorization Code + PKCE).
 GOOGLE_OAUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"

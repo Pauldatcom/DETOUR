@@ -351,17 +351,34 @@ The course requires a free model. Three free OpenRouter models with tool calling
 
 Nemotron was the only free model that answered reliably, and the cost was 0 $.
 
-The default in the code (`DEFAULT_MODEL` in `conseiller/utils.py`, also in the README) is still `openai/gpt-4o-mini`, which is not free. Follow-up ticket: #93.
+The default in the code (`DEFAULT_MODEL` in `conseiller/utils.py`) is now a free model (`nvidia/nemotron-3.5-super-vl:free`), changed in #93.
 
 The API key stays in `.env` (or in the repository secrets for CI) and is never committed, sent to the model or written to traces.
 
-### 4. Who is allowed to expose the option and reservation tools in a later version?
+### 4. Who is allowed to expose the option and reservation tools in a later version? - #94
 
-Deferred: option and reservation tools stay disabled in V1.
+Decision: **nobody exposes them to the model.** They stay disabled in V1. In a later version, only the backend calls them, after an explicit action by a logged-in advisor.
 
-Rule for a later version: only the backend may call these routes, and only after an explicit action by a logged-in advisor. They are never exposed to the model as tools, and the model never receives `X-Approval-Key`.
+| Action | Fictional server route | Triggered by | Calls the route | Keys |
+|---|---|---|---|---|
+| Place an option | `POST /api/v1/options` | the advisor, with a button | the backend only | `X-Team-Key` |
+| Confirm a reservation | `POST /api/v1/reservations` | the advisor, after reviewing the option | the backend only | `X-Team-Key` + `X-Approval-Key` |
+| Cancel a reservation | `POST /api/v1/reservations/{id}/annuler` | the advisor | the backend only | `X-Team-Key` |
+| Read options and reservations | `GET /api/v1/options`, `GET /api/v1/reservations` | the advisor | the backend only | `X-Team-Key` |
 
-Follow-up ticket: #94.
+Rules:
+
+1. **Never a model tool.** The traveler assistant only gets `chercher_voyages` and the advisor assistant only gets `verifier_prestations` (#115). Both are read-only. No option, reservation or cancel tool is ever added to `TOOL_DEFINITION` or `ADVISOR_TOOL_DEFINITION`.
+2. **Advisor session required.** The portal routes that would call these server routes are protected like the other advisor actions (`admin_exige`): a traveler or an anonymous visitor gets `401`.
+3. **The approval key stays on the server side.** `X-Approval-Key` is read from `.env`, never committed, never sent to the model, never written to traces and never sent to the web front.
+4. **The approver comes from the session.** `approuve_par` is the name of the logged-in advisor, never a value from the request body or from the model.
+5. **Explicit, recorded confirmation.** The advisor confirms on screen before the call. The action is journaled with author, date and time, option or reservation id, and proposal version, like the other advisor decisions.
+6. **The agent never claims it.** The agent only says that an advisor will handle the booking. It never says that an option or a reservation exists.
+7. **No silent retry.** A `409` (no more places, wrong state) is shown to the advisor, who decides what to do.
+
+Tests to add when these routes are implemented: the models only get `chercher_voyages` and `verifier_prestations`; the routes refuse a traveler and an anonymous visitor; `X-Approval-Key` never appears in the model payload or the traces; `approuve_par` is the advisor of the session.
+
+Already checked in V1 by `conseiller/tests/test_option_tools_rule.py`: each assistant only gets its read tool, and neither the tool definitions nor the prompts mention the approval key or an option/reservation argument.
 
 ### 5. What information must appear in the proposal shown to the traveler?
 

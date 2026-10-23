@@ -8,7 +8,6 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from horaires import evaluer_delai_reponse, fuseau_metier, marquer_echeances
-import db
 from utils import (ACTIVITES_POSSIBLES, ACTEUR_AGENT, NIVEAUX_AVENTURE,
                    QUALIF_EN_COURS,
                    QUALIF_INCOMPLET, QUALIF_PRET_PROPOSITION, QUALIF_PRET_RELECTURE,
@@ -408,20 +407,34 @@ def valider_demande(data):
 
 
 class DemandStore:
-    def __init__(self, path=None):
-        """Open the demandes store backed by SQLite.
+    def __init__(self, repo=None, path=None):
+        """Open the demandes store backed by a Repository.
 
-        `path` is the SQLite database file (created on first use). Passing
-        None keeps a pure in-memory store, used by tests and tooling.
+        `repo` is a Repository instance (SqliteRepository, future
+        PostgresRepository, or a FakeRepository in tests). When `repo`
+        is a string or Path (backward compat), a SqliteRepository is
+        created from it. Passing None for both keeps a pure in-memory
+        store, used by tests and tooling.
         """
-        self.path = Path(path) if path else None
+        from sqlite_repository import SqliteRepository
+        from repository import Repository
         self.lock = threading.RLock()
-        self.conn = db.connect(self.path) if self.path else None
-        self.demandes = db.load_demandes(self.conn) if self.conn else {}
+        if isinstance(repo, (str, Path)) and path is None:
+            path = repo
+            repo = None
+        if repo is not None and not isinstance(repo, Repository):
+            repo = None
+        self._repo = repo or (SqliteRepository(path) if path else None)
+        self.demandes = self._repo.load_all_demandes() if self._repo else {}
+
+    @property
+    def conn(self):
+        return self._repo.conn if self._repo else None
 
     def save(self):
-        if self.conn:
-            db.save_demandes(self.conn, self.demandes)
+        if self._repo:
+            for record in self.demandes.values():
+                self._repo.save_demande(record)
 
     def creer(self, data):
         valide = valider_demande(data)

@@ -148,13 +148,10 @@ describe("PropositionDetail", () => {
   it("says plainly when a service is fully booked or not yet checked", async () => {
     renderPage();
     await screen.findByText("Nantes en deux jours");
-    expect(
-      screen.getByText("Atelier de machines imaginaires est complet à cette date."),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Prix et places en cours de vérification par votre conseiller."),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Sans la prestation en cours de vérification.")).toBeInTheDocument();
+    expect(screen.getByText("Complet à cette date.")).toBeInTheDocument();
+    expect(screen.getByText("Prix non vérifié.")).toBeInTheDocument();
+    expect(screen.getByText("Disponibilité non vérifiée.")).toBeInTheDocument();
+    expect(screen.getByText("Hors 1 prestation non vérifiée.")).toBeInTheDocument();
   });
 
   it("signs the message with the advisor's first name", async () => {

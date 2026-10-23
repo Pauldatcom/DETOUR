@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { Logo } from "../components/Logo";
@@ -19,6 +19,15 @@ export function Login({ onSession, googleOauth }: LoginProps) {
   const [prenom, setPrenom] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState<null | { titre: string; destination: string }>(null);
+  const redirection = useRef<number | undefined>(undefined);
+
+  // The success banner stays visible until the deferred navigation fires.
+  useEffect(() => () => window.clearTimeout(redirection.current), []);
+
+  function deferNavigation(destination: string) {
+    redirection.current = window.setTimeout(() => navigate(destination), 900);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -28,11 +37,13 @@ export function Login({ onSession, googleOauth }: LoginProps) {
       if (tab === "login") {
         await api.login(email, password);
         onSession();
-        navigate("/mes-propositions");
+        setSuccess({ titre: "Connexion réussie", destination: "/mes-propositions" });
+        deferNavigation("/mes-propositions");
       } else if (tab === "register") {
         await api.register(email, nom, password);
         onSession();
-        navigate("/mes-propositions");
+        setSuccess({ titre: "Compte créé", destination: "/mes-propositions" });
+        deferNavigation("/mes-propositions");
       } else {
         // #112: the first name signs the advisor's proposals for the traveler.
         if (!prenom.trim()) {
@@ -41,7 +52,8 @@ export function Login({ onSession, googleOauth }: LoginProps) {
         }
         await api.loginConseiller(cle, prenom.trim());
         onSession();
-        navigate("/espace-conseiller");
+        setSuccess({ titre: "Espace conseiller ouvert", destination: "/espace-conseiller" });
+        deferNavigation("/espace-conseiller");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur");
@@ -114,126 +126,153 @@ export function Login({ onSession, googleOauth }: LoginProps) {
             ))}
           </div>
 
-          <form onSubmit={submit} className="mt-6 space-y-4" noValidate>
-            {tab === "register" && (
-              <div>
-                <label htmlFor="login-nom" className="mb-1 block text-sm font-medium text-ink">
-                  Nom
-                </label>
-                <input
-                  id="login-nom"
-                  value={nom}
-                  onChange={(e) => setNom(e.target.value)}
-                  autoComplete="name"
-                  aria-describedby={error ? errorId : undefined}
-                  className={champClasse}
-                  required
-                />
-              </div>
-            )}
-
-            {tab !== "conseiller" ? (
-              <>
-                <div>
-                  <label htmlFor="login-email" className="mb-1 block text-sm font-medium text-ink">
-                    E-mail
-                  </label>
-                  <input
-                    id="login-email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    autoComplete="email"
-                    aria-invalid={Boolean(error)}
-                    aria-describedby={error ? errorId : undefined}
-                    className={champClasse}
-                    required
-                  />
-                </div>
-                <div>
-                  <label
-                    htmlFor="login-password"
-                    className="mb-1 block text-sm font-medium text-ink"
-                  >
-                    Mot de passe
-                  </label>
-                  <input
-                    id="login-password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    autoComplete={tab === "login" ? "current-password" : "new-password"}
-                    aria-invalid={Boolean(error)}
-                    aria-describedby={error ? errorId : undefined}
-                    className={champClasse}
-                    required
-                    minLength={6}
-                  />
-                </div>
-              </>
-            ) : (
-              <>
-                <div>
-                  <label htmlFor="login-prenom" className="mb-1 block text-sm font-medium text-ink">
-                    Votre prénom
-                  </label>
-                  <input
-                    id="login-prenom"
-                    value={prenom}
-                    onChange={(e) => setPrenom(e.target.value)}
-                    autoComplete="given-name"
-                    aria-invalid={Boolean(error)}
-                    aria-describedby={error ? errorId : "login-prenom-aide"}
-                    className={champClasse}
-                    required
-                  />
-                  <p id="login-prenom-aide" className="mt-1 text-xs text-ballast">
-                    Les voyageurs le verront en signature de vos propositions.
-                  </p>
-                </div>
-                <div>
-                  <label htmlFor="login-cle" className="mb-1 block text-sm font-medium text-ink">
-                    Clé d'accès conseiller
-                  </label>
-                  <input
-                    id="login-cle"
-                    type="password"
-                    value={cle}
-                    onChange={(e) => setCle(e.target.value)}
-                    autoComplete="current-password"
-                    aria-invalid={Boolean(error)}
-                    aria-describedby={error ? errorId : undefined}
-                    className={champClasse}
-                    required
-                  />
-                </div>
-              </>
-            )}
-
-            {error && (
-              <p
-                id={errorId}
-                role="alert"
-                className="rounded-xl border border-brick/30 bg-brick/10 px-4 py-2 text-sm text-brick"
+          {success ? (
+            <div className="mt-6 text-center" role="status" aria-live="polite">
+              <div
+                className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-sky/40"
+                aria-hidden="true"
               >
-                {error}
-              </p>
-            )}
+                <svg
+                  className="h-7 w-7 text-ink"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                </svg>
+              </div>
+              <h2 className="font-display text-xl font-extrabold text-ink">{success.titre}</h2>
+              <p className="mt-3 text-sm text-ballast">Redirection en cours…</p>
+            </div>
+          ) : (
+            <form onSubmit={submit} className="mt-6 space-y-4" noValidate>
+              {tab === "register" && (
+                <div>
+                  <label htmlFor="login-nom" className="mb-1 block text-sm font-medium text-ink">
+                    Nom
+                  </label>
+                  <input
+                    id="login-nom"
+                    value={nom}
+                    onChange={(e) => setNom(e.target.value)}
+                    autoComplete="name"
+                    aria-describedby={error ? errorId : undefined}
+                    className={champClasse}
+                    required
+                  />
+                </div>
+              )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-full bg-ink px-6 py-3 font-semibold text-base text-chalk transition outline-none hover:bg-ink/90 disabled:opacity-60"
-            >
-              {loading
-                ? "…"
-                : tab === "login"
-                  ? "Se connecter"
-                  : tab === "register"
-                    ? "Créer un compte"
-                    : "Accéder"}
-            </button>
-          </form>
+              {tab !== "conseiller" ? (
+                <>
+                  <div>
+                    <label
+                      htmlFor="login-email"
+                      className="mb-1 block text-sm font-medium text-ink"
+                    >
+                      E-mail
+                    </label>
+                    <input
+                      id="login-email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      autoComplete="email"
+                      aria-invalid={Boolean(error)}
+                      aria-describedby={error ? errorId : undefined}
+                      className={champClasse}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="login-password"
+                      className="mb-1 block text-sm font-medium text-ink"
+                    >
+                      Mot de passe
+                    </label>
+                    <input
+                      id="login-password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      autoComplete={tab === "login" ? "current-password" : "new-password"}
+                      aria-invalid={Boolean(error)}
+                      aria-describedby={error ? errorId : undefined}
+                      className={champClasse}
+                      required
+                      minLength={6}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label
+                      htmlFor="login-prenom"
+                      className="mb-1 block text-sm font-medium text-ink"
+                    >
+                      Votre prénom
+                    </label>
+                    <input
+                      id="login-prenom"
+                      value={prenom}
+                      onChange={(e) => setPrenom(e.target.value)}
+                      autoComplete="given-name"
+                      aria-invalid={Boolean(error)}
+                      aria-describedby={error ? errorId : "login-prenom-aide"}
+                      className={champClasse}
+                      required
+                    />
+                    <p id="login-prenom-aide" className="mt-1 text-xs text-ballast">
+                      Les voyageurs le verront en signature de vos propositions.
+                    </p>
+                  </div>
+                  <div>
+                    <label htmlFor="login-cle" className="mb-1 block text-sm font-medium text-ink">
+                      Clé d'accès conseiller
+                    </label>
+                    <input
+                      id="login-cle"
+                      type="password"
+                      value={cle}
+                      onChange={(e) => setCle(e.target.value)}
+                      autoComplete="current-password"
+                      aria-invalid={Boolean(error)}
+                      aria-describedby={error ? errorId : undefined}
+                      className={champClasse}
+                      required
+                    />
+                  </div>
+                </>
+              )}
+
+              {error && (
+                <p
+                  id={errorId}
+                  role="alert"
+                  className="rounded-xl border border-brick/30 bg-brick/10 px-4 py-2 text-sm text-brick"
+                >
+                  {error}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full rounded-full bg-ink px-6 py-3 font-semibold text-base text-chalk transition outline-none hover:bg-ink/90 disabled:opacity-60"
+              >
+                {loading
+                  ? "…"
+                  : tab === "login"
+                    ? "Se connecter"
+                    : tab === "register"
+                      ? "Créer un compte"
+                      : "Accéder"}
+              </button>
+            </form>
+          )}
 
           {googleOauth && tab !== "conseiller" && (
             <>

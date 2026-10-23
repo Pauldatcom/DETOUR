@@ -12,6 +12,7 @@ import {
 import { ProposalReview } from "./ProposalReview";
 import { ReasonForm } from "./ReasonForm";
 import { ServicesTable, type ServiceRow } from "./ServicesTable";
+import { TraceTimeline } from "./TraceTimeline";
 
 interface RequestFileProps {
   requestId: string;
@@ -228,6 +229,9 @@ export function RequestFile({ requestId, onChanged }: RequestFileProps) {
           />
         </div>
       </section>
+
+      {/* #128: the agent trace, between the recap and the verified services. */}
+      <TraceTimeline request={request} propositions={proposals} />
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-3">

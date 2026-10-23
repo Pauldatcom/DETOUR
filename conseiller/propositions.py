@@ -6,7 +6,6 @@ import threading
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-import db
 from utils import (
     ACTEUR_AGENT,
     DECISION_ACCEPTER,
@@ -16,6 +15,8 @@ from utils import (
     DECISION_REPLACE,
     DECISIONS_AVEC_MOTIF,
     DECISIONS_PRESTATION,
+    GENERE_PAR_ASSISTANT,
+    GENERE_PAR_CONSEILLER,
     PROP_STATUTS,
     SOURCE_LABEL,
     STATUT_BROUILLON,
@@ -156,9 +157,18 @@ def valider_proposition(data):
         p["prix_total_eur"] for p in prestations_validees
         if p.get("verification") == VERIFICATION_VERIFIE
     )
+    # #117: the traveler-facing message and the draft provenance.
+    message_voyageur = data.get("message_voyageur", "")
+    if not isinstance(message_voyageur, str):
+        raise PropositionError("message_voyageur doit être une chaîne.")
+    genere_par = data.get("genere_par", "")
+    if not isinstance(genere_par, str):
+        raise PropositionError("genere_par doit être une chaîne.")
     return {
         "titre": titre.strip(),
         "description": description.strip(),
+        "message_voyageur": message_voyageur.strip(),
+        "genere_par": genere_par.strip(),
         "prestations": prestations_validees,
         "prix_total_eur": prix_total,
     }
@@ -254,20 +264,34 @@ def apply_quantities(data, demande):
 
 
 class PropositionStore:
-    def __init__(self, path=None):
-        """Open the propositions store backed by SQLite.
+    def __init__(self, repo=None, path=None):
+        """Open the propositions store backed by a Repository.
 
-        `path` is the SQLite database file (created on first use). Passing
-        None keeps a pure in-memory store, used by tests and tooling.
+        `repo` is a Repository instance (SqliteRepository, future
+        PostgresRepository, or a FakeRepository in tests). When `repo`
+        is a string or Path (backward compat), a SqliteRepository is
+        created from it. Passing None for both keeps a pure in-memory
+        store, used by tests and tooling.
         """
-        self.path = Path(path) if path else None
+        from sqlite_repository import SqliteRepository
+        from repository import Repository
         self.lock = threading.RLock()
-        self.conn = db.connect(self.path) if self.path else None
-        self.propositions = db.load_propositions(self.conn) if self.conn else {}
+        if isinstance(repo, (str, Path)) and path is None:
+            path = repo
+            repo = None
+        if repo is not None and not isinstance(repo, Repository):
+            repo = None
+        self._repo = repo or (SqliteRepository(path) if path else None)
+        self.propositions = self._repo.load_all_propositions() if self._repo else {}
+
+    @property
+    def conn(self):
+        return self._repo.conn if self._repo else None
 
     def save(self):
-        if self.conn:
-            db.save_propositions(self.conn, self.propositions)
+        if self._repo:
+            for record in self.propositions.values():
+                self._repo.save_proposition(record)
 
     def creer(self, demande_id, data, conseiller="", version=1, parente_id=None):
         valide = valider_proposition(data)
@@ -336,6 +360,10 @@ class PropositionStore:
                 STATUT_BROUILLON, STATUT_CORRECTION_DEMANDEE)
             record["titre"] = champs["titre"]
             record["description"] = champs["description"]
+            # #117: the advisor can always edit the traveler-facing message;
+            # an edit by hand marks the draft as advisor-confirmed.
+            record["message_voyageur"] = champs["message_voyageur"]
+            record["genere_par"] = GENERE_PAR_CONSEILLER
             if modifiable:
                 record["prestations"] = champs["prestations"]
                 record["prix_total_eur"] = champs["prix_total_eur"]
@@ -515,6 +543,12 @@ class PropositionStore:
                 existante["description"] = champs["description"]
                 existante["prestations"] = champs["prestations"]
                 existante["prix_total_eur"] = champs["prix_total_eur"]
+                existante["message_voyageur"] = (
+                    champs["message_voyageur"]
+                    or existante.get("message_voyageur", ""))
+                existante["genere_par"] = (
+                    champs["genere_par"]
+                    or existante.get("genere_par", ""))
                 existante["conseiller"] = conseiller or existante.get("conseiller", "")
                 existante["version"] = 2
                 existante["parente_id"] = prop_v1_id
@@ -532,5 +566,6 @@ class PropositionStore:
             if prop_id not in self.propositions:
                 return False
             del self.propositions[prop_id]
-            self.save()
+            if self._repo:
+                self._repo.delete_proposition(prop_id)
             return True

@@ -24,9 +24,12 @@ export function Hero({ onDecrir }: HeroProps) {
           <p className="mb-3 font-mono text-xs tracking-widest text-sky uppercase">
             {HERO.surtitre}
           </p>
-          <h1 className="text-4xl leading-tight font-extrabold sm:text-5xl">
-            <JumpingTitle text={HERO.titre} targetWord="conseiller" as="h1" />
-          </h1>
+          <JumpingTitle
+            text={HERO.titre}
+            targetWord="conseiller"
+            as="h1"
+            className="text-4xl leading-tight font-extrabold sm:text-5xl"
+          />
           <p className="mt-5 max-w-xl text-lg text-sky">{HERO.texte}</p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
