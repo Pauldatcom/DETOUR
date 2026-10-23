@@ -3,6 +3,7 @@
 
 import json
 import sys
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,7 +11,7 @@ from pathlib import Path
 CONSEILLER_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(CONSEILLER_ROOT))
 
-import db
+from sqlite_repository import SqliteRepository
 from propositions import PropositionStore
 from store import DemandStore
 
@@ -40,25 +41,25 @@ class TestDbConnect(unittest.TestCase):
         self.path = Path(self.tmpdir) / "detour.db"
 
     def test_connect_creates_schema(self):
-        conn = db.connect(self.path)
-        tables = {row["name"] for row in conn.execute(
+        repo = SqliteRepository(self.path)
+        tables = {row["name"] for row in repo.conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'")}
-        conn.close()
+        repo.conn.close()
         self.assertTrue({"demandes", "propositions", "destinations"} <= tables)
 
     def test_connect_twice_is_a_noop(self):
-        conn = db.connect(self.path)
-        conn.close()
-        conn = db.connect(self.path)
-        tables = {row["name"] for row in conn.execute(
+        repo = SqliteRepository(self.path)
+        repo.conn.close()
+        repo = SqliteRepository(self.path)
+        tables = {row["name"] for row in repo.conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'")}
-        conn.close()
+        repo.conn.close()
         self.assertTrue({"demandes", "propositions", "destinations"} <= tables)
 
     def test_connect_creates_parent_directory(self):
         nested = Path(self.tmpdir) / "sub" / "dir" / "detour.db"
-        conn = db.connect(nested)
-        conn.close()
+        repo = SqliteRepository(nested)
+        repo.conn.close()
         self.assertTrue(nested.exists())
 
 
@@ -166,15 +167,12 @@ class TestSeedDestinations(unittest.TestCase):
             ]
         }), encoding="utf-8")
         self.db_path = Path(self.tmpdir) / "detour.db"
-        self.conn = db.connect(self.db_path)
-
-    def tearDown(self):
-        self.conn.close()
+        self.repo = SqliteRepository(self.db_path)
 
     def test_seed_populates_destinations(self):
-        count = db.seed_destinations(self.conn, self.dataset)
+        count = self.repo.seed_destinations(self.dataset)
         self.assertEqual(count, 2)
-        rows = db.lister_destinations(self.conn)
+        rows = self.repo.list_destinations()
         self.assertEqual([r["id"] for r in rows], ["DST-001", "DST-002"])
         self.assertEqual(rows[0]["name"], "Paris")
         self.assertEqual(rows[0]["imageUrl"], "https://images.unsplash.com/photo-1")
@@ -183,16 +181,16 @@ class TestSeedDestinations(unittest.TestCase):
         self.assertFalse(rows[1]["featured"])
 
     def test_seed_is_idempotent(self):
-        db.seed_destinations(self.conn, self.dataset)
-        db.seed_destinations(self.conn, self.dataset)
-        rows = db.lister_destinations(self.conn)
+        self.repo.seed_destinations(self.dataset)
+        self.repo.seed_destinations(self.dataset)
+        rows = self.repo.list_destinations()
         self.assertEqual(len(rows), 2)
 
     def test_lister_filters(self):
-        db.seed_destinations(self.conn, self.dataset)
-        culture = db.lister_destinations(self.conn, theme="culture")
+        self.repo.seed_destinations(self.dataset)
+        culture = self.repo.list_destinations(theme="culture")
         self.assertEqual([r["id"] for r in culture], ["DST-001"])
-        featured = db.lister_destinations(self.conn, featured_only=True)
+        featured = self.repo.list_destinations(featured_only=True)
         self.assertEqual([r["id"] for r in featured], ["DST-001"])
 
 
@@ -244,66 +242,49 @@ class TestMigration(unittest.TestCase):
             json.dumps({"prop_legacy1": self.legacy_proposition}), encoding="utf-8")
 
     def _migrate(self):
-        """Run the migration on a fresh connection; returns (n_demandes, n_props)."""
+        """Run the migration on a fresh repository; returns (n_demandes, n_props)."""
         import migrate
-        conn = db.connect(self.db_path)
-        try:
-            n1 = migrate.migrer_fichier(conn, "demandes", self.demandes_json)
-            n2 = migrate.migrer_fichier(conn, "propositions", self.propositions_json)
-            return n1, n2
-        finally:
-            conn.close()
+        repo = SqliteRepository(self.db_path)
+        n1 = migrate.migrer_fichier(repo, "demandes", self.demandes_json)
+        n2 = migrate.migrer_fichier(repo, "propositions", self.propositions_json)
+        return n1, n2
 
     def test_migration_imports_legacy_records(self):
         n1, n2 = self._migrate()
         self.assertEqual(n1, 1)
         self.assertEqual(n2, 1)
-        conn = db.connect(self.db_path)
-        try:
-            rows = conn.execute("SELECT id, data FROM demandes").fetchall()
-            self.assertEqual([r["id"] for r in rows], ["dem_legacy1"])
-            self.assertEqual(json.loads(rows[0]["data"])["id"], "dem_legacy1")
-            props = conn.execute("SELECT id, demande_id FROM propositions").fetchall()
-            self.assertEqual([r["id"] for r in props], ["prop_legacy1"])
-            self.assertEqual(props[0]["demande_id"], "dem_legacy1")
-        finally:
-            conn.close()
+        repo = SqliteRepository(self.db_path)
+        demandes = repo.load_all_demandes()
+        self.assertEqual(list(demandes.keys()), ["dem_legacy1"])
+        self.assertEqual(demandes["dem_legacy1"]["id"], "dem_legacy1")
+        props = repo.load_all_propositions()
+        self.assertEqual(list(props.keys()), ["prop_legacy1"])
+        self.assertEqual(props["prop_legacy1"]["demande_id"], "dem_legacy1")
 
     def test_migration_is_idempotent(self):
         self._migrate()
         n1, n2 = self._migrate()
         self.assertEqual(n1, 1)
         self.assertEqual(n2, 1)
-        conn = db.connect(self.db_path)
-        try:
-            self.assertEqual(
-                conn.execute("SELECT COUNT(*) FROM demandes").fetchone()[0], 1)
-            self.assertEqual(
-                conn.execute("SELECT COUNT(*) FROM propositions").fetchone()[0], 1)
-        finally:
-            conn.close()
+        repo = SqliteRepository(self.db_path)
+        self.assertEqual(len(repo.load_all_demandes()), 1)
+        self.assertEqual(len(repo.load_all_propositions()), 1)
 
     def test_migration_skips_missing_files(self):
         self.demandes_json.unlink()
         self.propositions_json.unlink()
-        conn = db.connect(self.db_path)
-        try:
-            import migrate
-            self.assertEqual(migrate.migrer_fichier(conn, "demandes", self.demandes_json), 0)
-            self.assertEqual(
-                migrate.migrer_fichier(conn, "propositions", self.propositions_json), 0)
-        finally:
-            conn.close()
+        repo = SqliteRepository(self.db_path)
+        import migrate
+        self.assertEqual(migrate.migrer_fichier(repo, "demandes", self.demandes_json), 0)
+        self.assertEqual(
+            migrate.migrer_fichier(repo, "propositions", self.propositions_json), 0)
 
     def test_migration_invalid_file_is_ignored(self):
         self.demandes_json.write_text("not json", encoding="utf-8")
-        conn = db.connect(self.db_path)
-        try:
-            import migrate
-            with self.assertRaises(json.JSONDecodeError):
-                migrate.migrer_fichier(conn, "demandes", self.demandes_json)
-        finally:
-            conn.close()
+        repo = SqliteRepository(self.db_path)
+        import migrate
+        with self.assertRaises(json.JSONDecodeError):
+            migrate.migrer_fichier(repo, "demandes", self.demandes_json)
 
 
 if __name__ == "__main__":

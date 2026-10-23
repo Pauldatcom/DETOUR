@@ -17,13 +17,13 @@ import argparse
 import json
 from pathlib import Path
 
-import db
+from sqlite_repository import SqliteRepository
 
 ROOT = Path(__file__).resolve().parent
 
 
-def migrer_fichier(conn, table, json_path):
-    """Upsert every record of one legacy JSON file into `table`.
+def migrer_fichier(repo, table, json_path):
+    """Upsert every record of one legacy JSON file into the repository.
 
     Returns the number of records migrated. A missing file migrates nothing.
     """
@@ -34,9 +34,11 @@ def migrer_fichier(conn, table, json_path):
     if not isinstance(records, dict) or not records:
         return 0
     if table == "demandes":
-        db.save_demandes(conn, records)
+        for record in records.values():
+            repo.save_demande(record)
         return len(records)
-    db.save_propositions(conn, records)
+    for record in records.values():
+        repo.save_proposition(record)
     return len(records)
 
 
@@ -50,10 +52,10 @@ def main():
                         help="Also seed the destinations table (idempotent).")
     args = parser.parse_args()
 
-    conn = db.connect(args.db_file)
-    n_demandes = migrer_fichier(conn, "demandes", args.demandes_json)
-    n_propositions = migrer_fichier(conn, "propositions", args.propositions_json)
-    n_destinations = db.seed_destinations(conn, args.seed_dataset)
+    repo = SqliteRepository(args.db_file)
+    n_demandes = migrer_fichier(repo, "demandes", args.demandes_json)
+    n_propositions = migrer_fichier(repo, "propositions", args.propositions_json)
+    n_destinations = repo.seed_destinations(args.seed_dataset)
     print(f"demandes migrées   : {n_demandes}")
     print(f"propositions migrées : {n_propositions}")
     print(f"destinations seedées : {n_destinations}")
