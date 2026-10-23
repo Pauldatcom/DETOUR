@@ -54,8 +54,19 @@ export interface Demande {
   recherches?: Recherche[];
   messages?: ChatMessage[];
   decisions?: DecisionStatut[];
+  /** Field corrections made by the advisor or the traveler (#128). */
+  modifications?: Modification[];
   /** Traveler approval before an advisor gets the request. */
   approbation_client?: TravelerApproval;
+}
+
+/** One field correction on a request: before → after, by whom, when (#128). */
+export interface Modification {
+  champ: string;
+  avant: unknown;
+  apres: unknown;
+  par: string;
+  le: string;
 }
 
 export interface TravelerApproval {
@@ -169,6 +180,12 @@ export interface DecisionStatut {
   par: string;
   le: string;
   version?: number;
+  /** Qualification or status before the decision (#128). */
+  avant?: string;
+  /** Qualification or status after the decision (#128). */
+  apres?: string;
+  /** Fields still missing when the request went back to incomplete. */
+  champs?: string[] | null;
 }
 
 export interface DecisionStatutProposition {
