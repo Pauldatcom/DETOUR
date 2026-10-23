@@ -71,3 +71,11 @@ curl -X POST -H 'Content-Type: application/json' -H 'X-Team-Key: demo-key' \
 En classe, la clé d'approbation est remise à la personne qui tient le rôle de conseiller. Elle ne doit pas être confiée à l'agent IA. Le programme doit montrer une validation humaine avant d'envoyer la confirmation. Les routes `GET /api/v1/options` et `GET /api/v1/reservations` permettent de voir l'état de votre équipe.
 
 Les erreurs sont en JSON. Les cas courants sont `400` pour des données invalides, `401` ou `403` pour les clés, `404` pour un objet inconnu et `409` pour un conflit de disponibilité ou d'état.
+
+## Architecture du serveur
+
+- `app.py` : point d'entrée mince (`load_teams`, `make_handler`, `main`).
+- `httpd/` : plomberie HTTP générique (handler, routeur, requête, gardes d'accès, erreurs, contexte partagé).
+- `routes/` : routes métier par domaine (prestations, disponibilités, recherche, options, réservations, formateur, tableau de bord, santé).
+- `state.py` : état simulé (équipes, options, réservations, incidents, sessions du tableau de bord).
+- `catalogue.py` : données fictives du catalogue.
